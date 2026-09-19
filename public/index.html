@@ -5,6 +5,8 @@
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>Sally Crypto Bot</title>
 <link rel="stylesheet" href="/styles.css" />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Manrope:wght@700;800&display=swap" />
 </head>
 <body>
   <div class="app">
@@ -19,6 +21,8 @@
         <div class="balance-chip" id="headerBalance">Rp -</div>
       </div>
     </header>
+
+    <div class="ticker-strip" id="tickerStrip"></div>
 
     <main id="views">
       <!-- HOME -->
@@ -56,11 +60,15 @@
           <div class="hint" id="backtestRunHint" style="display:none">Running - fetches real Binance history across your watchlist, usually 15-30s for 1 month. Don't close this tab.</div>
         </div>
 
-        <div class="section-title">Open positions</div>
-        <div id="positionsList" class="stack"></div>
+        <div class="card list-card positions-card">
+          <div class="section-title-sm">Open positions</div>
+          <div id="positionsList" class="stack"></div>
+        </div>
 
-        <div class="section-title">Notifications</div>
-        <div id="notificationsList" class="stack"></div>
+        <div class="card list-card notifications-card">
+          <div class="section-title-sm">Notifications</div>
+          <div id="notificationsList" class="stack"></div>
+        </div>
       </section>
 
       <!-- MARKET -->
@@ -105,6 +113,7 @@
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01z"/></svg>
           </button>
         </div>
+        <div class="chart-col">
         <div class="card coin-header">
           <div>
             <div class="coin-symbol" id="coinSymbol">-</div>
@@ -121,8 +130,9 @@
           <span id="chartInterval">-</span>
           <span id="chartDetail">Tap a candle for its price and date</span>
         </div>
+        </div>
 
-        <div class="card">
+        <div class="card card-signal">
           <div class="section-title-sm">Signal significance</div>
           <div class="structure-row">
             <span class="structure-badge none" id="structureBadge">-</span>
@@ -132,7 +142,7 @@
           <div class="sr-grid" id="srGrid"></div>
         </div>
 
-        <div class="card">
+        <div class="card card-technical">
           <div class="section-title-sm">Technical Analysis</div>
           <div class="confidence-row">
             <div class="confidence-ring" id="confidenceRing"><span id="confidenceValue">-</span></div>
@@ -151,32 +161,32 @@
           <div class="summary-text" id="summaryText">-</div>
         </div>
 
-        <div class="card">
+        <div class="card card-strategy">
           <div class="section-title-sm">Recommended strategy</div>
           <div class="mode-row" id="modeRow"></div>
           <div class="summary-text" id="modeReason">-</div>
         </div>
 
-        <div class="card">
+        <div class="card card-performance">
           <div class="section-title-sm">Performance</div>
           <div class="indicator-grid" id="indicatorGrid"></div>
           <div class="section-title-sm" style="margin-top:16px">Strategy parameters (active mode)</div>
           <div class="indicator-grid" id="paramGrid"></div>
         </div>
 
-        <div class="card">
+        <div class="card card-freshness">
           <div class="section-title-sm">Data freshness</div>
           <div class="summary-text" id="fetchInfoNote" style="margin-top:0">-</div>
           <div class="indicator-grid" id="fetchInfoGrid" style="margin-top:10px"></div>
         </div>
 
-        <div class="card">
+        <div class="card card-near">
           <div class="section-title-sm">How close to a trade?</div>
           <div class="summary-text" id="nearConditionNote">-</div>
           <div class="indicator-grid" id="nearConditionGrid" style="margin-top:10px"></div>
         </div>
 
-        <div class="card">
+        <div class="card card-position">
           <div class="section-title-sm">Position &amp; action</div>
           <div id="positionDetail" class="summary-text">No open position.</div>
           <div class="segmented-buttons">
@@ -188,7 +198,7 @@
 
       <!-- SETTINGS -->
       <section id="view-settings" class="view hidden">
-        <div class="card">
+        <div class="card card-autotrade">
           <div class="section-title-sm">Auto-trade</div>
           <label class="toggle-row"><span>Trade 24/7 automatically</span><input type="checkbox" id="autoTradeToggle" /></label>
 
@@ -209,7 +219,7 @@
             <div class="hint">Auto lets each coin's daily trend strength (ADX) pick swing/scalping/day-trade for itself. Pinning a mode forces every watchlist coin to trade on that mode's rules, even on days the regime picker would have chosen something else. A coin already holding a position keeps trading under the mode it was bought under - pinning never moves a live trade's stop/target.</div>
           </div>
         </div>
-        <div class="card">
+        <div class="card card-telegram">
           <div class="section-title-sm">Telegram</div>
           <label class="toggle-row"><span>Enabled</span><input type="checkbox" id="telegramToggle" /></label>
           <input id="telegramToken" class="input" placeholder="Bot token" />
@@ -220,7 +230,7 @@
           </div>
           <div class="summary-text" id="telegramStatus">-</div>
         </div>
-        <div class="card">
+        <div class="card card-watchlist">
           <div class="section-title-sm">Watchlist</div>
           <div id="settingsWatchlist" class="stack"></div>
           <div class="add-row">
@@ -229,7 +239,7 @@
           </div>
         </div>
 
-        <div class="card">
+        <div class="card card-ai">
           <div class="section-title-sm">AI advisor</div>
           <div class="view-toggle" id="aiModeToggle">
             <button class="view-toggle-btn active" data-mode="local">Local (free)</button>
@@ -247,7 +257,7 @@
           <div class="summary-text" id="aiStatus">-</div>
         </div>
 
-        <div class="card">
+        <div class="card card-params">
           <div class="section-title-sm">Trading parameters</div>
           <label class="setting-label-row"><span>Starting balance (Rp)</span></label>
           <input id="paramInitialBalance" class="input" type="number" min="100000" step="100000" />
@@ -270,6 +280,10 @@
     </main>
 
     <nav class="tabbar">
+      <div class="side-brand">
+        <span class="side-brand-mark"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M13 2 3 14h7l-1 8 10-12h-7z"/></svg></span>
+        <span class="side-brand-text">Sally</span>
+      </div>
       <button class="tab active" data-view="home">
         <span class="tab-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 11l9-8 9 8"/><path d="M5 10v10h14V10"/></svg></span>
         Home

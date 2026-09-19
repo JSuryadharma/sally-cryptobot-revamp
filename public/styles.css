@@ -271,3 +271,107 @@ main { flex: 1; padding: 8px 18px 96px; overflow-y: auto; }
 }
 .tab.active { color: var(--text); }
 .tab.active .tab-icon { background: rgba(143,217,168,0.16); color: var(--accent); }
+
+/* ===================================================================
+   Desktop shell — Chainx-referenced revamp (UI/UX only)
+   Adds: a violet chrome accent (kept separate from the bullish/bearish/
+   warn trio the chart legend and structure badges depend on), Manrope
+   display type for headings/big numbers, a persistent sidebar built by
+   repositioning the existing tabbar, a ticker strip, and a card-grid
+   reflow of Home / Market / Coin detail / Settings at >=960px. Nothing
+   below this point changes color, font or layout below the breakpoint —
+   the shipping mobile app (tabbar + single column) is untouched.
+   =================================================================== */
+:root {
+  --violet: #6d4fd1;
+  --violet-strong: #8467e0;
+  --violet-soft: rgba(109, 79, 209, 0.14);
+  --violet-soft-2: rgba(109, 79, 209, 0.28);
+  --font-display: 'Manrope', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+}
+
+.ticker-strip { display: none; }
+.side-brand { display: none; }
+
+.card.list-card { display: block; }
+
+@media (min-width: 960px) {
+  .app { max-width: 1280px; margin: 0 auto; padding-left: 240px; position: relative; }
+
+  .tabbar {
+    position: fixed; left: 0; top: 0; bottom: 0; width: 240px; max-width: 240px;
+    transform: none; flex-direction: column; align-items: stretch; justify-content: flex-start;
+    gap: 3px; padding: 20px 14px; background: var(--surface-2); border-top: none;
+    border-right: 1px solid var(--border); backdrop-filter: none;
+  }
+  .side-brand { display: flex; align-items: center; gap: 9px; padding: 6px 10px 22px; }
+  .side-brand-mark {
+    width: 30px; height: 30px; border-radius: 50%; flex-shrink: 0; display: flex; align-items: center;
+    justify-content: center; color: #fff;
+    background: radial-gradient(circle at 30% 25%, var(--violet-strong), #241a4a 75%);
+  }
+  .side-brand-text { font-family: var(--font-display); font-weight: 800; font-size: 15px; }
+  .tab {
+    flex-direction: row; justify-content: flex-start; gap: 11px; padding: 10px 12px;
+    border-radius: 12px; font-size: 13px;
+  }
+  .tab .tab-icon { width: 26px; height: 26px; border-radius: 8px; }
+  .tab.active { color: var(--text); background: var(--violet-soft); }
+  .tab.active .tab-icon { background: transparent; color: var(--violet); }
+
+  .topbar { padding: 22px 0 14px; }
+  .brand { font-family: var(--font-display); font-size: 16px; font-weight: 800; }
+  .balance-chip { font-size: 15px; font-family: var(--font-display); font-weight: 800; color: var(--text); }
+
+  .ticker-strip {
+    display: flex; gap: 18px; overflow-x: auto; padding: 10px 2px; margin-bottom: 6px;
+    border-top: 1px solid var(--border); border-bottom: 1px solid var(--border); scrollbar-width: none;
+  }
+  .ticker-strip::-webkit-scrollbar { display: none; }
+  .ticker-chip { display: flex; align-items: center; gap: 7px; font-size: 12px; white-space: nowrap; color: var(--text-muted); flex-shrink: 0; }
+  .ticker-chip b { color: var(--text); font-weight: 700; }
+  .ticker-price { font-variant-numeric: tabular-nums; color: var(--text); }
+  .ticker-chip .up { color: var(--bullish); font-weight: 600; }
+  .ticker-chip .down { color: var(--bearish); font-weight: 600; }
+
+  main { padding: 8px 0 60px; }
+  .equity, .market-title, .coin-price { font-family: var(--font-display); }
+
+  .card { transition: border-color 0.15s ease; }
+  .card:hover { border-color: var(--violet-soft-2); }
+
+  /* Dashboard */
+  #view-home { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; align-items: start; }
+  #view-home > .balance-card { grid-column: 1 / -1; }
+  #view-home > .backtest-card { grid-column: 1 / 2; }
+  #view-home > .positions-card { grid-column: 2 / 3; }
+  #view-home > .notifications-card { grid-column: 1 / -1; }
+
+  /* Market */
+  #watchlistList.stack, #moversList.stack { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+
+  /* Coin detail — chart column left, supporting cards masonry right,
+     full-width detail cards below, sticky action bar at the bottom.
+     The chart itself (#coinChart canvas + drawChart()) is untouched -
+     only the card chrome around it moves. */
+  #view-coin { display: grid; grid-template-columns: 1.6fr 1fr; gap: 16px; align-items: start; }
+  #view-coin > .section-title-row { grid-column: 1 / -1; grid-row: 1; margin-top: 0; }
+  #view-coin > .chart-col { grid-column: 1; grid-row: 2 / span 3; }
+  #view-coin > .card-signal { grid-column: 2; grid-row: 2; }
+  #view-coin > .card-technical { grid-column: 2; grid-row: 3; }
+  #view-coin > .card-strategy { grid-column: 2; grid-row: 4; }
+  #view-coin > .card-performance, #view-coin > .card-freshness, #view-coin > .card-near { grid-column: 1 / -1; }
+  #view-coin > .card-position { grid-column: 1 / -1; position: sticky; bottom: 16px; z-index: 4; }
+
+  /* Automation (left) / Settings (right) */
+  #view-settings { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; align-items: start; }
+  #view-settings > .card-autotrade { grid-column: 1; grid-row: 1; }
+  #view-settings > .card-ai { grid-column: 1; grid-row: 2; }
+  #view-settings > .card-telegram { grid-column: 2; grid-row: 1; }
+  #view-settings > .card-watchlist { grid-column: 2; grid-row: 2; }
+  #view-settings > .card-params { grid-column: 2; grid-row: 3; }
+}
+
+@media (min-width: 1200px) {
+  .app { max-width: 1360px; }
+}

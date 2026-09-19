@@ -254,6 +254,22 @@ function renderMarket() {
     row.addEventListener('click', () => addToWatchlistAndOpen(m.symbol));
     movers.appendChild(row);
   }
+
+  renderTickerStrip();
+}
+
+// Desktop-only ticker strip along the top of the shell (hidden on mobile via
+// CSS). Built from the same watchlist poll loadMarket() already fetches for
+// the Market tab - no new data source, no new endpoint. It's as fresh as the
+// last Market-tab visit or the initial app load, since that's when
+// renderMarket() (and therefore this) runs.
+function renderTickerStrip() {
+  const el = $('tickerStrip');
+  if (!el || !state.coins.length) return;
+  el.innerHTML = state.coins.slice(0, 14).map((c) => {
+    const chg = c.latest?.changePct ?? 0;
+    return `<span class="ticker-chip"><b>${c.symbol.replace('USDT', '')}</b><span class="ticker-price">${fmtUsd(c.latest?.close)}</span><span class="${chg >= 0 ? 'up' : 'down'}">${fmtPct(chg)}</span></span>`;
+  }).join('');
 }
 
 function coinRow(symbol, price, changePct, label, mode, confidencePct, sparkline) {

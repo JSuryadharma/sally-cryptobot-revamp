@@ -579,18 +579,40 @@ function drawChart(candles, highlightIndex) {
     trendPoints = structure.swingHighs.slice(-2);
   }
 
+  // The current (rightmost) candle's ATR14 volatility band - close +/- one
+  // ATR, the same envelope decisionEngine.js's own stop/target math is
+  // derived from. Shown as a standalone reference regardless of any open
+  // position or pending signal - see server.js's /candles route for atr14.
+  const lastCandle = candles.at(-1);
+  const atrBand = Number.isFinite(lastCandle?.atr14) && lastCandle.atr14 > 0
+    ? { high: lastCandle.close + lastCandle.atr14, low: Math.max(0, lastCandle.close - lastCandle.atr14), value: lastCandle.atr14 }
+    : null;
+
+  // Buy-point prediction: the armed EMA/BB-retest level from the live
+  // combined-entry strategy (triggerVariants.js, via liveStrategy.js),
+  // surfaced on /api/coins/:symbol as entryOrExit.armedLevel whenever this
+  // coin isn't currently held and a retest is waiting to confirm. Absent
+  // entirely (not just null) on an exit-shaped result, so this doubles as
+  // the "not currently holding" check.
+  const detail = state.lastDetail;
+  const predicted = detail?.symbol === state.coinSymbol ? detail.entryOrExit : null;
+  const armedLevel = Number.isFinite(predicted?.armedLevel) ? predicted.armedLevel : null;
+
   // Y-range comes from the visible candles' own high/low (not just close,
   // so wicks and the trendline both fit) widened just enough to include the
-  // trendline's own two points if needed. Support/resistance/structure
-  // levels that still fall outside this are skipped below rather than
-  // distorting the whole chart to fit a level that's long since aged out of
-  // the visible window.
+  // trendline's own two points, the ATR band, and a pending buy-point level
+  // if any of those fall outside the plain candle range. Support/resistance/
+  // structure levels that still fall outside this are skipped below rather
+  // than distorting the whole chart to fit a level that's long since aged
+  // out of the visible window.
   const highs = candles.map((c) => c.high ?? c.close);
   const lows = candles.map((c) => c.low ?? c.close);
   let min = Math.min(...lows), max = Math.max(...highs);
   if (trendPoints) {
     for (const p of trendPoints) { min = Math.min(min, p.price); max = Math.max(max, p.price); }
   }
+  if (atrBand) { min = Math.min(min, atrBand.low); max = Math.max(max, atrBand.high); }
+  if (armedLevel != null) { min = Math.min(min, armedLevel); max = Math.max(max, armedLevel); }
   const range = (max - min) || 1;
   const yFor = (price) => h - 24 - ((price - min) / range) * (h - 40);
 
@@ -642,19 +664,75 @@ function drawChart(candles, highlightIndex) {
     legendItems.push({ label: `Trendline (${structure.trend})`, kind: 'dotted', color: 'rgba(143,217,168,0.9)' });
   }
 
-  // --- price line + fill (the primary series, unchanged from before) -------
-  ctx.strokeStyle = lineColor;
-  ctx.lineWidth = 2;
-  ctx.beginPath();
+  // --- ATR annotation: the current candle's volatility band ------------------
+  // Drawn as two reference lines (high/low) tied together with a bracket at
+  // the current candle, so it reads as "this candle's range, not just its
+  // close" rather than a generic horizontal level.
+  const ATR_COLOR = '#b389f0';
+  if (atrBand) {
+    const yHigh = yFor(atrBand.high);
+    const yLow = yFor(atrBand.low);
+    const xLast = chartX(candles.length - 1, candles.length, w);
+    ctx.setLineDash([2, 2]);
+    ctx.strokeStyle = ATR_COLOR;
+    ctx.globalAlpha = 0.55;
+    ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.moveTo(5, yHigh); ctx.lineTo(w - 5, yHigh); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(5, yLow); ctx.lineTo(w - 5, yLow); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(xLast, yHigh); ctx.lineTo(xLast, yLow); ctx.stroke();
+    ctx.globalAlpha = 1;
+    ctx.setLineDash([]);
+    ctx.fillStyle = ATR_COLOR;
+    ctx.font = '9px -apple-system, sans-serif';
+    ctx.textAlign = 'left';
+    ctx.fillText(`ATR high ${fmtUsd(atrBand.high)}`, 8, Math.max(10, yHigh - 3));
+    ctx.fillText(`ATR low ${fmtUsd(atrBand.low)}`, 8, Math.min(h - 30, yLow + 11));
+    legendItems.push({ label: `ATR14 band (±${fmtUsd(atrBand.value)})`, kind: 'dotted', color: ATR_COLOR });
+  }
+
+  // --- buy-point prediction: the armed retest level, if any ------------------
+  const BUY_POINT_COLOR = '#ffd166';
+  if (armedLevel != null) {
+    const y = yFor(armedLevel);
+    const blocked = Boolean(predicted.directionBlocked);
+    ctx.setLineDash(blocked ? [1, 4] : [5, 3]);
+    ctx.strokeStyle = BUY_POINT_COLOR;
+    ctx.globalAlpha = blocked ? 0.5 : 0.9;
+    ctx.lineWidth = 1.5;
+    ctx.beginPath(); ctx.moveTo(5, y); ctx.lineTo(w - 5, y); ctx.stroke();
+    ctx.globalAlpha = 1;
+    ctx.setLineDash([]);
+    ctx.fillStyle = BUY_POINT_COLOR;
+    ctx.font = '9px -apple-system, sans-serif';
+    ctx.textAlign = 'right';
+    const kindLabel = predicted.triggerKind === 'bb' ? 'BB retest' : 'EMA retest';
+    const waitLabel = Number.isFinite(predicted.barsWaited) && Number.isFinite(predicted.windowBars) ? ` ${predicted.barsWaited}/${predicted.windowBars}` : '';
+    ctx.fillText(`Buy trigger ~${fmtUsd(armedLevel)} (${kindLabel}${waitLabel}${blocked ? ' · direction-blocked' : ''})`, w - 6, Math.max(20, y - 3));
+    legendItems.push({ label: `Buy-point prediction${blocked ? ' (blocked)' : ''}`, kind: blocked ? 'dotted' : 'dashed', color: BUY_POINT_COLOR });
+  }
+
+  // --- candlesticks (kline) - the primary series, replaces the old close-price line ---
+  const count = candles.length;
+  const spacing = count > 1 ? (w - 10) / (count - 1) : w;
+  const bodyWidth = Math.max(1, Math.min(spacing * 0.62, 9));
+  const wickWidth = Math.max(1, Math.min(spacing * 0.18, 2));
   candles.forEach((c, i) => {
-    const x = chartX(i, candles.length, w);
-    const y = yFor(c.close);
-    i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+    if (![c.open, c.high, c.low, c.close].every(Number.isFinite)) return;
+    const x = chartX(i, count, w);
+    const bullish = c.close >= c.open;
+    const color = bullish ? '#34d399' : '#f0596a';
+    ctx.strokeStyle = color;
+    ctx.fillStyle = color;
+    ctx.lineWidth = wickWidth;
+    ctx.beginPath();
+    ctx.moveTo(x, yFor(c.high));
+    ctx.lineTo(x, yFor(c.low));
+    ctx.stroke();
+    const yOpen = yFor(c.open), yClose = yFor(c.close);
+    const top = Math.min(yOpen, yClose);
+    const bodyH = Math.max(1, Math.abs(yClose - yOpen));
+    ctx.fillRect(x - bodyWidth / 2, top, bodyWidth, bodyH);
   });
-  ctx.stroke();
-  ctx.lineTo(w - 5, h - 24); ctx.lineTo(5, h - 24); ctx.closePath();
-  ctx.fillStyle = last >= first ? 'rgba(52,211,153,0.08)' : 'rgba(240,89,106,0.08)';
-  ctx.fill();
 
   // --- EMA fast/slow overlay + every fresh-cross bar marked -----------------
   const FAST_COLOR = '#f5a623', SLOW_COLOR = '#7c93e8';
@@ -773,7 +851,7 @@ $('coinChart').addEventListener('click', (event) => {
   const dateStr = state.chartMode === 'swing'
     ? d.toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' })
     : d.toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
-  $('chartDetail').textContent = `${dateStr} · O ${fmtUsd(c.open)} H ${fmtUsd(c.high)} L ${fmtUsd(c.low)} C ${fmtUsd(c.close)}`;
+  $('chartDetail').textContent = `${dateStr} · O ${fmtUsd(c.open)} H ${fmtUsd(c.high)} L ${fmtUsd(c.low)} C ${fmtUsd(c.close)}${Number.isFinite(c.atr14) ? ` · ATR ${fmtUsd(c.atr14)}` : ''}`;
 });
 
 // Generic mini line chart for any canvas + array of raw close prices - used

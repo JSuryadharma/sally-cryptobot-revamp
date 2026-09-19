@@ -161,10 +161,11 @@ async function route(req, res) {
     // EMA fields are included (not just OHLCV) so the chart can draw the
     // fast/slow EMA lines and mark fresh crosses itself, instead of just
     // plotting close price - see CHART_EMA_KEYS in app.js for which pair
-    // applies to which timeframe.
+    // applies to which timeframe. atr14 is included so the chart can
+    // annotate the current candle's volatility band (close +/- 1x ATR14).
     const trimmed = snapshot.candles.slice(-120).map((c) => ({
       time: c.time, date: c.date, open: c.open, high: c.high, low: c.low, close: c.close, volume: c.volume,
-      ema9: c.ema9, ema20: c.ema20, ema21: c.ema21, ema50: c.ema50
+      ema9: c.ema9, ema20: c.ema20, ema21: c.ema21, ema50: c.ema50, atr14: c.atr14
     }));
     // Structure (swing pivots -> BOS/CHoCH + support/resistance) is read off
     // whichever timeframe the chart is showing right now, not the trading mode.

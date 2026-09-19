@@ -100,10 +100,10 @@ export function makeRetestState() {
   return { armed: false, level: null, barsWaited: 0 };
 }
 
-export function evaluateEntryWithRetest(candles, mode, detectFn, state, { rrMultiple, confidenceFn = computeConfidencePct } = {}) {
+export function evaluateEntryWithRetest(candles, mode, detectFn, state, { rrMultiple, confidenceFn = computeConfidencePct, triggerKind } = {}) {
   const curr = candles.at(-1);
   const confidencePct = confidenceFn(candles, mode);
-  if (!curr) return { action: 'HOLD', reason: 'no data', confidencePct };
+  if (!curr) return { action: 'HOLD', reason: 'no data', confidencePct, armedLevel: null };
 
   if (!state.armed) {
     const sig = detectFn(candles, mode);
@@ -111,9 +111,15 @@ export function evaluateEntryWithRetest(candles, mode, detectFn, state, { rrMult
       state.armed = true;
       state.level = sig.level;
       state.barsWaited = 0;
-      return { action: 'HOLD', reason: `signal armed at ${sig.level}, waiting for retest`, confidencePct };
+      // armedLevel/triggerKind/barsWaited/windowBars are UI-only additions -
+      // this is exactly the "signal armed, waiting for retest" state the
+      // reason string already described, just also exposed as structured
+      // data so the chart can draw a "buy point prediction" line at the
+      // actual price level instead of parsing it out of prose. Never
+      // consulted by any BUY/SELL decision.
+      return { action: 'HOLD', reason: `signal armed at ${sig.level}, waiting for retest`, confidencePct, armedLevel: sig.level, triggerKind, barsWaited: 0, windowBars: RETEST_WINDOW_BARS };
     }
-    return { action: 'HOLD', reason: 'no fresh signal', confidencePct };
+    return { action: 'HOLD', reason: 'no fresh signal', confidencePct, armedLevel: null };
   }
 
   state.barsWaited += 1;
@@ -127,13 +133,13 @@ export function evaluateEntryWithRetest(candles, mode, detectFn, state, { rrMult
   }
   if (curr.close < state.level) {
     state.armed = false; state.level = null; state.barsWaited = 0;
-    return { action: 'HOLD', reason: `retest failed - closed back below ${state.level}, signal discarded`, confidencePct };
+    return { action: 'HOLD', reason: `retest failed - closed back below ${state.level}, signal discarded`, confidencePct, armedLevel: null };
   }
   if (state.barsWaited >= RETEST_WINDOW_BARS) {
     state.armed = false; state.level = null; state.barsWaited = 0;
-    return { action: 'HOLD', reason: `no retest within ${RETEST_WINDOW_BARS} bars - signal expired`, confidencePct };
+    return { action: 'HOLD', reason: `no retest within ${RETEST_WINDOW_BARS} bars - signal expired`, confidencePct, armedLevel: null };
   }
-  return { action: 'HOLD', reason: `armed at ${state.level}, waiting for retest (${state.barsWaited}/${RETEST_WINDOW_BARS})`, confidencePct };
+  return { action: 'HOLD', reason: `armed at ${state.level}, waiting for retest (${state.barsWaited}/${RETEST_WINDOW_BARS})`, confidencePct, armedLevel: state.level, triggerKind, barsWaited: state.barsWaited, windowBars: RETEST_WINDOW_BARS };
 }
 
 // --- combined entry: EMA-retest OR BB-retest, whichever confirms first -----
@@ -146,9 +152,9 @@ export function makeCombinedEntryState() {
 }
 
 export function evaluateEntryCombinedRetest(candles, mode, state, opts = {}) {
-  const emaResult = evaluateEntryWithRetest(candles, mode, detectEmaCross, state.ema, opts);
+  const emaResult = evaluateEntryWithRetest(candles, mode, detectEmaCross, state.ema, { ...opts, triggerKind: 'ema' });
   if (emaResult.action === 'BUY') return emaResult;
-  const bbResult = evaluateEntryWithRetest(candles, mode, detectBollingerBreakout, state.bb, opts);
+  const bbResult = evaluateEntryWithRetest(candles, mode, detectBollingerBreakout, state.bb, { ...opts, triggerKind: 'bb' });
   if (bbResult.action === 'BUY') return bbResult;
   return emaResult.reason?.startsWith('armed') || emaResult.reason?.startsWith('signal') ? emaResult : bbResult;
 }
@@ -319,7 +325,17 @@ export function checkDirectionFilter(dailySnap) {
 export function evaluateEntryCombinedRetestDirectionGated(candles, mode, dailySnap, state, opts = {}) {
   const direction = checkDirectionFilter(dailySnap);
   if (!direction.ok) {
-    return { action: 'HOLD', reason: direction.reason, confidencePct: 0 };
+    // Direction blocked means the retest state machine never gets to run
+    // this bar - but a level armed on a PRIOR bar (before direction turned
+    // against it) can still be sitting there. Surface it read-only (nothing
+    // here mutates state.ema/state.bb) so the chart can show "a retest IS
+    // armed, direction is just holding it back" instead of nothing at all.
+    const armed = state.ema.armed
+      ? { armedLevel: state.ema.level, triggerKind: 'ema', barsWaited: state.ema.barsWaited, windowBars: RETEST_WINDOW_BARS }
+      : state.bb.armed
+        ? { armedLevel: state.bb.level, triggerKind: 'bb', barsWaited: state.bb.barsWaited, windowBars: RETEST_WINDOW_BARS }
+        : { armedLevel: null };
+    return { action: 'HOLD', reason: direction.reason, confidencePct: 0, directionBlocked: true, ...armed };
   }
   return evaluateEntryCombinedRetest(candles, mode, state, opts);
 }

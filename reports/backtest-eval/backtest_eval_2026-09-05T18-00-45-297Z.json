@@ -1,0 +1,50 @@
+{
+  "total_score": 54,
+  "verdict": "Refine",
+  "dimensions": [
+    {
+      "name": "Sample Size",
+      "score": 11,
+      "max_score": 20
+    },
+    {
+      "name": "Expectancy",
+      "score": 6,
+      "max_score": 20
+    },
+    {
+      "name": "Risk Management",
+      "score": 12,
+      "max_score": 20
+    },
+    {
+      "name": "Robustness",
+      "score": 5,
+      "max_score": 20
+    },
+    {
+      "name": "Execution Realism",
+      "score": 20,
+      "max_score": 20
+    }
+  ],
+  "red_flags": [
+    {
+      "id": "short_test_period",
+      "severity": "medium",
+      "message": "Only 0.986 years tested - may miss regime changes (minimum 5 recommended)."
+    }
+  ],
+  "profit_factor": 1.189136478088113,
+  "expectancy": 0.1299499999999999,
+  "inputs": {
+    "total_trades": 61,
+    "win_rate": 45.9,
+    "avg_win_pct": 1.78,
+    "avg_loss_pct": 1.27,
+    "max_drawdown_pct": 6.02,
+    "years_tested": 0.986,
+    "num_parameters": 4,
+    "slippage_tested": true
+  }
+}

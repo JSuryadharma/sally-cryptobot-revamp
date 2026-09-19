@@ -1,0 +1,5 @@
+{
+  "functions": {
+    "api/cron/refresh.js": { "maxDuration": 30 }
+  }
+}

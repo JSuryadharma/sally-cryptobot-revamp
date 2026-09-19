@@ -1,0 +1,273 @@
+:root {
+  --bg: #0a0b0a;
+  --surface: #15170f;
+  --surface-2: #1e2118;
+  --border: #262a1f;
+  --text: #f2f4ee;
+  --text-muted: #98a396;
+  --accent: #8fd9a8;
+  --accent-strong: #6fe3a3;
+  --bullish: #34d399;
+  --bearish: #f0596a;
+  --neutral: #8a9490;
+  --warn: #f5a623;
+  --radius-card: 22px;
+  --radius-pill: 999px;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  -webkit-font-smoothing: antialiased;
+}
+
+.app { max-width: 480px; margin: 0 auto; min-height: 100vh; display: flex; flex-direction: column; }
+
+.topbar {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 18px 18px 10px; position: sticky; top: 0; background: var(--bg); z-index: 5;
+}
+.brand { font-weight: 700; font-size: 15px; display: flex; align-items: center; gap: 10px; }
+.brand-mark {
+  width: 34px; height: 34px; border-radius: 50%; flex-shrink: 0;
+  background: radial-gradient(circle at 30% 25%, var(--accent-strong), #1c3a2b 75%);
+  display: flex; align-items: center; justify-content: center; color: #06210f;
+}
+.pill { font-size: 11px; font-weight: 500; padding: 3px 10px; border-radius: var(--radius-pill); }
+.pill-muted { background: var(--surface-2); color: var(--text-muted); }
+.balance-chip { font-size: 13px; color: var(--text-muted); font-weight: 600; }
+
+main { flex: 1; padding: 8px 18px 96px; overflow-y: auto; }
+/* Generic utility, not scoped to .view - watchlistSection/moversSection
+   toggle this same class on plain divs (see app.js), which a .view-scoped
+   rule silently never matched: both sections rendered stacked at once
+   regardless of which toggle button was active. */
+.hidden { display: none; }
+
+.card {
+  background: linear-gradient(165deg, var(--surface) 0%, #10120c 100%);
+  border: 1px solid var(--border); border-radius: var(--radius-card);
+  padding: 20px; margin-bottom: 14px;
+}
+
+.backtest-card { transition: background-color 0.4s ease, border-color 0.4s ease; }
+.backtest-card.is-running { background: rgba(240,89,106,0.14); border-color: rgba(240,89,106,0.4); }
+.backtest-card.is-success { background: rgba(52,211,153,0.14); border-color: rgba(52,211,153,0.4); }
+.backtest-card.is-error { background: rgba(240,89,106,0.14); border-color: rgba(240,89,106,0.4); }
+.roll-number { display: inline-block; }
+
+.balance-card { position: relative; overflow: hidden; }
+.balance-card::before {
+  content: ''; position: absolute; inset: 0;
+  background: radial-gradient(120% 90% at 15% -10%, rgba(143,217,168,0.16), transparent 60%);
+  pointer-events: none;
+}
+.balance-card-row { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; flex-wrap: wrap; position: relative; }
+.label { font-size: 11px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.06em; }
+.equity { font-size: 34px; font-weight: 700; margin-top: 6px; letter-spacing: -0.02em; }
+.sub { font-size: 13px; margin-top: 4px; color: var(--text-muted); }
+.sub.up { color: var(--bullish); }
+.sub.down { color: var(--bearish); }
+
+.mini-stats { display: flex; flex-direction: column; gap: 8px; text-align: right; font-size: 13px; }
+.mini-stats div { display: flex; justify-content: space-between; gap: 14px; }
+.mini-stats .label { font-size: 10px; }
+
+.section-title { font-size: 13px; font-weight: 600; color: var(--text-muted); margin: 20px 4px 10px; }
+.section-title-sm { font-size: 12px; font-weight: 600; color: var(--text-muted); margin-bottom: 12px; text-transform: uppercase; letter-spacing: 0.06em; }
+.section-title-row { display: flex; align-items: center; justify-content: space-between; margin: 20px 4px 10px; }
+.section-title-row .section-title { margin: 0; }
+
+.stack { display: flex; flex-direction: column; gap: 10px; }
+
+.row-item {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  background: var(--surface); border: 1px solid var(--border); border-radius: 18px;
+  padding: 12px 16px; cursor: pointer; transition: background 0.15s ease;
+}
+.row-item:active { background: var(--surface-2); }
+.row-left { display: flex; align-items: center; gap: 12px; min-width: 0; }
+.coin-dot {
+  width: 36px; height: 36px; border-radius: 50%; background: var(--surface-2);
+  display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 700;
+  flex-shrink: 0; border: 1px solid var(--border);
+}
+.row-symbol { font-weight: 600; font-size: 14px; }
+.row-sub { font-size: 12px; color: var(--text-muted); margin-top: 1px; }
+.row-mid { flex-shrink: 0; }
+.row-spark { width: 60px; height: 28px; display: block; }
+.row-right { text-align: right; flex-shrink: 0; }
+.row-price { font-weight: 600; font-size: 14px; }
+.row-change { font-size: 12px; font-weight: 600; margin-top: 2px; }
+.badge { font-size: 10px; font-weight: 700; padding: 3px 9px; border-radius: var(--radius-pill); text-transform: uppercase; letter-spacing: 0.02em; }
+.badge-bullish { background: rgba(52,211,153,0.15); color: var(--bullish); }
+.badge-bearish { background: rgba(240,89,106,0.15); color: var(--bearish); }
+.badge-neutral { background: rgba(138,148,144,0.18); color: var(--neutral); }
+
+.empty-hint { color: var(--text-muted); font-size: 13px; padding: 12px 4px; }
+
+.notif-item { padding: 12px 4px; border-bottom: 1px solid var(--border); font-size: 13px; }
+.notif-item:last-child { border-bottom: none; }
+.notif-title { font-weight: 600; margin-bottom: 2px; }
+.notif-title.success { color: var(--bullish); }
+.notif-title.warning { color: var(--warn); }
+.notif-meta { color: var(--text-muted); font-size: 11px; margin-top: 2px; }
+
+.back-btn { margin: 6px 0 10px; }
+.btn-ghost {
+  background: var(--surface-2); border: 1px solid var(--border); color: var(--text);
+  border-radius: var(--radius-pill); padding: 8px 16px; font-size: 12px; font-weight: 600; cursor: pointer;
+}
+.icon-btn {
+  width: 38px; height: 38px; border-radius: 50%; background: var(--surface-2); border: 1px solid var(--border);
+  color: var(--text); display: flex; align-items: center; justify-content: center; cursor: pointer; flex-shrink: 0;
+}
+.icon-btn.active { background: rgba(143,217,168,0.16); border-color: var(--accent); color: var(--accent); }
+.icon-btn.active svg { fill: currentColor; }
+.icon-row { display: flex; gap: 8px; align-items: center; }
+
+/* --- Market header + search ------------------------------------------- */
+.market-header { display: flex; align-items: center; justify-content: space-between; margin: 6px 0 16px; }
+.market-title { font-size: 26px; font-weight: 700; letter-spacing: -0.01em; }
+.search-wrap { position: relative; margin-bottom: 14px; }
+.search-input {
+  width: 100%; background: var(--surface); border: 1px solid var(--border); color: var(--text);
+  border-radius: var(--radius-pill); padding: 11px 16px 11px 38px; font-size: 13px;
+}
+.search-icon { position: absolute; left: 13px; top: 50%; transform: translateY(-50%); color: var(--text-muted); pointer-events: none; }
+.filter-pills { display: flex; gap: 8px; overflow-x: auto; padding-bottom: 2px; margin-bottom: 4px; scrollbar-width: none; }
+.filter-pills::-webkit-scrollbar { display: none; }
+.filter-pill {
+  flex-shrink: 0; background: var(--surface-2); border: 1px solid var(--border); color: var(--text-muted);
+  border-radius: var(--radius-pill); padding: 8px 16px; font-size: 12px; font-weight: 600; cursor: pointer; white-space: nowrap;
+}
+.filter-pill.active { background: var(--accent); color: #06210f; border-color: var(--accent); }
+
+/* A single rounded container split into equal segments, one active at a time
+   - unmistakably a toggle (unlike a row of independent filter chips, which
+   could be mistaken for a multi-select filter list). Used for Market's
+   Watchlist/Top movers switch and Home's backtest window picker. */
+.view-toggle { display: flex; gap: 4px; background: var(--surface-2); border: 1px solid var(--border); border-radius: var(--radius-pill); padding: 4px; margin-bottom: 14px; }
+.view-toggle-btn { flex: 1; background: none; border: none; color: var(--text-muted); border-radius: var(--radius-pill); padding: 9px 10px; font-size: 12px; font-weight: 600; cursor: pointer; white-space: nowrap; }
+.view-toggle-btn.active { background: var(--accent); color: #06210f; }
+
+.coin-header { display: flex; align-items: center; justify-content: space-between; }
+.coin-title-row { display: flex; align-items: center; gap: 10px; }
+.coin-symbol { font-size: 16px; font-weight: 600; }
+.coin-price { font-size: 30px; font-weight: 700; margin-top: 6px; letter-spacing: -0.02em; }
+.coin-change { font-size: 13px; margin-top: 4px; font-weight: 600; }
+.coin-change.up { color: var(--bullish); }
+.coin-change.down { color: var(--bearish); }
+
+.timeframe-row { display: flex; gap: 8px; margin-bottom: 12px; }
+.timeframe-btn {
+  flex: 1; padding: 9px 6px; border-radius: var(--radius-pill); border: 1px solid var(--border);
+  background: var(--surface); color: var(--text-muted); font-size: 12px; font-weight: 600; cursor: pointer;
+}
+.timeframe-btn.active { border-color: var(--accent); color: #06210f; background: var(--accent); }
+
+.chart {
+  width: 100%; height: 220px; background: var(--surface); border: 1px solid var(--border);
+  border-radius: var(--radius-card); margin-bottom: 8px; cursor: crosshair;
+}
+.chart-meta { display: flex; justify-content: space-between; font-size: 11px; color: var(--text-muted); margin-bottom: 16px; padding: 0 2px; }
+
+/* Legend for the chart overlays (EMA lines, S/R, structure break, trendline) -
+   built as DOM, not drawn on the canvas, so labels stay crisp at any size and
+   items can be hidden when that overlay has nothing to show for this coin. */
+.chart-legend { display: flex; flex-wrap: wrap; gap: 10px 14px; font-size: 10px; color: var(--text-muted); padding: 0 2px 10px; }
+.chart-legend-item { display: flex; align-items: center; gap: 5px; }
+.chart-legend-swatch { width: 10px; height: 2px; border-radius: 1px; flex-shrink: 0; }
+.chart-legend-swatch.dotted { height: 0; border-top: 2px dotted; background: none; }
+.chart-legend-swatch.dashed { height: 0; border-top: 2px dashed; background: none; }
+.chart-legend-dot { width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; }
+#chartDetail { font-weight: 600; color: var(--text); }
+
+.confidence-row { display: flex; align-items: center; gap: 16px; margin-bottom: 16px; }
+.confidence-ring {
+  width: 54px; height: 54px; border-radius: 50%; display: flex; align-items: center; justify-content: center;
+  font-weight: 700; font-size: 14px; border: 3px solid var(--neutral); flex-shrink: 0; background: var(--surface-2);
+}
+.confidence-ring.high { border-color: var(--bullish); color: var(--bullish); }
+.confidence-ring.low { border-color: var(--bearish); color: var(--bearish); }
+.confidence-ring.mid { border-color: var(--warn); color: var(--warn); }
+
+.setting-block { margin-top: 18px; padding-top: 16px; border-top: 1px solid var(--border); }
+.setting-label-row { display: flex; justify-content: space-between; font-size: 13px; margin-bottom: 10px; }
+.setting-label-row span:last-child { color: var(--accent); font-weight: 700; }
+.range-input { width: 100%; accent-color: var(--accent); }
+.hint { font-size: 11px; color: var(--text-muted); margin-top: 8px; line-height: 1.5; }
+.hint code { background: var(--surface-2); border-radius: 5px; padding: 1px 5px; }
+
+.rr-card { border: 1px solid var(--border); border-radius: 16px; padding: 12px 14px; cursor: pointer; background: var(--surface); }
+.rr-card.active { border-color: var(--accent); background: rgba(143,217,168,0.12); }
+.rr-card-title { font-size: 13px; font-weight: 700; display: flex; justify-content: space-between; }
+.rr-card-desc { font-size: 11px; color: var(--text-muted); margin-top: 4px; }
+
+.badge-confidence { font-size: 10px; font-weight: 700; padding: 3px 9px; border-radius: var(--radius-pill); background: rgba(143,217,168,0.16); color: var(--accent); }
+
+.structure-row { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; flex-wrap: wrap; }
+.structure-badge { font-size: 11px; font-weight: 700; padding: 5px 12px; border-radius: var(--radius-pill); text-transform: uppercase; letter-spacing: 0.03em; }
+.structure-badge.bos-bullish { background: rgba(52,211,153,0.15); color: var(--bullish); }
+.structure-badge.bos-bearish { background: rgba(240,89,106,0.15); color: var(--bearish); }
+.structure-badge.choch-bullish, .structure-badge.choch-bearish { background: rgba(245,166,35,0.18); color: var(--warn); }
+.structure-badge.none { background: var(--surface-2); color: var(--text-muted); }
+.structure-level { font-size: 12px; color: var(--text-muted); }
+.sr-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 14px; }
+.sr-col-title { font-size: 10px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-muted); margin-bottom: 8px; }
+.sr-level { display: flex; justify-content: space-between; font-size: 12px; padding: 5px 0; border-bottom: 1px solid var(--border); }
+.sr-level:last-child { border-bottom: none; }
+
+.gauge-track { position: relative; height: 12px; border-radius: var(--radius-pill); overflow: hidden; background: linear-gradient(90deg, var(--bearish), var(--neutral) 50%, var(--bullish)); }
+.gauge-marker { position: absolute; top: -3px; width: 3px; height: 18px; background: #fff; border-radius: 2px; transform: translateX(-1.5px); box-shadow: 0 0 8px rgba(255,255,255,0.6); }
+.gauge-labels { display: flex; justify-content: space-between; font-size: 11px; color: var(--text-muted); margin-top: 8px; }
+.summary-text { font-size: 13px; color: var(--text-muted); margin-top: 12px; line-height: 1.6; }
+
+.mode-row { display: flex; gap: 8px; }
+.mode-chip { flex: 1; text-align: center; padding: 9px 6px; border-radius: 14px; border: 1px solid var(--border); font-size: 12px; color: var(--text-muted); }
+.mode-chip.active { border-color: var(--accent); color: #06210f; background: var(--accent); font-weight: 700; }
+
+.indicator-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.indicator-cell { background: var(--surface-2); border: 1px solid var(--border); border-radius: 16px; padding: 12px 14px; }
+.indicator-cell .label { font-size: 10px; }
+.indicator-cell .value { font-size: 16px; font-weight: 700; margin-top: 4px; letter-spacing: -0.01em; }
+.indicator-cell .value.bullish { color: var(--bullish); }
+.indicator-cell .value.bearish { color: var(--bearish); }
+
+.trade-buttons { display: flex; gap: 10px; margin-top: 14px; }
+.segmented-buttons { display: flex; gap: 6px; margin-top: 14px; background: var(--surface-2); border-radius: var(--radius-pill); padding: 4px; }
+.btn { flex: 1; padding: 12px; border-radius: var(--radius-pill); border: none; font-weight: 700; font-size: 14px; cursor: pointer; background: transparent; color: var(--text-muted); }
+.btn:disabled { opacity: 0.35; cursor: not-allowed; }
+.btn-buy { color: #06210f; }
+.btn-buy:not(:disabled) { background: var(--bullish); }
+.btn-sell { color: #2b0808; }
+.btn-sell:not(:disabled) { background: var(--bearish); }
+.segmented-buttons .btn-buy:disabled, .segmented-buttons .btn-sell:disabled { background: transparent; color: var(--text-muted); }
+
+.toggle-row { display: flex; align-items: center; justify-content: space-between; font-size: 13px; margin-bottom: 12px; }
+.input {
+  width: 100%; background: var(--surface-2); border: 1px solid var(--border); color: var(--text);
+  border-radius: 14px; padding: 11px 14px; font-size: 13px; margin-bottom: 8px;
+}
+.add-row { display: flex; gap: 8px; margin-top: 8px; }
+.add-row .input { margin-bottom: 0; }
+
+.tabbar {
+  position: fixed; bottom: 0; left: 50%; transform: translateX(-50%); width: 100%; max-width: 480px;
+  display: flex; background: rgba(10,11,10,0.92); backdrop-filter: blur(16px); border-top: 1px solid var(--border);
+  padding: 8px 10px calc(8px + env(safe-area-inset-bottom, 0px));
+}
+.tab {
+  flex: 1; padding: 6px 4px; background: none; border: none; color: var(--text-muted);
+  font-size: 11px; font-weight: 600; cursor: pointer; display: flex; flex-direction: column; align-items: center; gap: 5px;
+}
+.tab-icon {
+  width: 36px; height: 26px; display: flex; align-items: center; justify-content: center;
+  border-radius: var(--radius-pill); color: inherit;
+}
+.tab.active { color: var(--text); }
+.tab.active .tab-icon { background: rgba(143,217,168,0.16); color: var(--accent); }

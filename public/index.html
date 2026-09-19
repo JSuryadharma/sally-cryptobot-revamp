@@ -1,0 +1,290 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Sally Crypto Bot</title>
+<link rel="stylesheet" href="/styles.css" />
+</head>
+<body>
+  <div class="app">
+    <header class="topbar">
+      <div class="brand">
+        <span class="brand-mark">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M13 2 3 14h7l-1 8 10-12h-7z"/></svg>
+        </span>
+        Sally Crypto Bot <span class="pill pill-muted">Paper trading</span>
+      </div>
+      <div class="icon-row">
+        <div class="balance-chip" id="headerBalance">Rp -</div>
+      </div>
+    </header>
+
+    <main id="views">
+      <!-- HOME -->
+      <section id="view-home" class="view">
+        <div class="card balance-card">
+          <div class="balance-card-row">
+            <div>
+              <div class="label">Equity</div>
+              <div class="equity" id="equityValue">Rp -</div>
+              <div class="sub" id="returnValue">-</div>
+            </div>
+            <div class="mini-stats">
+              <div><span class="label">Cash</span><span id="cashValue">-</span></div>
+              <div><span class="label">In positions</span><span id="positionsValue">-</span></div>
+              <div><span class="label">Realized P&amp;L</span><span id="realizedValue">-</span></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="card backtest-card" id="backtestCard">
+          <div class="section-title-sm">Last backtest verdict</div>
+          <div class="confidence-row" style="align-items:center">
+            <span class="badge badge-neutral" id="verdictBadge">-</span>
+            <div>
+              <div class="row-symbol" id="verdictScore">No backtest run yet</div>
+              <div class="summary-text" id="verdictMeta" style="margin-top:2px">Run one now, or run <code>node scripts/benchmark.mjs</code> on your own machine for a longer window.</div>
+            </div>
+          </div>
+          <div class="view-toggle" id="backtestMonthsRow">
+            <button class="view-toggle-btn active" data-months="1">1 month</button>
+            <button class="view-toggle-btn" data-months="3">3 months</button>
+            <button class="view-toggle-btn" data-months="6">6 months</button>
+          </div>
+          <button id="runBacktestBtn" class="btn-ghost" style="width:100%; margin-top:10px">Run backtest now</button>
+          <div class="hint" id="backtestRunHint" style="display:none">Running - fetches real Binance history across your watchlist, usually 15-30s for 1 month. Don't close this tab.</div>
+        </div>
+
+        <div class="section-title">Open positions</div>
+        <div id="positionsList" class="stack"></div>
+
+        <div class="section-title">Notifications</div>
+        <div id="notificationsList" class="stack"></div>
+      </section>
+
+      <!-- MARKET -->
+      <section id="view-market" class="view hidden">
+        <div class="market-header">
+          <div class="market-title">Market</div>
+          <button id="refreshAllBtn" class="icon-btn" title="Refresh all watchlist coins now">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M23 4v6h-6"/><path d="M1 20v-6h6"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
+          </button>
+        </div>
+        <div class="search-wrap">
+          <span class="search-icon">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>
+          </span>
+          <input id="marketSearch" class="search-input" placeholder="Search a coin..." />
+        </div>
+        <div class="view-toggle">
+          <button class="view-toggle-btn active" data-list="watchlist">Watchlist</button>
+          <button class="view-toggle-btn" data-list="movers">Top movers</button>
+        </div>
+
+        <div id="watchlistSection">
+          <div id="watchlistList" class="stack"></div>
+        </div>
+
+        <div id="moversSection" class="hidden">
+          <div class="section-title-row">
+            <div class="section-title" style="margin:0">Top movers</div>
+            <button id="refreshMovers" class="btn-ghost">Refresh</button>
+          </div>
+          <div id="moversList" class="stack"></div>
+        </div>
+      </section>
+
+      <!-- COIN DETAIL -->
+      <section id="view-coin" class="view hidden">
+        <div class="section-title-row" style="margin-top:6px">
+          <button id="backButton" class="icon-btn">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 18l-6-6 6-6"/></svg>
+          </button>
+          <button id="watchlistStar" class="icon-btn">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01z"/></svg>
+          </button>
+        </div>
+        <div class="card coin-header">
+          <div>
+            <div class="coin-symbol" id="coinSymbol">-</div>
+            <div class="coin-price" id="coinPrice">-</div>
+            <div class="coin-change" id="coinChange">-</div>
+          </div>
+          <canvas id="coinSpark" width="140" height="56"></canvas>
+        </div>
+
+        <div class="timeframe-row" id="timeframeRow"></div>
+        <canvas id="coinChart" width="600" height="220" class="chart"></canvas>
+        <div class="chart-legend" id="chartLegend"></div>
+        <div class="chart-meta">
+          <span id="chartInterval">-</span>
+          <span id="chartDetail">Tap a candle for its price and date</span>
+        </div>
+
+        <div class="card">
+          <div class="section-title-sm">Signal significance</div>
+          <div class="structure-row">
+            <span class="structure-badge none" id="structureBadge">-</span>
+            <span class="structure-level" id="structureLevel"></span>
+          </div>
+          <div class="summary-text" id="structureNote">-</div>
+          <div class="sr-grid" id="srGrid"></div>
+        </div>
+
+        <div class="card">
+          <div class="section-title-sm">Technical Analysis</div>
+          <div class="confidence-row">
+            <div class="confidence-ring" id="confidenceRing"><span id="confidenceValue">-</span></div>
+            <div>
+              <div class="label">Robot confidence</div>
+              <div class="summary-text" id="confidenceNote" style="margin-top:2px">-</div>
+            </div>
+          </div>
+          <div class="gauge">
+            <div class="gauge-track">
+              <div class="gauge-fill" id="gaugeFill"></div>
+              <div class="gauge-marker" id="gaugeMarker"></div>
+            </div>
+            <div class="gauge-labels"><span>Bearish</span><span>Neutral</span><span>Bullish</span></div>
+          </div>
+          <div class="summary-text" id="summaryText">-</div>
+        </div>
+
+        <div class="card">
+          <div class="section-title-sm">Recommended strategy</div>
+          <div class="mode-row" id="modeRow"></div>
+          <div class="summary-text" id="modeReason">-</div>
+        </div>
+
+        <div class="card">
+          <div class="section-title-sm">Performance</div>
+          <div class="indicator-grid" id="indicatorGrid"></div>
+          <div class="section-title-sm" style="margin-top:16px">Strategy parameters (active mode)</div>
+          <div class="indicator-grid" id="paramGrid"></div>
+        </div>
+
+        <div class="card">
+          <div class="section-title-sm">Data freshness</div>
+          <div class="summary-text" id="fetchInfoNote" style="margin-top:0">-</div>
+          <div class="indicator-grid" id="fetchInfoGrid" style="margin-top:10px"></div>
+        </div>
+
+        <div class="card">
+          <div class="section-title-sm">How close to a trade?</div>
+          <div class="summary-text" id="nearConditionNote">-</div>
+          <div class="indicator-grid" id="nearConditionGrid" style="margin-top:10px"></div>
+        </div>
+
+        <div class="card">
+          <div class="section-title-sm">Position &amp; action</div>
+          <div id="positionDetail" class="summary-text">No open position.</div>
+          <div class="segmented-buttons">
+            <button id="sellBtn" class="btn btn-sell" disabled>Sell</button>
+            <button id="buyBtn" class="btn btn-buy">Buy</button>
+          </div>
+        </div>
+      </section>
+
+      <!-- SETTINGS -->
+      <section id="view-settings" class="view hidden">
+        <div class="card">
+          <div class="section-title-sm">Auto-trade</div>
+          <label class="toggle-row"><span>Trade 24/7 automatically</span><input type="checkbox" id="autoTradeToggle" /></label>
+
+          <div class="setting-block">
+            <div class="setting-label-row"><span>Minimum confidence to enter a trade</span><span id="confidenceThresholdValue">55%</span></div>
+            <input type="range" id="confidenceThreshold" min="0" max="100" step="5" class="range-input" />
+            <div class="hint">Below this, a BUY signal is logged but not executed. Exits (stop-loss/target/max-hold) always execute regardless, on purpose.</div>
+          </div>
+
+          <div class="setting-block">
+            <div class="setting-label-row"><span>Take-profit / stop-loss template</span></div>
+            <div id="rrTemplateList" class="stack"></div>
+          </div>
+
+          <div class="setting-block">
+            <div class="setting-label-row"><span>Strategy mode</span></div>
+            <div id="modeOverrideList" class="stack"></div>
+            <div class="hint">Auto lets each coin's daily trend strength (ADX) pick swing/scalping/day-trade for itself. Pinning a mode forces every watchlist coin to trade on that mode's rules, even on days the regime picker would have chosen something else. A coin already holding a position keeps trading under the mode it was bought under - pinning never moves a live trade's stop/target.</div>
+          </div>
+        </div>
+        <div class="card">
+          <div class="section-title-sm">Telegram</div>
+          <label class="toggle-row"><span>Enabled</span><input type="checkbox" id="telegramToggle" /></label>
+          <input id="telegramToken" class="input" placeholder="Bot token" />
+          <input id="telegramChat" class="input" placeholder="Chat ID" />
+          <div class="trade-buttons">
+            <button id="saveTelegram" class="btn btn-buy">Save</button>
+            <button id="testTelegram" class="btn-ghost">Send test</button>
+          </div>
+          <div class="summary-text" id="telegramStatus">-</div>
+        </div>
+        <div class="card">
+          <div class="section-title-sm">Watchlist</div>
+          <div id="settingsWatchlist" class="stack"></div>
+          <div class="add-row">
+            <input id="addSymbolInput" class="input" placeholder="e.g. DOGEUSDT" />
+            <button id="addSymbolBtn" class="btn-ghost">Add</button>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="section-title-sm">AI advisor</div>
+          <div class="view-toggle" id="aiModeToggle">
+            <button class="view-toggle-btn active" data-mode="local">Local (free)</button>
+            <button class="view-toggle-btn" data-mode="openai">OpenAI</button>
+          </div>
+          <div id="aiOpenaiFields">
+            <label class="setting-label-row" style="margin-top:2px"><span>API base URL</span></label>
+            <input id="aiBaseUrl" class="input" placeholder="https://api.openai.com/v1/responses" />
+            <label class="setting-label-row"><span>Model</span></label>
+            <select id="aiModel" class="input"></select>
+            <label class="setting-label-row"><span>API key</span></label>
+            <input id="aiApiKey" class="input" type="password" placeholder="sk-..." />
+            <button id="saveAi" class="btn btn-buy" style="width:100%">Save AI settings</button>
+          </div>
+          <div class="summary-text" id="aiStatus">-</div>
+        </div>
+
+        <div class="card">
+          <div class="section-title-sm">Trading parameters</div>
+          <label class="setting-label-row"><span>Starting balance (Rp)</span></label>
+          <input id="paramInitialBalance" class="input" type="number" min="100000" step="100000" />
+          <label class="setting-label-row"><span>USD/IDR fallback rate</span></label>
+          <input id="paramUsdIdr" class="input" type="number" min="1000" step="10" />
+          <div id="usdIdrLiveNote" class="hint"></div>
+          <label class="setting-label-row"><span>Allocation per trade (0-1)</span></label>
+          <input id="paramAllocationPct" class="input" type="number" min="0.01" max="1" step="0.05" />
+          <label class="setting-label-row"><span>Max concurrent positions</span></label>
+          <input id="paramMaxPositions" class="input" type="number" min="1" max="20" step="1" />
+          <label class="setting-label-row"><span>Round-trip cost (%)</span></label>
+          <input id="paramRoundTripCost" class="input" type="number" min="0" max="5" step="0.05" />
+          <label class="setting-label-row"><span>Binance base URL</span></label>
+          <input id="paramBinanceBaseUrl" class="input" placeholder="https://data-api.binance.vision" />
+          <button id="saveParams" class="btn btn-buy" style="width:100%; margin-top:4px">Save trading parameters</button>
+          <div class="hint">Takes effect on the next refresh cycle - no restart needed.</div>
+        </div>
+
+      </section>
+    </main>
+
+    <nav class="tabbar">
+      <button class="tab active" data-view="home">
+        <span class="tab-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 11l9-8 9 8"/><path d="M5 10v10h14V10"/></svg></span>
+        Home
+      </button>
+      <button class="tab" data-view="market">
+        <span class="tab-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 17l6-6 4 4 8-8"/><path d="M15 7h6v6"/></svg></span>
+        Market
+      </button>
+      <button class="tab" data-view="settings">
+        <span class="tab-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09a1.65 1.65 0 0 0-1.51-1c-.62-.26-1.34-.13-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06c.46-.48.59-1.2.33-1.82a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09c.7 0 1.32-.42 1.51-1 .26-.62.13-1.34-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06c.48.46 1.2.59 1.82.33.58-.19 1-.81 1-1.51V3a2 2 0 0 1 4 0v.09c0 .7.42 1.32 1 1.51.62.26 1.34.13 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06c-.46.48-.59 1.2-.33 1.82.19.58.81 1 1.51 1H21a2 2 0 0 1 0 4h-.09c-.7 0-1.32.42-1.51 1z"/></svg></span>
+        Settings
+      </button>
+    </nav>
+  </div>
+
+  <script src="/app.js"></script>
+</body>
+</html>

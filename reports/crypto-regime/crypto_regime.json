@@ -1,0 +1,66 @@
+{
+  "metadata": {
+    "as_of": "2026-09-05T16:18:32.116Z",
+    "generated_at": "2026-09-05T16:18:32.120Z"
+  },
+  "components": {
+    "btc_trend": {
+      "score": 55,
+      "signal": "RECOVERY ATTEMPT (price above 50DMA, stack still bearish); 200DMA rising; 50/200DMA within 1.5% (golden cross watch)",
+      "data_available": true,
+      "price": 79799.99,
+      "ma50": 69132.11,
+      "ma200": 69719.11,
+      "ma200_rising": true,
+      "ma200_direction": "rising"
+    },
+    "alt_breadth": {
+      "score": 95,
+      "signal": "80% of 10 tracked alts above 200DMA (90% above 50DMA)",
+      "data_available": true,
+      "pct_above_200dma": 80,
+      "pct_above_50dma": 90,
+      "universe_size": 10,
+      "skipped": []
+    },
+    "dominance": {
+      "score": 50,
+      "signal": "NO DATA: Need >= 31 daily dominance points",
+      "data_available": false
+    },
+    "funding": {
+      "score": 50,
+      "signal": "NO DATA: Need funding for >= 2 symbols",
+      "data_available": false
+    },
+    "drawdown_vol": {
+      "score": 25,
+      "signal": "Drawdown 36.0% from 1y high; volatility elevated (top third of 1y range)",
+      "data_available": true,
+      "drawdown_pct": 35.99,
+      "realized_vol_30d": 0.4703,
+      "vol_percentile_1y": 0.79
+    },
+    "momentum_thrust": {
+      "score": 90,
+      "signal": "BROAD THRUST: 100% of 11 coins positive over 30d",
+      "data_available": true,
+      "pct_positive_30d": 100,
+      "universe_size": 11
+    }
+  },
+  "composite": {
+    "score": 65,
+    "zone": "NEUTRAL",
+    "guidance": "Mixed conditions observed; no strong regime conclusion",
+    "effective_weights": {
+      "btc_trend": 0.3571,
+      "alt_breadth": 0.2857,
+      "drawdown_vol": 0.2143,
+      "momentum_thrust": 0.1429
+    },
+    "components_available": 4,
+    "components_total": 6,
+    "available_weight": 0.7
+  }
+}

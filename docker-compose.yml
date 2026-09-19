@@ -1,0 +1,26 @@
+# Local Postgres for sally-cryptobot-app dev. Matches the connection string
+# already set in .env (DATABASE_URL=postgresql://postgres:***@localhost:5433/sallycryptobot).
+# Start:  docker compose up -d
+# Stop:   docker compose down          (data persists in the named volume)
+# Wipe:   docker compose down -v       (also deletes the volume - fresh DB next start)
+# Logs:   docker compose logs -f
+services:
+  postgres:
+    image: postgres:16
+    container_name: sally-cryptobot-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_PASSWORD: HVj_T6YoUXbXD9w6LP-kYxgO
+      POSTGRES_DB: sallycryptobot
+    ports:
+      - "5434:5432"
+    volumes:
+      - sally-cryptobot-pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+volumes:
+  sally-cryptobot-pgdata:

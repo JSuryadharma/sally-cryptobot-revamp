@@ -1,0 +1,62 @@
+{
+  "windowStart": "2025-09-10T18:00:54.289Z",
+  "windowEnd": "2026-09-05T18:00:54.289Z",
+  "initialBalanceIdr": 10000000,
+  "finalEquityIdr": 10017143.06,
+  "totalReturnPct": 0.17,
+  "cashIdr": 10017143.06,
+  "realizedProfitIdr": 17143.03,
+  "closedTrades": 23,
+  "winRate": 39.13,
+  "avgWinIdr": 35157.18,
+  "avgLossIdr": -21376.55,
+  "profitFactor": 1.06,
+  "maxDrawdownPct": 0.81,
+  "openPositions": [],
+  "signalsSeenTotal": 87,
+  "signalsBlockedByConfidence": 64,
+  "blockedSignalSamples": {
+    "DOGEUSDT": [
+      {
+        "date": "2025-09-10",
+        "mode": "scalping",
+        "confidencePct": 43
+      },
+      {
+        "date": "2025-09-20",
+        "mode": "dayTrade",
+        "confidencePct": 42
+      },
+      {
+        "date": "2025-09-24",
+        "mode": "dayTrade",
+        "confidencePct": 45
+      },
+      {
+        "date": "2025-09-28",
+        "mode": "dayTrade",
+        "confidencePct": 59
+      },
+      {
+        "date": "2025-10-02",
+        "mode": "scalping",
+        "confidencePct": 37
+      },
+      {
+        "date": "2025-10-03",
+        "mode": "scalping",
+        "confidencePct": 52
+      },
+      {
+        "date": "2025-10-06",
+        "mode": "scalping",
+        "confidencePct": 49
+      },
+      {
+        "date": "2025-10-06",
+        "mode": "scalping",
+        "confidencePct": 50
+      }
+    ]
+  }
+}

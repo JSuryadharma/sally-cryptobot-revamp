@@ -1,0 +1,18 @@
+{
+  "windowStart": "2026-06-07T08:58:57.611Z",
+  "windowEnd": "2026-09-05T08:58:57.611Z",
+  "initialBalanceIdr": 10000000,
+  "finalEquityIdr": 10000000,
+  "totalReturnPct": 0,
+  "cashIdr": 10000000,
+  "realizedProfitIdr": 0,
+  "closedTrades": 0,
+  "winRate": null,
+  "avgWinIdr": 0,
+  "avgLossIdr": 0,
+  "profitFactor": null,
+  "maxDrawdownPct": 0,
+  "openPositions": [],
+  "signalsSeenTotal": 594,
+  "signalsBlockedByConfidence": 594
+}

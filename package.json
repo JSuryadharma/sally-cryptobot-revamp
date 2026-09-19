@@ -1,0 +1,19 @@
+{
+  "name": "robocrypto",
+  "version": "1.0.0",
+  "description": "Simple 24/7 paper-trading dashboard for BTC/ETH/USDT-pairs on Binance, with swing/scalping/day-trade strategy switching, a local technical-analysis summary, and Telegram push - sibling project to robotrader.",
+  "type": "module",
+  "main": "src/server.js",
+  "scripts": {
+    "start": "node --env-file-if-exists=.env src/server.js",
+    "dev": "node --env-file-if-exists=.env --watch src/server.js",
+    "check": "node --check src/server.js && node --check src/robotEngine.js && node --check src/decisionEngine.js && node --check src/settings.js && node --check src/triggerVariants.js && node --check src/liveStrategy.js && node --check src/riskManager.js && node --check src/strategyState.js && node --check public/app.js"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "license": "UNLICENSED",
+  "dependencies": {
+    "pg": "^8.23.0"
+  }
+}

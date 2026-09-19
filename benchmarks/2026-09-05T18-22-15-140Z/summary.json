@@ -1,0 +1,364 @@
+{
+  "windowStart": "2025-09-10T18:18:13.079Z",
+  "windowEnd": "2026-09-05T18:18:13.079Z",
+  "initialBalanceIdr": 10000000,
+  "finalEquityIdr": 10455042.21,
+  "totalReturnPct": 4.55,
+  "cashIdr": 8229796.49,
+  "realizedProfitIdr": 403039.06,
+  "closedTrades": 60,
+  "winRate": 43.33,
+  "avgWinIdr": 64728.07,
+  "avgLossIdr": -37643.85,
+  "profitFactor": 1.31,
+  "maxDrawdownPct": 5.19,
+  "openPositions": [
+    {
+      "symbol": "ADAUSDT",
+      "mode": "dayTrade",
+      "entryPrice": 0.2164,
+      "currentPrice": 0.2218,
+      "unrealizedProfitIdr": 52003.16
+    }
+  ],
+  "signalsSeenTotal": 845,
+  "signalsBlockedByConfidence": 783,
+  "blockedSignalSamples": {
+    "BTCUSDT": [
+      {
+        "date": "2025-09-10",
+        "mode": "scalping",
+        "confidencePct": 44
+      },
+      {
+        "date": "2025-09-13",
+        "mode": "scalping",
+        "confidencePct": 34
+      },
+      {
+        "date": "2025-09-14",
+        "mode": "scalping",
+        "confidencePct": 35
+      },
+      {
+        "date": "2025-09-16",
+        "mode": "scalping",
+        "confidencePct": 55
+      },
+      {
+        "date": "2025-09-17",
+        "mode": "scalping",
+        "confidencePct": 32
+      },
+      {
+        "date": "2025-09-22",
+        "mode": "scalping",
+        "confidencePct": 52
+      },
+      {
+        "date": "2025-09-22",
+        "mode": "scalping",
+        "confidencePct": 40
+      },
+      {
+        "date": "2025-09-24",
+        "mode": "scalping",
+        "confidencePct": 48
+      }
+    ],
+    "ETHUSDT": [
+      {
+        "date": "2025-09-13",
+        "mode": "scalping",
+        "confidencePct": 54
+      },
+      {
+        "date": "2025-09-13",
+        "mode": "scalping",
+        "confidencePct": 43
+      },
+      {
+        "date": "2025-09-13",
+        "mode": "scalping",
+        "confidencePct": 41
+      },
+      {
+        "date": "2025-09-14",
+        "mode": "scalping",
+        "confidencePct": 47
+      },
+      {
+        "date": "2025-09-15",
+        "mode": "scalping",
+        "confidencePct": 47
+      },
+      {
+        "date": "2025-09-17",
+        "mode": "scalping",
+        "confidencePct": 53
+      },
+      {
+        "date": "2025-09-18",
+        "mode": "scalping",
+        "confidencePct": 36
+      },
+      {
+        "date": "2025-09-19",
+        "mode": "scalping",
+        "confidencePct": 54
+      }
+    ],
+    "BNBUSDT": [
+      {
+        "date": "2025-10-11",
+        "mode": "dayTrade",
+        "confidencePct": 60
+      },
+      {
+        "date": "2025-10-12",
+        "mode": "dayTrade",
+        "confidencePct": 56
+      },
+      {
+        "date": "2025-10-14",
+        "mode": "dayTrade",
+        "confidencePct": 37
+      },
+      {
+        "date": "2025-10-18",
+        "mode": "dayTrade",
+        "confidencePct": 61
+      },
+      {
+        "date": "2025-10-21",
+        "mode": "dayTrade",
+        "confidencePct": 39
+      },
+      {
+        "date": "2025-10-29",
+        "mode": "scalping",
+        "confidencePct": 42
+      },
+      {
+        "date": "2025-10-29",
+        "mode": "scalping",
+        "confidencePct": 28
+      },
+      {
+        "date": "2025-10-30",
+        "mode": "scalping",
+        "confidencePct": 41
+      }
+    ],
+    "SOLUSDT": [
+      {
+        "date": "2025-10-05",
+        "mode": "dayTrade",
+        "confidencePct": 61
+      },
+      {
+        "date": "2025-10-06",
+        "mode": "dayTrade",
+        "confidencePct": 51
+      },
+      {
+        "date": "2025-10-11",
+        "mode": "scalping",
+        "confidencePct": 37
+      },
+      {
+        "date": "2025-10-14",
+        "mode": "dayTrade",
+        "confidencePct": 45
+      },
+      {
+        "date": "2025-10-18",
+        "mode": "dayTrade",
+        "confidencePct": 34
+      },
+      {
+        "date": "2025-10-21",
+        "mode": "dayTrade",
+        "confidencePct": 62
+      },
+      {
+        "date": "2025-10-23",
+        "mode": "dayTrade",
+        "confidencePct": 64
+      },
+      {
+        "date": "2025-10-27",
+        "mode": "scalping",
+        "confidencePct": 46
+      }
+    ],
+    "XRPUSDT": [
+      {
+        "date": "2025-09-11",
+        "mode": "scalping",
+        "confidencePct": 41
+      },
+      {
+        "date": "2025-09-14",
+        "mode": "scalping",
+        "confidencePct": 48
+      },
+      {
+        "date": "2025-09-14",
+        "mode": "scalping",
+        "confidencePct": 48
+      },
+      {
+        "date": "2025-09-15",
+        "mode": "scalping",
+        "confidencePct": 35
+      },
+      {
+        "date": "2025-09-15",
+        "mode": "scalping",
+        "confidencePct": 41
+      },
+      {
+        "date": "2025-09-16",
+        "mode": "scalping",
+        "confidencePct": 39
+      },
+      {
+        "date": "2025-09-17",
+        "mode": "scalping",
+        "confidencePct": 33
+      },
+      {
+        "date": "2025-09-17",
+        "mode": "scalping",
+        "confidencePct": 52
+      }
+    ],
+    "ADAUSDT": [
+      {
+        "date": "2025-09-12",
+        "mode": "scalping",
+        "confidencePct": 46
+      },
+      {
+        "date": "2025-09-14",
+        "mode": "scalping",
+        "confidencePct": 46
+      },
+      {
+        "date": "2025-09-20",
+        "mode": "scalping",
+        "confidencePct": 49
+      },
+      {
+        "date": "2025-09-22",
+        "mode": "scalping",
+        "confidencePct": 33
+      },
+      {
+        "date": "2025-09-25",
+        "mode": "scalping",
+        "confidencePct": 50
+      },
+      {
+        "date": "2025-09-26",
+        "mode": "scalping",
+        "confidencePct": 53
+      },
+      {
+        "date": "2025-10-03",
+        "mode": "scalping",
+        "confidencePct": 53
+      },
+      {
+        "date": "2025-10-06",
+        "mode": "scalping",
+        "confidencePct": 50
+      }
+    ],
+    "DOGEUSDT": [
+      {
+        "date": "2025-09-10",
+        "mode": "scalping",
+        "confidencePct": 43
+      },
+      {
+        "date": "2025-09-20",
+        "mode": "dayTrade",
+        "confidencePct": 42
+      },
+      {
+        "date": "2025-09-24",
+        "mode": "dayTrade",
+        "confidencePct": 45
+      },
+      {
+        "date": "2025-09-28",
+        "mode": "dayTrade",
+        "confidencePct": 59
+      },
+      {
+        "date": "2025-10-02",
+        "mode": "scalping",
+        "confidencePct": 37
+      },
+      {
+        "date": "2025-10-03",
+        "mode": "scalping",
+        "confidencePct": 52
+      },
+      {
+        "date": "2025-10-06",
+        "mode": "scalping",
+        "confidencePct": 49
+      },
+      {
+        "date": "2025-10-06",
+        "mode": "scalping",
+        "confidencePct": 50
+      }
+    ],
+    "AVAXUSDT": [
+      {
+        "date": "2025-09-11",
+        "mode": "scalping",
+        "confidencePct": 46
+      },
+      {
+        "date": "2025-09-11",
+        "mode": "scalping",
+        "confidencePct": 50
+      },
+      {
+        "date": "2025-09-12",
+        "mode": "scalping",
+        "confidencePct": 40
+      },
+      {
+        "date": "2025-09-24",
+        "mode": "dayTrade",
+        "confidencePct": 56
+      },
+      {
+        "date": "2025-09-24",
+        "mode": "dayTrade",
+        "confidencePct": 47
+      },
+      {
+        "date": "2025-09-27",
+        "mode": "dayTrade",
+        "confidencePct": 52
+      },
+      {
+        "date": "2025-09-30",
+        "mode": "dayTrade",
+        "confidencePct": 47
+      },
+      {
+        "date": "2025-10-02",
+        "mode": "dayTrade",
+        "confidencePct": 61
+      }
+    ]
+  }
+}

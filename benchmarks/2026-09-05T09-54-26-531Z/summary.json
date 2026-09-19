@@ -1,0 +1,230 @@
+{
+  "windowStart": "2026-06-07T09:54:10.453Z",
+  "windowEnd": "2026-09-05T09:54:10.453Z",
+  "initialBalanceIdr": 10000000,
+  "finalEquityIdr": 10000000,
+  "totalReturnPct": 0,
+  "cashIdr": 10000000,
+  "realizedProfitIdr": 0,
+  "closedTrades": 0,
+  "winRate": null,
+  "avgWinIdr": 0,
+  "avgLossIdr": 0,
+  "profitFactor": null,
+  "maxDrawdownPct": 0,
+  "openPositions": [],
+  "signalsSeenTotal": 360,
+  "signalsBlockedByConfidence": 360,
+  "blockedSignalSamples": {
+    "BTCUSDT": [
+      {
+        "date": "2026-07-14",
+        "mode": "dayTrade",
+        "confidencePct": 34
+      },
+      {
+        "date": "2026-07-17",
+        "mode": "dayTrade",
+        "confidencePct": 47
+      },
+      {
+        "date": "2026-07-19",
+        "mode": "dayTrade",
+        "confidencePct": 46
+      },
+      {
+        "date": "2026-07-20",
+        "mode": "dayTrade",
+        "confidencePct": 37
+      },
+      {
+        "date": "2026-07-20",
+        "mode": "dayTrade",
+        "confidencePct": 45
+      },
+      {
+        "date": "2026-07-24",
+        "mode": "dayTrade",
+        "confidencePct": 38
+      },
+      {
+        "date": "2026-07-25",
+        "mode": "dayTrade",
+        "confidencePct": 46
+      },
+      {
+        "date": "2026-07-29",
+        "mode": "dayTrade",
+        "confidencePct": 33
+      }
+    ],
+    "ETHUSDT": [
+      {
+        "date": "2026-06-11",
+        "mode": "dayTrade",
+        "confidencePct": 41
+      },
+      {
+        "date": "2026-07-09",
+        "mode": "dayTrade",
+        "confidencePct": 40
+      },
+      {
+        "date": "2026-07-09",
+        "mode": "dayTrade",
+        "confidencePct": 34
+      },
+      {
+        "date": "2026-07-12",
+        "mode": "dayTrade",
+        "confidencePct": 48
+      },
+      {
+        "date": "2026-07-14",
+        "mode": "dayTrade",
+        "confidencePct": 31
+      },
+      {
+        "date": "2026-07-18",
+        "mode": "dayTrade",
+        "confidencePct": 34
+      },
+      {
+        "date": "2026-07-20",
+        "mode": "dayTrade",
+        "confidencePct": 43
+      },
+      {
+        "date": "2026-07-22",
+        "mode": "dayTrade",
+        "confidencePct": 42
+      }
+    ],
+    "BNBUSDT": [
+      {
+        "date": "2026-06-09",
+        "mode": "dayTrade",
+        "confidencePct": 37
+      },
+      {
+        "date": "2026-06-10",
+        "mode": "dayTrade",
+        "confidencePct": 37
+      },
+      {
+        "date": "2026-06-11",
+        "mode": "dayTrade",
+        "confidencePct": 49
+      },
+      {
+        "date": "2026-06-13",
+        "mode": "dayTrade",
+        "confidencePct": 47
+      },
+      {
+        "date": "2026-06-14",
+        "mode": "scalping",
+        "confidencePct": 43
+      },
+      {
+        "date": "2026-06-15",
+        "mode": "scalping",
+        "confidencePct": 28
+      },
+      {
+        "date": "2026-06-16",
+        "mode": "scalping",
+        "confidencePct": 40
+      },
+      {
+        "date": "2026-06-16",
+        "mode": "scalping",
+        "confidencePct": 44
+      }
+    ],
+    "SOLUSDT": [
+      {
+        "date": "2026-06-09",
+        "mode": "dayTrade",
+        "confidencePct": 41
+      },
+      {
+        "date": "2026-06-11",
+        "mode": "dayTrade",
+        "confidencePct": 44
+      },
+      {
+        "date": "2026-06-14",
+        "mode": "dayTrade",
+        "confidencePct": 34
+      },
+      {
+        "date": "2026-06-16",
+        "mode": "dayTrade",
+        "confidencePct": 38
+      },
+      {
+        "date": "2026-06-17",
+        "mode": "dayTrade",
+        "confidencePct": 30
+      },
+      {
+        "date": "2026-06-28",
+        "mode": "dayTrade",
+        "confidencePct": 43
+      },
+      {
+        "date": "2026-06-29",
+        "mode": "dayTrade",
+        "confidencePct": 43
+      },
+      {
+        "date": "2026-07-01",
+        "mode": "dayTrade",
+        "confidencePct": 33
+      }
+    ],
+    "XRPUSDT": [
+      {
+        "date": "2026-07-05",
+        "mode": "dayTrade",
+        "confidencePct": 40
+      },
+      {
+        "date": "2026-07-06",
+        "mode": "dayTrade",
+        "confidencePct": 36
+      },
+      {
+        "date": "2026-07-09",
+        "mode": "scalping",
+        "confidencePct": 24
+      },
+      {
+        "date": "2026-07-10",
+        "mode": "scalping",
+        "confidencePct": 42
+      },
+      {
+        "date": "2026-07-11",
+        "mode": "scalping",
+        "confidencePct": 34
+      },
+      {
+        "date": "2026-07-11",
+        "mode": "scalping",
+        "confidencePct": 33
+      },
+      {
+        "date": "2026-07-12",
+        "mode": "scalping",
+        "confidencePct": 49
+      },
+      {
+        "date": "2026-07-12",
+        "mode": "scalping",
+        "confidencePct": 28
+      }
+    ]
+  }
+}

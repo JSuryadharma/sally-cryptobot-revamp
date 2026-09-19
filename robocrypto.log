@@ -1,0 +1,226 @@
+
+> robocrypto@1.0.0 start
+> node --env-file-if-exists=.env src/server.js
+
+robocrypto listening on http://localhost:3300
+[tick] BTCUSDT failed: Binance klines (BTCUSDT 1h) failed: fetch failed (read EADDRNOTAVAIL)
+[tick] ETHUSDT failed: Binance klines (ETHUSDT 15m) failed: fetch failed (getaddrinfo ENOTFOUND data-api.binance.vision)
+[tick] BNBUSDT failed: Binance klines (BNBUSDT 1h) failed: fetch failed (getaddrinfo ENOTFOUND data-api.binance.vision)
+[tick] SOLUSDT failed: Binance klines (SOLUSDT 1d) failed: fetch failed (getaddrinfo ENOTFOUND data-api.binance.vision)
+[tick] XRPUSDT failed: Binance klines (XRPUSDT 1d) failed: fetch failed (getaddrinfo ENOTFOUND data-api.binance.vision)
+[tick] BTCUSDT failed: Binance klines (BTCUSDT 1d) failed: fetch failed (getaddrinfo ENOTFOUND data-api.binance.vision)
+[tick] ETHUSDT failed: Binance klines (ETHUSDT 1d) failed: fetch failed (getaddrinfo ENOTFOUND data-api.binance.vision)
+[tick] BNBUSDT failed: Binance klines (BNBUSDT 1d) failed: fetch failed (getaddrinfo ENOTFOUND data-api.binance.vision)
+[tick] SOLUSDT failed: Binance klines (SOLUSDT 1d) failed: fetch failed (getaddrinfo ENOTFOUND data-api.binance.vision)
+[tick] XRPUSDT failed: Binance klines (XRPUSDT 1d) failed: fetch failed (getaddrinfo ENOTFOUND data-api.binance.vision)
+[binanceData] live USD/IDR fetch failed, using fallback rate: Binance USDT/IDR rate failed: fetch failed (getaddrinfo ENOTFOUND data-api.binance.vision)
+[tick] BTCUSDT failed: Binance klines (BTCUSDT 1d) failed: fetch failed (getaddrinfo ENOTFOUND data-api.binance.vision)
+[tick] ETHUSDT failed: Binance klines (ETHUSDT 1d) failed: fetch failed (getaddrinfo ENOTFOUND data-api.binance.vision)
+[tick] BNBUSDT failed: Binance klines (BNBUSDT 1d) failed: fetch failed (getaddrinfo ENOTFOUND data-api.binance.vision)
+[tick] SOLUSDT failed: Binance klines (SOLUSDT 15m) failed: fetch failed (getaddrinfo ENOTFOUND data-api.binance.vision)
+[tick] XRPUSDT failed: Binance klines (XRPUSDT 1d) failed: fetch failed (getaddrinfo ENOTFOUND data-api.binance.vision)
+[tick] BTCUSDT failed: Binance klines (BTCUSDT 1d) failed: fetch failed (getaddrinfo ENOTFOUND data-api.binance.vision)
+[tick] ETHUSDT failed: Binance klines (ETHUSDT 15m) failed: fetch failed (getaddrinfo ENOTFOUND data-api.binance.vision)
+[tick] BNBUSDT failed: Binance klines (BNBUSDT 15m) failed: fetch failed (getaddrinfo ENOTFOUND data-api.binance.vision)
+[tick] SOLUSDT failed: Binance klines (SOLUSDT 15m) failed: fetch failed (getaddrinfo ENOTFOUND data-api.binance.vision)
+[tick] XRPUSDT failed: Binance klines (XRPUSDT 1d) failed: fetch failed (getaddrinfo ENOTFOUND data-api.binance.vision)
+[binanceData] live USD/IDR fetch failed, using fallback rate: Binance USDT/IDR rate failed: fetch failed (getaddrinfo ENOTFOUND data-api.binance.vision)
+[tick] BTCUSDT failed: Binance klines (BTCUSDT 1d) failed: fetch failed (getaddrinfo ENOTFOUND data-api.binance.vision)
+[tick] ETHUSDT failed: Binance klines (ETHUSDT 1d) failed: fetch failed (getaddrinfo ENOTFOUND data-api.binance.vision)
+[tick] BNBUSDT failed: Binance klines (BNBUSDT 1d) failed: fetch failed (getaddrinfo ENOTFOUND data-api.binance.vision)
+[tick] SOLUSDT failed: Binance klines (SOLUSDT 1d) failed: fetch failed (getaddrinfo ENOTFOUND data-api.binance.vision)
+[tick] XRPUSDT failed: Binance klines (XRPUSDT 1d) failed: fetch failed (getaddrinfo ENOTFOUND data-api.binance.vision)
+[tick] BTCUSDT failed: Binance klines (BTCUSDT 15m) failed: fetch failed (getaddrinfo ENOTFOUND data-api.binance.vision)
+[tick] ETHUSDT failed: Binance klines (ETHUSDT 1d) failed: fetch failed (getaddrinfo ENOTFOUND data-api.binance.vision)
+[tick] BNBUSDT failed: Binance klines (BNBUSDT 1d) failed: fetch failed (getaddrinfo ENOTFOUND data-api.binance.vision)
+[tick] SOLUSDT failed: Binance klines (SOLUSDT 1d) failed: fetch failed (getaddrinfo ENOTFOUND data-api.binance.vision)
+[tick] XRPUSDT failed: Binance klines (XRPUSDT 15m) failed: fetch failed (getaddrinfo ENOTFOUND data-api.binance.vision)
+[tick] BTCUSDT failed: Binance klines (BTCUSDT 1d) failed: fetch failed (getaddrinfo ENOTFOUND data-api.binance.vision)
+[tick] ETHUSDT failed: Binance klines (ETHUSDT 1d) failed: fetch failed (getaddrinfo ENOTFOUND data-api.binance.vision)
+[tick] BNBUSDT failed: Binance klines (BNBUSDT 1d) failed: fetch failed (getaddrinfo ENOTFOUND data-api.binance.vision)
+[tick] SOLUSDT failed: Binance klines (SOLUSDT 15m) failed: fetch failed (getaddrinfo ENOTFOUND data-api.binance.vision)
+[tick] XRPUSDT failed: Binance klines (XRPUSDT 1d) failed: fetch failed (getaddrinfo ENOTFOUND data-api.binance.vision)
+[binanceData] live USD/IDR fetch failed, using fallback rate: Binance USDT/IDR rate failed: fetch failed (getaddrinfo ENOTFOUND data-api.binance.vision)
+[tick] BTCUSDT failed: Binance klines (BTCUSDT 1d) failed: fetch failed (getaddrinfo ENOTFOUND data-api.binance.vision)
+[tick] ETHUSDT failed: Binance klines (ETHUSDT 1d) failed: fetch failed (getaddrinfo ENOTFOUND data-api.binance.vision)
+[tick] BNBUSDT failed: Binance klines (BNBUSDT 1d) failed: fetch failed (getaddrinfo ENOTFOUND data-api.binance.vision)
+[tick] SOLUSDT failed: Binance klines (SOLUSDT 1d) failed: fetch failed (getaddrinfo ENOTFOUND data-api.binance.vision)
+[tick] XRPUSDT failed: Binance klines (XRPUSDT 1d) failed: fetch failed (getaddrinfo ENOTFOUND data-api.binance.vision)
+[tick] BTCUSDT failed: Binance klines (BTCUSDT 1d) failed: fetch failed (getaddrinfo ENOTFOUND data-api.binance.vision)
+[tick] ETHUSDT failed: Binance klines (ETHUSDT 1d) failed: fetch failed (getaddrinfo ENOTFOUND data-api.binance.vision)
+[tick] BNBUSDT failed: Binance klines (BNBUSDT 15m) failed: fetch failed (getaddrinfo ENOTFOUND data-api.binance.vision)
+[tick] SOLUSDT failed: Binance klines (SOLUSDT 1d) failed: fetch failed (getaddrinfo ENOTFOUND data-api.binance.vision)
+[tick] XRPUSDT failed: Binance klines (XRPUSDT 1d) failed: fetch failed (getaddrinfo ENOTFOUND data-api.binance.vision)
+[tick] BTCUSDT failed: Binance klines (BTCUSDT 15m) failed: fetch failed (getaddrinfo ENOTFOUND data-api.binance.vision)
+[tick] ETHUSDT failed: Binance klines (ETHUSDT 15m) failed: fetch failed (getaddrinfo ENOTFOUND data-api.binance.vision)
+[tick] BNBUSDT failed: Binance klines (BNBUSDT 15m) failed: fetch failed (getaddrinfo ENOTFOUND data-api.binance.vision)
+[tick] SOLUSDT failed: Binance klines (SOLUSDT 1d) failed: fetch failed (getaddrinfo ENOTFOUND data-api.binance.vision)
+[tick] XRPUSDT failed: Binance klines (XRPUSDT 1d) failed: fetch failed (getaddrinfo ENOTFOUND data-api.binance.vision)
+[tick] BTCUSDT failed: Binance klines (BTCUSDT 1d) timed out after 10s - check this machine's internet access to data-api.binance.vision.
+[tick] ETHUSDT failed: Binance klines (ETHUSDT 1d) timed out after 10s - check this machine's internet access to data-api.binance.vision.
+[tick] BNBUSDT failed: Binance klines (BNBUSDT 1d) timed out after 10s - check this machine's internet access to data-api.binance.vision.
+[tick] SOLUSDT failed: Binance klines (SOLUSDT 1d) timed out after 10s - check this machine's internet access to data-api.binance.vision.
+[tick] XRPUSDT failed: Binance klines (XRPUSDT 1d) failed: fetch failed (read EHOSTUNREACH)
+[tick] BTCUSDT failed: Binance klines (BTCUSDT 1d) timed out after 10s - check this machine's internet access to data-api.binance.vision.
+[tick] ETHUSDT failed: Binance klines (ETHUSDT 15m) failed: fetch failed (getaddrinfo ENOTFOUND data-api.binance.vision)
+[tick] BNBUSDT failed: Binance klines (BNBUSDT 15m) failed: fetch failed (getaddrinfo ENOTFOUND data-api.binance.vision)
+[tick] SOLUSDT failed: Binance klines (SOLUSDT 1d) failed: fetch failed (getaddrinfo ENOTFOUND data-api.binance.vision)
+[tick] XRPUSDT failed: Binance klines (XRPUSDT 1d) failed: fetch failed (getaddrinfo ENOTFOUND data-api.binance.vision)
+[binanceData] live USD/IDR fetch failed, using fallback rate: Binance USDT/IDR rate timed out after 10s - check this machine's internet access to data-api.binance.vision.
+[tick] BTCUSDT failed: Binance klines (BTCUSDT 15m) failed: fetch failed (getaddrinfo ENOTFOUND data-api.binance.vision)
+[tick] ETHUSDT failed: Binance klines (ETHUSDT 1d) failed: fetch failed (getaddrinfo ENOTFOUND data-api.binance.vision)
+[tick] BNBUSDT failed: Binance klines (BNBUSDT 1d) failed: fetch failed (getaddrinfo ENOTFOUND data-api.binance.vision)
+[tick] SOLUSDT failed: Binance klines (SOLUSDT 1d) failed: fetch failed (getaddrinfo ENOTFOUND data-api.binance.vision)
+[tick] XRPUSDT failed: Binance klines (XRPUSDT 1d) failed: fetch failed (getaddrinfo ENOTFOUND data-api.binance.vision)
+[tick] BTCUSDT failed: Binance klines (BTCUSDT 1d) timed out after 10s - check this machine's internet access to data-api.binance.vision.
+[tick] XRPUSDT failed: Binance klines (XRPUSDT 1h) timed out after 10s - check this machine's internet access to data-api.binance.vision.
+[tick] BTCUSDT failed: Binance klines (BTCUSDT 1d) timed out after 10s - check this machine's internet access to data-api.binance.vision.
+[tick] XRPUSDT failed: Binance klines (XRPUSDT 1h) timed out after 10s - check this machine's internet access to data-api.binance.vision.
+[tick] BTCUSDT failed: Binance klines (BTCUSDT 1d) failed: fetch failed (HTTP/2: "GOAWAY" frame received with code 0)
+[tick] BTCUSDT failed: Binance klines (BTCUSDT 15m) timed out after 10s - check this machine's internet access to data-api.binance.vision.
+[tick] BTCUSDT failed: Binance klines (BTCUSDT 15m) failed: fetch failed (HTTP/2: "GOAWAY" frame received with code 0)
+[tick] ETHUSDT failed: Binance klines (ETHUSDT 15m) failed: fetch failed (HTTP/2: "GOAWAY" frame received with code 0)
+[tick] BTCUSDT failed: Binance klines (BTCUSDT 15m) failed: fetch failed (HTTP/2: "GOAWAY" frame received with code 0)
+[tick] ETHUSDT failed: Binance klines (ETHUSDT 15m) failed: fetch failed (HTTP/2: "GOAWAY" frame received with code 0)
+[tick] BTCUSDT failed: Binance klines (BTCUSDT 15m) timed out after 10s - check this machine's internet access to data-api.binance.vision.
+[tick] ETHUSDT failed: Binance klines (ETHUSDT 1d) timed out after 10s - check this machine's internet access to data-api.binance.vision.
+[tick] BNBUSDT failed: Binance klines (BNBUSDT 1d) failed: fetch failed (read EADDRNOTAVAIL)
+[binanceData] live USD/IDR fetch failed, using fallback rate: Binance USDT/IDR rate timed out after 10s - check this machine's internet access to data-api.binance.vision.
+[tick] BTCUSDT failed: Binance klines (BTCUSDT 1h) timed out after 10s - check this machine's internet access to data-api.binance.vision.
+[tick] ETHUSDT failed: Binance klines (ETHUSDT 1d) timed out after 10s - check this machine's internet access to data-api.binance.vision.
+[tick] BNBUSDT failed: Binance klines (BNBUSDT 1d) timed out after 10s - check this machine's internet access to data-api.binance.vision.
+[tick] SOLUSDT failed: Binance klines (SOLUSDT 1d) timed out after 10s - check this machine's internet access to data-api.binance.vision.
+[tick] XRPUSDT failed: Binance klines (XRPUSDT 15m) failed: fetch failed (read ECONNRESET)
+[tick] BTCUSDT failed: Binance klines (BTCUSDT 1d) timed out after 10s - check this machine's internet access to data-api.binance.vision.
+[tick] ETHUSDT failed: Binance klines (ETHUSDT 1d) timed out after 10s - check this machine's internet access to data-api.binance.vision.
+[tick] BNBUSDT failed: Binance klines (BNBUSDT 1d) timed out after 10s - check this machine's internet access to data-api.binance.vision.
+[tick] SOLUSDT failed: Binance klines (SOLUSDT 1d) failed: fetch failed (read ETIMEDOUT)
+[tick] XRPUSDT failed: Binance klines (XRPUSDT 1d) timed out after 10s - check this machine's internet access to data-api.binance.vision.
+[tick] BTCUSDT failed: Binance klines (BTCUSDT 1d) timed out after 10s - check this machine's internet access to data-api.binance.vision.
+[tick] ETHUSDT failed: Binance klines (ETHUSDT 1d) timed out after 10s - check this machine's internet access to data-api.binance.vision.
+[tick] BNBUSDT failed: Binance klines (BNBUSDT 1d) failed: fetch failed (read ETIMEDOUT)
+[tick] SOLUSDT failed: Binance klines (SOLUSDT 1h) failed: fetch failed (read ETIMEDOUT)
+[tick] BTCUSDT failed: Binance klines (BTCUSDT 1d) timed out after 10s - check this machine's internet access to data-api.binance.vision.
+[binanceData] live USD/IDR fetch failed, using fallback rate: Binance USDT/IDR rate timed out after 10s - check this machine's internet access to data-api.binance.vision.
+[tick] ETHUSDT failed: Binance klines (ETHUSDT 1d) timed out after 10s - check this machine's internet access to data-api.binance.vision.
+[tick] BNBUSDT failed: Binance klines (BNBUSDT 1d) timed out after 10s - check this machine's internet access to data-api.binance.vision.
+[tick] SOLUSDT failed: Binance klines (SOLUSDT 1d) failed: fetch failed (read ETIMEDOUT)
+[tick] XRPUSDT failed: Binance klines (XRPUSDT 15m) failed: fetch failed (read ETIMEDOUT)
+[tick] BTCUSDT failed: Binance klines (BTCUSDT 1d) timed out after 10s - check this machine's internet access to data-api.binance.vision.
+[tick] ETHUSDT failed: Binance klines (ETHUSDT 1d) timed out after 10s - check this machine's internet access to data-api.binance.vision.
+[tick] BNBUSDT failed: Binance klines (BNBUSDT 1d) timed out after 10s - check this machine's internet access to data-api.binance.vision.
+[tick] SOLUSDT failed: Binance klines (SOLUSDT 1d) timed out after 10s - check this machine's internet access to data-api.binance.vision.
+[tick] XRPUSDT failed: Binance klines (XRPUSDT 15m) failed: fetch failed (read ETIMEDOUT)
+[tick] BTCUSDT failed: Binance klines (BTCUSDT 1d) timed out after 10s - check this machine's internet access to data-api.binance.vision.
+[tick] ETHUSDT failed: Binance klines (ETHUSDT 1d) timed out after 10s - check this machine's internet access to data-api.binance.vision.
+[tick] BNBUSDT failed: Binance klines (BNBUSDT 1d) timed out after 10s - check this machine's internet access to data-api.binance.vision.
+[tick] SOLUSDT failed: Binance klines (SOLUSDT 1d) timed out after 10s - check this machine's internet access to data-api.binance.vision.
+[tick] XRPUSDT failed: Binance klines (XRPUSDT 1d) timed out after 10s - check this machine's internet access to data-api.binance.vision.
+[tick] BTCUSDT failed: Binance klines (BTCUSDT 1d) timed out after 10s - check this machine's internet access to data-api.binance.vision.
+[tick] ETHUSDT failed: Binance klines (ETHUSDT 1d) timed out after 10s - check this machine's internet access to data-api.binance.vision.
+[tick] BNBUSDT failed: Binance klines (BNBUSDT 1d) timed out after 10s - check this machine's internet access to data-api.binance.vision.
+[tick] SOLUSDT failed: Binance klines (SOLUSDT 1d) failed: fetch failed (read ETIMEDOUT)
+[tick] BTCUSDT failed: Binance klines (BTCUSDT 1d) timed out after 10s - check this machine's internet access to data-api.binance.vision.
+[tick] ETHUSDT failed: Binance klines (ETHUSDT 1d) timed out after 10s - check this machine's internet access to data-api.binance.vision.
+[tick] BNBUSDT failed: Binance klines (BNBUSDT 1d) timed out after 10s - check this machine's internet access to data-api.binance.vision.
+[tick] SOLUSDT failed: Binance klines (SOLUSDT 1d) timed out after 10s - check this machine's internet access to data-api.binance.vision.
+[tick] XRPUSDT failed: Binance klines (XRPUSDT 1h) failed: fetch failed (read ETIMEDOUT)
+[binanceData] live USD/IDR fetch failed, using fallback rate: Binance USDT/IDR rate timed out after 10s - check this machine's internet access to data-api.binance.vision.
+[tick] BTCUSDT failed: Binance klines (BTCUSDT 15m) timed out after 10s - check this machine's internet access to data-api.binance.vision.
+[tick] ETHUSDT failed: Binance klines (ETHUSDT 1h) failed: fetch failed (read ETIMEDOUT)
+[binanceData] live USD/IDR fetch failed, using fallback rate: Binance USDT/IDR rate timed out after 10s - check this machine's internet access to data-api.binance.vision.
+[tick] BTCUSDT failed: Binance klines (BTCUSDT 1d) timed out after 10s - check this machine's internet access to data-api.binance.vision.
+[tick] ETHUSDT failed: Binance klines (ETHUSDT 1d) timed out after 10s - check this machine's internet access to data-api.binance.vision.
+[tick] BNBUSDT failed: Binance klines (BNBUSDT 15m) failed: fetch failed (read ETIMEDOUT)
+[tick] SOLUSDT failed: Binance klines (SOLUSDT 1d) failed: fetch failed (read ETIMEDOUT)
+[tick] XRPUSDT failed: Binance klines (XRPUSDT 15m) failed: fetch failed (read ETIMEDOUT)
+[tick] BTCUSDT failed: Binance klines (BTCUSDT 1d) timed out after 10s - check this machine's internet access to data-api.binance.vision.
+[tick] ETHUSDT failed: Binance klines (ETHUSDT 15m) failed: fetch failed (read ETIMEDOUT)
+[tick] BNBUSDT failed: Binance klines (BNBUSDT 15m) failed: fetch failed (read ETIMEDOUT)
+[tick] SOLUSDT failed: Binance klines (SOLUSDT 1d) failed: fetch failed (read ETIMEDOUT)
+[tick] BTCUSDT failed: Binance klines (BTCUSDT 1d) failed: fetch failed (read ETIMEDOUT)
+[tick] ETHUSDT failed: Binance klines (ETHUSDT 1d) timed out after 10s - check this machine's internet access to data-api.binance.vision.
+[tick] BNBUSDT failed: Binance klines (BNBUSDT 15m) timed out after 10s - check this machine's internet access to data-api.binance.vision.
+[tick] SOLUSDT failed: Binance klines (SOLUSDT 15m) timed out after 10s - check this machine's internet access to data-api.binance.vision.
+[tick] XRPUSDT failed: Binance klines (XRPUSDT 15m) timed out after 10s - check this machine's internet access to data-api.binance.vision.
+[tick] BTCUSDT failed: Binance klines (BTCUSDT 15m) failed: fetch failed (HTTP/2: "GOAWAY" frame received with code 0)
+[tick] BTCUSDT failed: Binance klines (BTCUSDT 15m) failed: fetch failed (HTTP/2: "GOAWAY" frame received with code 0)
+[tick] BTCUSDT failed: Binance klines (BTCUSDT 15m) failed: fetch failed (HTTP/2: "GOAWAY" frame received with code 0)
+[tick] BTCUSDT failed: Binance klines (BTCUSDT 15m) failed: fetch failed (HTTP/2: "GOAWAY" frame received with code 0)
+[tick] BTCUSDT failed: Binance klines (BTCUSDT 15m) failed: fetch failed (HTTP/2: "GOAWAY" frame received with code 0)
+[tick] BTCUSDT failed: Binance klines (BTCUSDT 15m) failed: fetch failed (HTTP/2: "GOAWAY" frame received with code 0)
+[tick] BTCUSDT failed: Binance klines (BTCUSDT 1d) timed out after 10s - check this machine's internet access to data-api.binance.vision.
+[tick] ETHUSDT failed: Binance klines (ETHUSDT 15m) failed: fetch failed (read EADDRNOTAVAIL)
+[tick] BNBUSDT failed: Binance klines (BNBUSDT 15m) failed: fetch failed (getaddrinfo ENOTFOUND data-api.binance.vision)
+[tick] SOLUSDT failed: Binance klines (SOLUSDT 1d) failed: fetch failed (getaddrinfo ENOTFOUND data-api.binance.vision)
+[tick] XRPUSDT failed: Binance klines (XRPUSDT 1d) failed: fetch failed (getaddrinfo ENOTFOUND data-api.binance.vision)
+[binanceData] live USD/IDR fetch failed, using fallback rate: Binance USDT/IDR rate failed: fetch failed (getaddrinfo ENOTFOUND data-api.binance.vision)
+[tick] BTCUSDT failed: Binance klines (BTCUSDT 1d) failed: fetch failed (getaddrinfo ENOTFOUND data-api.binance.vision)
+[tick] ETHUSDT failed: Binance klines (ETHUSDT 1d) failed: fetch failed (getaddrinfo ENOTFOUND data-api.binance.vision)
+[tick] BNBUSDT failed: Binance klines (BNBUSDT 1d) failed: fetch failed (getaddrinfo ENOTFOUND data-api.binance.vision)
+[tick] SOLUSDT failed: Binance klines (SOLUSDT 15m) failed: fetch failed (getaddrinfo ENOTFOUND data-api.binance.vision)
+[tick] XRPUSDT failed: Binance klines (XRPUSDT 1d) failed: fetch failed (getaddrinfo ENOTFOUND data-api.binance.vision)
+[tick] BTCUSDT failed: Binance klines (BTCUSDT 1d) failed: fetch failed (getaddrinfo ENOTFOUND data-api.binance.vision)
+[tick] ETHUSDT failed: Binance klines (ETHUSDT 15m) failed: fetch failed (getaddrinfo ENOTFOUND data-api.binance.vision)
+[tick] BNBUSDT failed: Binance klines (BNBUSDT 1d) failed: fetch failed (getaddrinfo ENOTFOUND data-api.binance.vision)
+[tick] SOLUSDT failed: Binance klines (SOLUSDT 1d) failed: fetch failed (getaddrinfo ENOTFOUND data-api.binance.vision)
+[tick] XRPUSDT failed: Binance klines (XRPUSDT 15m) failed: fetch failed (getaddrinfo ENOTFOUND data-api.binance.vision)
+[tick] BTCUSDT failed: Binance klines (BTCUSDT 1d) failed: fetch failed (getaddrinfo ENOTFOUND data-api.binance.vision)
+[tick] ETHUSDT failed: Binance klines (ETHUSDT 1d) failed: fetch failed (getaddrinfo ENOTFOUND data-api.binance.vision)
+[tick] BNBUSDT failed: Binance klines (BNBUSDT 1d) failed: fetch failed (getaddrinfo ENOTFOUND data-api.binance.vision)
+[tick] SOLUSDT failed: Binance klines (SOLUSDT 1d) failed: fetch failed (getaddrinfo ENOTFOUND data-api.binance.vision)
+[tick] XRPUSDT failed: Binance klines (XRPUSDT 1d) failed: fetch failed (getaddrinfo ENOTFOUND data-api.binance.vision)
+[tick] BTCUSDT failed: Binance klines (BTCUSDT 1d) failed: fetch failed (getaddrinfo ENOTFOUND data-api.binance.vision)
+[tick] ETHUSDT failed: Binance klines (ETHUSDT 1d) failed: fetch failed (getaddrinfo ENOTFOUND data-api.binance.vision)
+[tick] BNBUSDT failed: Binance klines (BNBUSDT 1d) failed: fetch failed (getaddrinfo ENOTFOUND data-api.binance.vision)
+[tick] SOLUSDT failed: Binance klines (SOLUSDT 1d) failed: fetch failed (getaddrinfo ENOTFOUND data-api.binance.vision)
+[tick] XRPUSDT failed: Binance klines (XRPUSDT 1d) failed: fetch failed (getaddrinfo ENOTFOUND data-api.binance.vision)
+[binanceData] live USD/IDR fetch failed, using fallback rate: Binance USDT/IDR rate failed: fetch failed (getaddrinfo ENOTFOUND data-api.binance.vision)
+[tick] BTCUSDT failed: Binance klines (BTCUSDT 1d) failed: fetch failed (getaddrinfo ENOTFOUND data-api.binance.vision)
+[tick] ETHUSDT failed: Binance klines (ETHUSDT 1d) failed: fetch failed (getaddrinfo ENOTFOUND data-api.binance.vision)
+[tick] BNBUSDT failed: Binance klines (BNBUSDT 1d) failed: fetch failed (getaddrinfo ENOTFOUND data-api.binance.vision)
+[tick] SOLUSDT failed: Binance klines (SOLUSDT 1d) failed: fetch failed (getaddrinfo ENOTFOUND data-api.binance.vision)
+[tick] XRPUSDT failed: Binance klines (XRPUSDT 1d) failed: fetch failed (getaddrinfo ENOTFOUND data-api.binance.vision)
+[binanceData] live USD/IDR fetch failed, using fallback rate: Binance USDT/IDR rate failed: fetch failed (getaddrinfo ENOTFOUND data-api.binance.vision)
+[tick] BTCUSDT failed: Binance klines (BTCUSDT 1d) failed: fetch failed (getaddrinfo ENOTFOUND data-api.binance.vision)
+[tick] ETHUSDT failed: Binance klines (ETHUSDT 1d) failed: fetch failed (getaddrinfo ENOTFOUND data-api.binance.vision)
+[tick] BNBUSDT failed: Binance klines (BNBUSDT 15m) failed: fetch failed (getaddrinfo ENOTFOUND data-api.binance.vision)
+[tick] SOLUSDT failed: Binance klines (SOLUSDT 1d) failed: fetch failed (getaddrinfo ENOTFOUND data-api.binance.vision)
+[tick] XRPUSDT failed: Binance klines (XRPUSDT 1d) failed: fetch failed (getaddrinfo ENOTFOUND data-api.binance.vision)
+[binanceData] live USD/IDR fetch failed, using fallback rate: Binance USDT/IDR rate failed: fetch failed (getaddrinfo ENOTFOUND data-api.binance.vision)
+[tick] BTCUSDT failed: Binance klines (BTCUSDT 1d) failed: fetch failed (getaddrinfo ENOTFOUND data-api.binance.vision)
+[tick] ETHUSDT failed: Binance klines (ETHUSDT 1d) failed: fetch failed (getaddrinfo ENOTFOUND data-api.binance.vision)
+[tick] BNBUSDT failed: Binance klines (BNBUSDT 15m) failed: fetch failed (getaddrinfo ENOTFOUND data-api.binance.vision)
+[tick] SOLUSDT failed: Binance klines (SOLUSDT 1d) failed: fetch failed (getaddrinfo ENOTFOUND data-api.binance.vision)
+[tick] XRPUSDT failed: Binance klines (XRPUSDT 1d) failed: fetch failed (getaddrinfo ENOTFOUND data-api.binance.vision)
+[binanceData] live USD/IDR fetch failed, using fallback rate: Binance USDT/IDR rate failed: fetch failed (getaddrinfo ENOTFOUND data-api.binance.vision)
+[tick] BTCUSDT failed: Binance klines (BTCUSDT 1d) failed: fetch failed (getaddrinfo ENOTFOUND data-api.binance.vision)
+[tick] ETHUSDT failed: Binance klines (ETHUSDT 15m) failed: fetch failed (getaddrinfo ENOTFOUND data-api.binance.vision)
+[tick] BNBUSDT failed: Binance klines (BNBUSDT 1d) failed: fetch failed (getaddrinfo ENOTFOUND data-api.binance.vision)
+[tick] SOLUSDT failed: Binance klines (SOLUSDT 1d) failed: fetch failed (getaddrinfo ENOTFOUND data-api.binance.vision)
+[tick] XRPUSDT failed: Binance klines (XRPUSDT 1d) failed: fetch failed (getaddrinfo ENOTFOUND data-api.binance.vision)
+[binanceData] live USD/IDR fetch failed, using fallback rate: Binance USDT/IDR rate failed: fetch failed (getaddrinfo ENOTFOUND data-api.binance.vision)
+[tick] BTCUSDT failed: Binance klines (BTCUSDT 1d) failed: fetch failed (getaddrinfo ENOTFOUND data-api.binance.vision)
+[tick] ETHUSDT failed: Binance klines (ETHUSDT 1d) failed: fetch failed (getaddrinfo ENOTFOUND data-api.binance.vision)
+[tick] BNBUSDT failed: Binance klines (BNBUSDT 15m) failed: fetch failed (getaddrinfo ENOTFOUND data-api.binance.vision)
+[tick] SOLUSDT failed: Binance klines (SOLUSDT 1d) failed: fetch failed (getaddrinfo ENOTFOUND data-api.binance.vision)
+[tick] XRPUSDT failed: Binance klines (XRPUSDT 1d) failed: fetch failed (getaddrinfo ENOTFOUND data-api.binance.vision)
+[binanceData] live USD/IDR fetch failed, using fallback rate: Binance USDT/IDR rate failed: fetch failed (getaddrinfo ENOTFOUND data-api.binance.vision)
+[tick] BTCUSDT failed: Binance klines (BTCUSDT 1d) failed: fetch failed (getaddrinfo ENOTFOUND data-api.binance.vision)
+[tick] ETHUSDT failed: Binance klines (ETHUSDT 1d) failed: fetch failed (getaddrinfo ENOTFOUND data-api.binance.vision)
+[tick] BNBUSDT failed: Binance klines (BNBUSDT 1d) failed: fetch failed (getaddrinfo ENOTFOUND data-api.binance.vision)
+[tick] SOLUSDT failed: Binance klines (SOLUSDT 1d) failed: fetch failed (getaddrinfo ENOTFOUND data-api.binance.vision)
+[tick] XRPUSDT failed: Binance klines (XRPUSDT 1d) failed: fetch failed (getaddrinfo ENOTFOUND data-api.binance.vision)
+[tick] BTCUSDT failed: Binance klines (BTCUSDT 15m) timed out after 10s - check this machine's internet access to data-api.binance.vision.
+[tick] ETHUSDT failed: Binance klines (ETHUSDT 15m) timed out after 10s - check this machine's internet access to data-api.binance.vision.
+[tick] BNBUSDT failed: Binance klines (BNBUSDT 15m) timed out after 10s - check this machine's internet access to data-api.binance.vision.
+[tick] SOLUSDT failed: Binance klines (SOLUSDT 15m) timed out after 10s - check this machine's internet access to data-api.binance.vision.
+[tick] XRPUSDT failed: Binance klines (XRPUSDT 15m) timed out after 10s - check this machine's internet access to data-api.binance.vision.
+[tick] BTCUSDT failed: Binance klines (BTCUSDT 1h) timed out after 10s - check this machine's internet access to data-api.binance.vision.
+[tick] ETHUSDT failed: Binance klines (ETHUSDT 1h) timed out after 10s - check this machine's internet access to data-api.binance.vision.
+[tick] BNBUSDT failed: Binance klines (BNBUSDT 1h) timed out after 10s - check this machine's internet access to data-api.binance.vision.
+[tick] SOLUSDT failed: Binance klines (SOLUSDT 1h) timed out after 10s - check this machine's internet access to data-api.binance.vision.
+[tick] XRPUSDT failed: Binance klines (XRPUSDT 1h) timed out after 10s - check this machine's internet access to data-api.binance.vision.
+[tick] SOLUSDT failed: Binance klines (SOLUSDT 1h) timed out after 10s - check this machine's internet access to data-api.binance.vision.
+[tick] BNBUSDT failed: Binance klines (BNBUSDT 15m) timed out after 10s - check this machine's internet access to data-api.binance.vision.
+[tick] XRPUSDT failed: Binance klines (XRPUSDT 15m) timed out after 10s - check this machine's internet access to data-api.binance.vision.

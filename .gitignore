@@ -1,0 +1,10 @@
+.env
+.env.local
+node_modules/
+data/*.json
+benchmarks/
+reports/
+.crypto_regime_cache/
+robocrypto.log
+.DS_Store
+_to_delete/

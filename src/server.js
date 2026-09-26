@@ -159,11 +159,23 @@ async function route(req, res) {
     const mode = CHART_TIMEFRAMES.includes(url.searchParams.get('mode')) ? url.searchParams.get('mode') : 'swing';
     const snapshot = await loadSnapshot(symbol, mode);
     // EMA fields are included (not just OHLCV) so the chart can draw the
-    // fast/slow EMA lines and mark fresh crosses itself, instead of just
-    // plotting close price - see CHART_EMA_KEYS in app.js for which pair
-    // applies to which timeframe. atr14 is included so the chart can
-    // annotate the current candle's volatility band (close +/- 1x ATR14).
-    const trimmed = snapshot.candles.slice(-120).map((c) => ({
+    // EMA 9/20/50 lines and mark fresh crosses itself, instead of just
+    // plotting close price - see CHART_EMA_TRIO in app.js. atr14 is included
+    // so the chart can annotate the current candle's volatility band
+    // (close +/- 1x ATR14).
+    // Chart display window: narrowed (2026-09-20/22, chat) to the trailing 7
+    // days for the intraday timeframes (15m/1h/4H) and the trailing 30 days
+    // (~1 month) for the daily/swing chart - was 120 days (~4 months), which
+    // read as noise once you were looking for a specific setup rather than
+    // the broad regime. This only trims what's SENT to the chart;
+    // analyzeStructure() below still reads the full snapshot.candles (up to
+    // ~400 raw candles per mode - see marketData.js's RAW_FETCH_LIMIT), so
+    // support/resistance/BOS/CHoCH detection - and EMA9/20/50 themselves,
+    // which are computed over that full history before this trim - are
+    // unaffected by how few candles end up on screen.
+    const CHART_WINDOW_CANDLES = { scalping: 7 * 24 * 4, dayTrade: 7 * 24, '4h': Math.round(7 * 24 / 4), swing: 30 };
+    const windowSize = CHART_WINDOW_CANDLES[mode] ?? 30;
+    const trimmed = snapshot.candles.slice(-windowSize).map((c) => ({
       time: c.time, date: c.date, open: c.open, high: c.high, low: c.low, close: c.close, volume: c.volume,
       ema9: c.ema9, ema20: c.ema20, ema21: c.ema21, ema50: c.ema50, atr14: c.atr14
     }));

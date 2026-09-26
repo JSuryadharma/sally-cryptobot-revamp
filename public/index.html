@@ -27,6 +27,28 @@
     <main id="views">
       <!-- HOME -->
       <section id="view-home" class="view">
+        <div class="card pulse-card" id="marketPulseCard">
+          <div class="section-title-sm">Market pulse</div>
+          <div class="pulse-top">
+            <div class="pulse-mood">
+              <div class="pulse-mood-value" id="pulseMoodValue">-</div>
+              <div class="pulse-mood-label" id="pulseMoodLabel">Reading your watchlist...</div>
+            </div>
+            <div class="pulse-breadth" id="pulseBreadth"></div>
+          </div>
+          <div class="pulse-regime" id="pulseRegime"></div>
+          <div class="pulse-columns">
+            <div class="pulse-col">
+              <div class="pulse-col-title">Signals to watch</div>
+              <div id="pulseSignals" class="pulse-list"></div>
+            </div>
+            <div class="pulse-col">
+              <div class="pulse-col-title">Top movers</div>
+              <div id="pulseMovers" class="pulse-list"></div>
+            </div>
+          </div>
+        </div>
+
         <div class="card balance-card">
           <div class="balance-card-row">
             <div>
@@ -42,27 +64,29 @@
           </div>
         </div>
 
-        <div class="card backtest-card" id="backtestCard">
-          <div class="section-title-sm">Last backtest verdict</div>
-          <div class="confidence-row" style="align-items:center">
-            <span class="badge badge-neutral" id="verdictBadge">-</span>
-            <div>
-              <div class="row-symbol" id="verdictScore">No backtest run yet</div>
-              <div class="summary-text" id="verdictMeta" style="margin-top:2px">Run one now, or run <code>node scripts/benchmark.mjs</code> on your own machine for a longer window.</div>
+        <div class="home-row">
+          <div class="card backtest-card" id="backtestCard">
+            <div class="section-title-sm">Last backtest verdict</div>
+            <div class="confidence-row" style="align-items:center">
+              <span class="badge badge-neutral" id="verdictBadge">-</span>
+              <div>
+                <div class="row-symbol" id="verdictScore">No backtest run yet</div>
+                <div class="summary-text" id="verdictMeta" style="margin-top:2px">Run one now, or run <code>node scripts/benchmark.mjs</code> on your own machine for a longer window.</div>
+              </div>
             </div>
+            <div class="view-toggle" id="backtestMonthsRow">
+              <button class="view-toggle-btn active" data-months="1">1 month</button>
+              <button class="view-toggle-btn" data-months="3">3 months</button>
+              <button class="view-toggle-btn" data-months="6">6 months</button>
+            </div>
+            <button id="runBacktestBtn" class="btn-ghost" style="width:100%; margin-top:10px">Run backtest now</button>
+            <div class="hint" id="backtestRunHint" style="display:none">Running - fetches real Binance history across your watchlist, usually 15-30s for 1 month. Don't close this tab.</div>
           </div>
-          <div class="view-toggle" id="backtestMonthsRow">
-            <button class="view-toggle-btn active" data-months="1">1 month</button>
-            <button class="view-toggle-btn" data-months="3">3 months</button>
-            <button class="view-toggle-btn" data-months="6">6 months</button>
-          </div>
-          <button id="runBacktestBtn" class="btn-ghost" style="width:100%; margin-top:10px">Run backtest now</button>
-          <div class="hint" id="backtestRunHint" style="display:none">Running - fetches real Binance history across your watchlist, usually 15-30s for 1 month. Don't close this tab.</div>
-        </div>
 
-        <div class="card list-card positions-card">
-          <div class="section-title-sm">Open positions</div>
-          <div id="positionsList" class="stack"></div>
+          <div class="card list-card positions-card">
+            <div class="section-title-sm">Open positions</div>
+            <div id="positionsList" class="stack"></div>
+          </div>
         </div>
 
         <div class="card list-card notifications-card">
@@ -91,6 +115,11 @@
         </div>
 
         <div id="watchlistSection">
+          <div class="filter-pills" id="marketSortRow">
+            <button class="filter-pill active" data-sort="armed">Armed first</button>
+            <button class="filter-pill" data-sort="confidence">Confidence</button>
+            <button class="filter-pill" data-sort="change">Change %</button>
+          </div>
           <div id="watchlistList" class="stack"></div>
         </div>
 
@@ -113,6 +142,7 @@
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01z"/></svg>
           </button>
         </div>
+        <div class="coin-top-row">
         <div class="chart-col">
         <div class="card coin-header">
           <div>
@@ -132,6 +162,7 @@
         </div>
         </div>
 
+        <div class="coin-side-col">
         <div class="card card-signal">
           <div class="section-title-sm">Signal significance</div>
           <div class="structure-row">
@@ -166,6 +197,8 @@
           <div class="mode-row" id="modeRow"></div>
           <div class="summary-text" id="modeReason">-</div>
         </div>
+        </div>
+        </div>
 
         <div class="card card-performance">
           <div class="section-title-sm">Performance</div>
@@ -198,6 +231,7 @@
 
       <!-- SETTINGS -->
       <section id="view-settings" class="view hidden">
+        <div class="settings-col">
         <div class="card card-autotrade">
           <div class="section-title-sm">Auto-trade</div>
           <label class="toggle-row"><span>Trade 24/7 automatically</span><input type="checkbox" id="autoTradeToggle" /></label>
@@ -219,6 +253,27 @@
             <div class="hint">Auto lets each coin's daily trend strength (ADX) pick swing/scalping/day-trade for itself. Pinning a mode forces every watchlist coin to trade on that mode's rules, even on days the regime picker would have chosen something else. A coin already holding a position keeps trading under the mode it was bought under - pinning never moves a live trade's stop/target.</div>
           </div>
         </div>
+
+        <div class="card card-ai">
+          <div class="section-title-sm">AI advisor</div>
+          <div class="view-toggle" id="aiModeToggle">
+            <button class="view-toggle-btn active" data-mode="local">Local (free)</button>
+            <button class="view-toggle-btn" data-mode="openai">OpenAI</button>
+          </div>
+          <div id="aiOpenaiFields">
+            <label class="setting-label-row" style="margin-top:2px"><span>API base URL</span></label>
+            <input id="aiBaseUrl" class="input" placeholder="https://api.openai.com/v1/responses" />
+            <label class="setting-label-row"><span>Model</span></label>
+            <select id="aiModel" class="input"></select>
+            <label class="setting-label-row"><span>API key</span></label>
+            <input id="aiApiKey" class="input" type="password" placeholder="sk-..." />
+            <button id="saveAi" class="btn btn-buy" style="width:100%">Save AI settings</button>
+          </div>
+          <div class="summary-text" id="aiStatus">-</div>
+        </div>
+        </div>
+
+        <div class="settings-col">
         <div class="card card-telegram">
           <div class="section-title-sm">Telegram</div>
           <label class="toggle-row"><span>Enabled</span><input type="checkbox" id="telegramToggle" /></label>
@@ -238,25 +293,6 @@
             <button id="addSymbolBtn" class="btn-ghost">Add</button>
           </div>
         </div>
-
-        <div class="card card-ai">
-          <div class="section-title-sm">AI advisor</div>
-          <div class="view-toggle" id="aiModeToggle">
-            <button class="view-toggle-btn active" data-mode="local">Local (free)</button>
-            <button class="view-toggle-btn" data-mode="openai">OpenAI</button>
-          </div>
-          <div id="aiOpenaiFields">
-            <label class="setting-label-row" style="margin-top:2px"><span>API base URL</span></label>
-            <input id="aiBaseUrl" class="input" placeholder="https://api.openai.com/v1/responses" />
-            <label class="setting-label-row"><span>Model</span></label>
-            <select id="aiModel" class="input"></select>
-            <label class="setting-label-row"><span>API key</span></label>
-            <input id="aiApiKey" class="input" type="password" placeholder="sk-..." />
-            <button id="saveAi" class="btn btn-buy" style="width:100%">Save AI settings</button>
-          </div>
-          <div class="summary-text" id="aiStatus">-</div>
-        </div>
-
         <div class="card card-params">
           <div class="section-title-sm">Trading parameters</div>
           <label class="setting-label-row"><span>Starting balance (Rp)</span></label>
@@ -274,6 +310,7 @@
           <input id="paramBinanceBaseUrl" class="input" placeholder="https://data-api.binance.vision" />
           <button id="saveParams" class="btn btn-buy" style="width:100%; margin-top:4px">Save trading parameters</button>
           <div class="hint">Takes effect on the next refresh cycle - no restart needed.</div>
+        </div>
         </div>
 
       </section>

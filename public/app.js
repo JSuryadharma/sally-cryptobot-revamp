@@ -12,7 +12,8 @@ const state = {
   movers: [],
   settings: null,
   lastDetail: null,
-  backtestVerdict: null
+  backtestVerdict: null,
+  marketSort: 'armed' // 'armed' | 'confidence' | 'change' - see #marketSortRow
 };
 
 const MODES = ['swing', 'scalping', 'dayTrade'];
@@ -22,15 +23,15 @@ const CHART_TIMEFRAMES = ['scalping', 'dayTrade', '4h', 'swing'];
 const INTERVAL_LABEL = { swing: '1D', scalping: '15m', dayTrade: '1h', '4h': '4H' };
 const KLINE_DURATION_LABEL = { swing: '1 candle = 1 day', scalping: '1 candle = 15 minutes', dayTrade: '1 candle = 1 hour', '4h': '1 candle = 4 hours' };
 const TIMEFRAME_TITLE = { swing: 'Swing (1D)', scalping: 'Scalping (15m)', dayTrade: 'Day-trade (1h)', '4h': '4-hour chart' };
-// Which EMA pair the chart overlays per timeframe - matches STRATEGY_PARAMS
-// in decisionEngine.js for the three trading modes; '4h' isn't a trading
-// mode (chart-only) so it reuses the 9/21 pair as the closest fit.
-const CHART_EMA_KEYS = {
-  swing: { fast: 'ema20', slow: 'ema50' },
-  scalping: { fast: 'ema9', slow: 'ema21' },
-  dayTrade: { fast: 'ema9', slow: 'ema21' },
-  '4h': { fast: 'ema9', slow: 'ema21' }
-};
+// The chart overlays EMA 9/20/50 together on every timeframe (2026-09-20,
+// chat) - previously each timeframe only showed two of these (its own
+// STRATEGY_PARAMS pair from decisionEngine.js, e.g. 20/50 for swing, 9/21 for
+// the rest), so the "9-20-50 alignment" read the Simple-strategy discussion
+// relies on wasn't visible together on any single chart. The "EMA fast/slow"
+// values in the Technical Analysis indicator grid (renderCoinDetail) are
+// unrelated - those reflect the coin's ACTIVE trading mode's own strategy
+// pair, not the chart's selected timeframe, and are left as they were.
+const CHART_EMA_TRIO = { fast: 'ema9', mid: 'ema20', slow: 'ema50' };
 
 const $ = (id) => document.getElementById(id);
 const fmtIdr = (n) => 'Rp ' + Math.round(n || 0).toLocaleString('id-ID');
@@ -221,6 +222,23 @@ async function loadMarket() {
   renderMarket();
 }
 
+function sortCoins(coins, mode) {
+  const arr = [...coins];
+  if (mode === 'confidence') {
+    arr.sort((a, b) => (b.entryOrExit?.confidencePct ?? -1) - (a.entryOrExit?.confidencePct ?? -1));
+  } else if (mode === 'change') {
+    arr.sort((a, b) => (b.latest?.changePct ?? -Infinity) - (a.latest?.changePct ?? -Infinity));
+  } else {
+    arr.sort((a, b) => {
+      const aArmed = a.entryOrExit?.armedLevel != null ? 1 : 0;
+      const bArmed = b.entryOrExit?.armedLevel != null ? 1 : 0;
+      if (aArmed !== bArmed) return bArmed - aArmed;
+      return (b.entryOrExit?.confidencePct ?? -1) - (a.entryOrExit?.confidencePct ?? -1);
+    });
+  }
+  return arr;
+}
+
 function badgeClass(label) {
   if (label === 'Bullish') return 'badge-bullish';
   if (label === 'Bearish') return 'badge-bearish';
@@ -231,11 +249,11 @@ function renderMarket() {
   const list = $('watchlistList');
   list.innerHTML = '';
   const query = ($('marketSearch').value || '').trim().toUpperCase();
-  const visibleCoins = query ? state.coins.filter((c) => c.symbol.includes(query)) : state.coins;
+  const visibleCoins = sortCoins(query ? state.coins.filter((c) => c.symbol.includes(query)) : state.coins, state.marketSort);
   if (!state.coins.length) list.innerHTML = '<div class="empty-hint">Loading watchlist...</div>';
   else if (!visibleCoins.length) list.innerHTML = `<div class="empty-hint">No watchlist coin matches "${escapeHtml(query)}".</div>`;
   for (const coin of visibleCoins) {
-    list.appendChild(coinRow(coin.symbol, coin.latest?.close, coin.latest?.changePct, coin.summary?.label, coin.activeMode, coin.entryOrExit?.confidencePct, coin.sparkline));
+    list.appendChild(coinRow(coin.symbol, coin.latest?.close, coin.latest?.changePct, coin.summary?.label, coin.activeMode, coin.entryOrExit, coin.sparkline));
   }
 
   const movers = $('moversList');
@@ -256,6 +274,7 @@ function renderMarket() {
   }
 
   renderTickerStrip();
+  renderMarketPulse();
 }
 
 // Desktop-only ticker strip along the top of the shell (hidden on mobile via
@@ -263,18 +282,131 @@ function renderMarket() {
 // the Market tab - no new data source, no new endpoint. It's as fresh as the
 // last Market-tab visit or the initial app load, since that's when
 // renderMarket() (and therefore this) runs.
+//
+// Phase 3: each chip also gets a small pulsing amber dot when that coin is
+// "armed" (entryOrExit.armedLevel set - the same EMA/BB-retest wait state
+// the Market list's "Armed" badge and the Market Pulse card already surface,
+// see coinRow() and renderMarketPulse() above). Purely a glance-level cue
+// that something is close to firing while you're not on the Market tab -
+// same data, no new endpoint, hover for the same detail the badge shows.
 function renderTickerStrip() {
   const el = $('tickerStrip');
   if (!el || !state.coins.length) return;
   el.innerHTML = state.coins.slice(0, 14).map((c) => {
     const chg = c.latest?.changePct ?? 0;
-    return `<span class="ticker-chip"><b>${c.symbol.replace('USDT', '')}</b><span class="ticker-price">${fmtUsd(c.latest?.close)}</span><span class="${chg >= 0 ? 'up' : 'down'}">${fmtPct(chg)}</span></span>`;
+    const armedLevel = c.entryOrExit?.armedLevel;
+    const armedTitle = armedLevel != null
+      ? `Armed at ${armedLevel} (${c.entryOrExit.triggerKind === 'bb' ? 'Bollinger' : 'EMA'} retest) - waiting ${c.entryOrExit.barsWaited ?? 0}/${c.entryOrExit.windowBars ?? '?'} bars`
+      : '';
+    const dot = armedLevel != null ? `<span class="ticker-signal-dot" title="${escapeHtml(armedTitle)}"></span>` : '';
+    return `<span class="ticker-chip">${dot}<b>${c.symbol.replace('USDT', '')}</b><span class="ticker-price">${fmtUsd(c.latest?.close)}</span><span class="${chg >= 0 ? 'up' : 'down'}">${fmtPct(chg)}</span></span>`;
   }).join('');
 }
 
-function coinRow(symbol, price, changePct, label, mode, confidencePct, sparkline) {
+// Dashboard "Market pulse" card - aggregates the same per-coin fields the
+// Market tab and Coin Detail already display (summary label/gauge from
+// aiAdvisor.js, activeMode, entryOrExit.armedLevel), just rolled up across
+// the whole watchlist instead of one coin at a time. Nothing here reads a
+// new endpoint or changes what the robot decides - it's a client-side
+// aggregation of data loadMarket() already fetched.
+function renderMarketPulse() {
+  const card = $('marketPulseCard');
+  if (!card) return;
+  const coins = state.coins || [];
+  const withSummary = coins.filter((c) => c.summary?.label);
+  const moodEl = $('pulseMoodValue');
+  const moodLabelEl = $('pulseMoodLabel');
+  const breadthEl = $('pulseBreadth');
+  const regimeEl = $('pulseRegime');
+  const signalsEl = $('pulseSignals');
+  const moversEl = $('pulseMovers');
+
+  if (!withSummary.length) {
+    moodEl.textContent = '-';
+    moodEl.className = 'pulse-mood-value';
+    moodLabelEl.textContent = 'Waiting for watchlist data...';
+    breadthEl.innerHTML = '';
+    regimeEl.innerHTML = '';
+    signalsEl.innerHTML = '<div class="empty-hint">No data yet.</div>';
+    moversEl.innerHTML = '<div class="empty-hint">No data yet.</div>';
+    return;
+  }
+
+  // Mood: average of each coin's Bearish(0)<->Bullish(100) gauge score -
+  // same scoreToGaugePct() scale already driving the Coin Detail gauge.
+  const avgGauge = Math.round(withSummary.reduce((sum, c) => sum + (c.summary.gaugePct ?? 50), 0) / withSummary.length);
+  moodEl.textContent = String(avgGauge);
+  moodEl.className = 'pulse-mood-value ' + (avgGauge >= 60 ? 'up' : avgGauge <= 40 ? 'down' : '');
+  moodLabelEl.textContent = avgGauge >= 60
+    ? 'Bullish tilt across your watchlist'
+    : avgGauge <= 40
+      ? 'Bearish tilt across your watchlist'
+      : 'Mixed / range-bound watchlist';
+
+  const counts = { Bullish: 0, Neutral: 0, Bearish: 0 };
+  for (const c of withSummary) counts[c.summary.label] = (counts[c.summary.label] || 0) + 1;
+  breadthEl.innerHTML = `
+    <span class="badge badge-bullish">${counts.Bullish} bullish</span>
+    <span class="badge badge-neutral">${counts.Neutral} neutral</span>
+    <span class="badge badge-bearish">${counts.Bearish} bearish</span>`;
+
+  // Regime mix: swing = the mode picked when there's a genuine, contained
+  // trend (recommendMode() in aiAdvisor.js); scalping/dayTrade both mean it
+  // picked a shorter timeframe because the daily trend was choppy or too
+  // volatile - "trending vs choppy" at a glance, no new computation.
+  const regimeCounts = { swing: 0, scalping: 0, dayTrade: 0 };
+  for (const c of coins) if (c.activeMode) regimeCounts[c.activeMode] = (regimeCounts[c.activeMode] || 0) + 1;
+  const trending = regimeCounts.swing;
+  const choppy = regimeCounts.scalping + regimeCounts.dayTrade;
+  regimeEl.innerHTML = `<span>${trending} trending (swing)</span><span>${choppy} choppy (scalp / day-trade)</span>`;
+
+  // Signals to watch: coins the entry logic has already armed (waiting on a
+  // retest) - the same armedLevel/triggerKind the chart annotates per-coin,
+  // just surfaced across the whole watchlist without opening each one.
+  const armed = coins
+    .filter((c) => c.entryOrExit?.armedLevel != null)
+    .sort((a, b) => (b.entryOrExit.confidencePct ?? 0) - (a.entryOrExit.confidencePct ?? 0))
+    .slice(0, 5);
+  signalsEl.innerHTML = '';
+  if (!armed.length) {
+    signalsEl.innerHTML = '<div class="empty-hint">No armed setups right now.</div>';
+  } else {
+    for (const c of armed) {
+      const kind = c.entryOrExit.triggerKind === 'bb' ? 'BB retest' : 'EMA retest';
+      const row = document.createElement('div');
+      row.className = 'pulse-row';
+      row.innerHTML = `<span class="pulse-row-symbol">${c.symbol}</span><span class="pulse-row-mid">${kind}${c.entryOrExit.directionBlocked ? ' · blocked' : ''}</span><span class="badge-confidence">${c.entryOrExit.confidencePct ?? 0}%</span>`;
+      row.addEventListener('click', () => openCoin(c.symbol));
+      signalsEl.appendChild(row);
+    }
+  }
+
+  // Top movers: reuse state.movers (already fetched alongside state.coins
+  // in this same loadMarket() call) ranked by absolute move instead of raw
+  // volume, so a big loser surfaces here just as readily as a big gainer.
+  moversEl.innerHTML = '';
+  const topMovers = [...(state.movers || [])].sort((a, b) => Math.abs(b.changePct ?? 0) - Math.abs(a.changePct ?? 0)).slice(0, 5);
+  if (!topMovers.length) {
+    moversEl.innerHTML = '<div class="empty-hint">No mover data.</div>';
+  } else {
+    for (const m of topMovers) {
+      const row = document.createElement('div');
+      row.className = 'pulse-row';
+      row.innerHTML = `<span class="pulse-row-symbol">${m.symbol}</span><span class="pulse-row-change" style="color:${(m.changePct ?? 0) >= 0 ? 'var(--bullish)' : 'var(--bearish)'}">${fmtPct(m.changePct)}</span>`;
+      row.addEventListener('click', () => addToWatchlistAndOpen(m.symbol));
+      moversEl.appendChild(row);
+    }
+  }
+}
+
+function coinRow(symbol, price, changePct, label, mode, entryOrExit, sparkline) {
   const row = document.createElement('div');
   row.className = 'row-item';
+  const confidencePct = entryOrExit?.confidencePct;
+  const armedLevel = entryOrExit?.armedLevel;
+  const armedTitle = armedLevel != null
+    ? `Armed at ${armedLevel} (${entryOrExit.triggerKind === 'bb' ? 'Bollinger' : 'EMA'} retest) - waiting ${entryOrExit.barsWaited ?? 0}/${entryOrExit.windowBars ?? '?'} bars`
+    : '';
   row.innerHTML = `
     <div class="row-left"><div class="coin-dot">${symbol.replace('USDT', '').slice(0, 3)}</div>
       <div><div class="row-symbol">${symbol}</div><div class="row-sub">${mode ? modeLabel(mode) : ''}</div></div></div>
@@ -282,7 +414,8 @@ function coinRow(symbol, price, changePct, label, mode, confidencePct, sparkline
     <div class="row-right">
       <div class="row-price">${price != null ? fmtUsd(price) : '-'}</div>
       <div class="row-change" style="color:${(changePct ?? 0) >= 0 ? 'var(--bullish)' : 'var(--bearish)'}">${changePct != null ? fmtPct(changePct) : ''}</div>
-      <div style="margin-top:4px; display:flex; gap:4px; justify-content:flex-end;">
+      <div style="margin-top:4px; display:flex; gap:4px; justify-content:flex-end; flex-wrap:wrap;">
+        ${armedLevel != null ? `<span class="badge badge-armed" title="${escapeHtml(armedTitle)}">Armed - ${entryOrExit.triggerKind === 'bb' ? 'BB' : 'EMA'} ${entryOrExit.barsWaited ?? 0}/${entryOrExit.windowBars ?? '?'}</span>` : ''}
         ${label ? `<span class="badge ${badgeClass(label)}">${label}</span>` : ''}
         ${confidencePct != null ? `<span class="badge-confidence">${confidencePct}%</span>` : ''}
       </div>
@@ -302,6 +435,14 @@ async function addToWatchlistAndOpen(symbol) {
 
 $('refreshMovers').addEventListener('click', loadMarket);
 $('marketSearch').addEventListener('input', renderMarket);
+
+document.querySelectorAll('#marketSortRow .filter-pill').forEach((btn) => {
+  btn.addEventListener('click', () => {
+    state.marketSort = btn.dataset.sort;
+    document.querySelectorAll('#marketSortRow .filter-pill').forEach((b) => b.classList.toggle('active', b === btn));
+    renderMarket();
+  });
+});
 
 $('refreshAllBtn').addEventListener('click', async () => {
   const btn = $('refreshAllBtn');
@@ -582,7 +723,7 @@ function drawChart(candles, highlightIndex) {
   if (!candles.length) return;
 
   const structure = state.chartStructure;
-  const emaKeys = CHART_EMA_KEYS[state.chartMode] || CHART_EMA_KEYS.swing;
+  const emaKeys = CHART_EMA_TRIO;
 
   // Trend structure: connect the last two same-direction swing pivots -
   // swing LOWS in an uptrend (higher lows), swing HIGHS in a downtrend
@@ -595,14 +736,18 @@ function drawChart(candles, highlightIndex) {
     trendPoints = structure.swingHighs.slice(-2);
   }
 
-  // The current (rightmost) candle's ATR14 volatility band - close +/- one
-  // ATR, the same envelope decisionEngine.js's own stop/target math is
-  // derived from. Shown as a standalone reference regardless of any open
-  // position or pending signal - see server.js's /candles route for atr14.
-  const lastCandle = candles.at(-1);
-  const atrBand = Number.isFinite(lastCandle?.atr14) && lastCandle.atr14 > 0
-    ? { high: lastCandle.close + lastCandle.atr14, low: Math.max(0, lastCandle.close - lastCandle.atr14), value: lastCandle.atr14 }
-    : null;
+  // ATR14 volatility envelope - close +/- one ATR, the same envelope
+  // decisionEngine.js's own stop/target math is derived from - computed PER
+  // CANDLE and drawn as two moving lines the price weaves through, not a
+  // single snapshot from just the latest candle held flat across the whole
+  // chart width (which is what this used to be: two static reference
+  // levels, not really a "band"). Shown as a standalone reference regardless
+  // of any open position or pending signal - see server.js's /candles route
+  // for atr14.
+  const atrBandSeries = candles.map((c) => (Number.isFinite(c.atr14) && c.atr14 > 0 && Number.isFinite(c.close))
+    ? { high: c.close + c.atr14, low: Math.max(0, c.close - c.atr14) }
+    : null);
+  const atrBand = atrBandSeries.at(-1);
 
   // Buy-point prediction: the armed EMA/BB-retest level from the live
   // combined-entry strategy (triggerVariants.js, via liveStrategy.js),
@@ -627,7 +772,7 @@ function drawChart(candles, highlightIndex) {
   if (trendPoints) {
     for (const p of trendPoints) { min = Math.min(min, p.price); max = Math.max(max, p.price); }
   }
-  if (atrBand) { min = Math.min(min, atrBand.low); max = Math.max(max, atrBand.high); }
+  for (const b of atrBandSeries) { if (b) { min = Math.min(min, b.low); max = Math.max(max, b.high); } }
   if (armedLevel != null) { min = Math.min(min, armedLevel); max = Math.max(max, armedLevel); }
   const range = (max - min) || 1;
   const yFor = (price) => h - 24 - ((price - min) / range) * (h - 40);
@@ -680,30 +825,39 @@ function drawChart(candles, highlightIndex) {
     legendItems.push({ label: `Trendline (${structure.trend})`, kind: 'dotted', color: 'rgba(143,217,168,0.9)' });
   }
 
-  // --- ATR annotation: the current candle's volatility band ------------------
-  // Drawn as two reference lines (high/low) tied together with a bracket at
-  // the current candle, so it reads as "this candle's range, not just its
-  // close" rather than a generic horizontal level.
+  // --- ATR band: a moving high/low envelope, not a static level --------------
+  // Purely a volatility visualization + the same stop/target math's input -
+  // it never feeds the entry trigger itself (that's still Bollinger Bands;
+  // see triggerVariants.js's detectBollingerBreakout / detectBbSqueezeBreakout).
+  // Drawn as two continuous lines the same way the EMA overlays below are,
+  // so it reads as an envelope price moves through over time.
   const ATR_COLOR = '#b389f0';
   if (atrBand) {
-    const yHigh = yFor(atrBand.high);
-    const yLow = yFor(atrBand.low);
-    const xLast = chartX(candles.length - 1, candles.length, w);
+    const drawAtrLine = (key) => {
+      let started = false;
+      ctx.beginPath();
+      atrBandSeries.forEach((b, i) => {
+        if (!b) { started = false; return; }
+        const x = chartX(i, candles.length, w);
+        const y = yFor(b[key]);
+        if (!started) { ctx.moveTo(x, y); started = true; } else { ctx.lineTo(x, y); }
+      });
+      ctx.stroke();
+    };
     ctx.setLineDash([2, 2]);
     ctx.strokeStyle = ATR_COLOR;
     ctx.globalAlpha = 0.55;
-    ctx.lineWidth = 1;
-    ctx.beginPath(); ctx.moveTo(5, yHigh); ctx.lineTo(w - 5, yHigh); ctx.stroke();
-    ctx.beginPath(); ctx.moveTo(5, yLow); ctx.lineTo(w - 5, yLow); ctx.stroke();
-    ctx.beginPath(); ctx.moveTo(xLast, yHigh); ctx.lineTo(xLast, yLow); ctx.stroke();
+    ctx.lineWidth = 1.25;
+    drawAtrLine('high');
+    drawAtrLine('low');
     ctx.globalAlpha = 1;
     ctx.setLineDash([]);
     ctx.fillStyle = ATR_COLOR;
     ctx.font = '9px -apple-system, sans-serif';
     ctx.textAlign = 'left';
-    ctx.fillText(`ATR high ${fmtUsd(atrBand.high)}`, 8, Math.max(10, yHigh - 3));
-    ctx.fillText(`ATR low ${fmtUsd(atrBand.low)}`, 8, Math.min(h - 30, yLow + 11));
-    legendItems.push({ label: `ATR14 band (±${fmtUsd(atrBand.value)})`, kind: 'dotted', color: ATR_COLOR });
+    ctx.fillText(`ATR high ${fmtUsd(atrBand.high)}`, 8, Math.max(10, yFor(atrBand.high) - 3));
+    ctx.fillText(`ATR low ${fmtUsd(atrBand.low)}`, 8, Math.min(h - 30, yFor(atrBand.low) + 11));
+    legendItems.push({ label: `ATR14 band (moving, close ±1 ATR)`, kind: 'dotted', color: ATR_COLOR });
   }
 
   // --- buy-point prediction: the armed retest level, if any ------------------
@@ -750,9 +904,13 @@ function drawChart(candles, highlightIndex) {
     ctx.fillRect(x - bodyWidth / 2, top, bodyWidth, bodyH);
   });
 
-  // --- EMA fast/slow overlay + every fresh-cross bar marked -----------------
-  const FAST_COLOR = '#f5a623', SLOW_COLOR = '#7c93e8';
-  const hasEma = candles.some((c) => Number.isFinite(c[emaKeys.fast]) && Number.isFinite(c[emaKeys.slow]));
+  // --- EMA 9/20/50 overlay + fast/mid fresh-cross bars marked ---------------
+  // Three lines now (was two) - see CHART_EMA_TRIO above. Cross markers stay
+  // on just the fast/mid pair (9 vs 20, the standard short-term EMA cross);
+  // EMA50 draws as a third trend reference without its own cross markers, to
+  // keep the chart from getting noisy with two separate cross series.
+  const FAST_COLOR = '#f5a623', MID_COLOR = '#7c93e8', SLOW_COLOR = '#c084fc';
+  const hasEma = candles.some((c) => Number.isFinite(c[emaKeys.fast]) && Number.isFinite(c[emaKeys.mid]) && Number.isFinite(c[emaKeys.slow]));
   if (hasEma) {
     const drawEma = (key, color) => {
       let started = false;
@@ -769,11 +927,13 @@ function drawChart(candles, highlightIndex) {
       ctx.stroke();
     };
     drawEma(emaKeys.slow, SLOW_COLOR);
+    drawEma(emaKeys.mid, MID_COLOR);
     drawEma(emaKeys.fast, FAST_COLOR);
-    legendItems.push({ label: `EMA ${emaKeys.fast.replace('ema', '')} (fast)`, kind: 'line', color: FAST_COLOR });
-    legendItems.push({ label: `EMA ${emaKeys.slow.replace('ema', '')} (slow)`, kind: 'line', color: SLOW_COLOR });
+    legendItems.push({ label: `EMA ${emaKeys.fast.replace('ema', '')}`, kind: 'line', color: FAST_COLOR });
+    legendItems.push({ label: `EMA ${emaKeys.mid.replace('ema', '')}`, kind: 'line', color: MID_COLOR });
+    legendItems.push({ label: `EMA ${emaKeys.slow.replace('ema', '')}`, kind: 'line', color: SLOW_COLOR });
 
-    const crosses = findEmaCrosses(candles, emaKeys.fast, emaKeys.slow);
+    const crosses = findEmaCrosses(candles, emaKeys.fast, emaKeys.mid);
     for (const cross of crosses) {
       const c = candles[cross.index];
       const x = chartX(cross.index, candles.length, w);
@@ -781,7 +941,7 @@ function drawChart(candles, highlightIndex) {
       ctx.fillStyle = cross.direction === 'bullish' ? '#34d399' : '#f0596a';
       ctx.beginPath(); ctx.arc(x, y, 3, 0, Math.PI * 2); ctx.fill();
     }
-    if (crosses.length) legendItems.push({ label: 'EMA cross', kind: 'dot', color: '#8fd9a8' });
+    if (crosses.length) legendItems.push({ label: 'EMA 9/20 cross', kind: 'dot', color: '#8fd9a8' });
   }
 
   // --- price axis labels (max/min) and date axis labels (first/last candle) ---
@@ -1098,7 +1258,11 @@ function escapeHtml(str) {
 
 // --- polling ---------------------------------------------------------------
 function refreshCurrentView() {
-  if (state.view === 'home') loadHome().catch(console.error);
+  // Home also pulls loadMarket()'s data (not just loadHome()'s own
+  // portfolio/notifications/backtest calls) so the Market Pulse card and
+  // the desktop ticker strip stay live while parked on the dashboard,
+  // instead of only refreshing whenever the user happens to visit Market.
+  if (state.view === 'home') { loadHome().catch(console.error); loadMarket().catch(console.error); }
   else if (state.view === 'market') loadMarket().catch(console.error);
   else if (state.view === 'coin' && state.coinSymbol) loadCoinDetail(state.coinSymbol).catch(console.error);
   else if (state.view === 'settings') loadSettings().catch(console.error);

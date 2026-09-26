@@ -1,12 +1,13 @@
 :root {
-  --bg: #0a0b0a;
-  --surface: #15170f;
-  --surface-2: #1e2118;
-  --border: #262a1f;
+  --bg: #0a0a12;
+  --surface: #15141f;
+  --surface-2: #1c1a2b;
+  --border: #2a2740;
   --text: #f2f4ee;
-  --text-muted: #98a396;
-  --accent: #8fd9a8;
-  --accent-strong: #6fe3a3;
+  --text-muted: #a29cb8;
+  --accent: #6d4fd1;
+  --accent-strong: #8467e0;
+  --accent-ink: #ffffff;
   --bullish: #34d399;
   --bearish: #f0596a;
   --neutral: #8a9490;
@@ -34,8 +35,8 @@ body {
 .brand { font-weight: 700; font-size: 15px; display: flex; align-items: center; gap: 10px; }
 .brand-mark {
   width: 34px; height: 34px; border-radius: 50%; flex-shrink: 0;
-  background: radial-gradient(circle at 30% 25%, var(--accent-strong), #1c3a2b 75%);
-  display: flex; align-items: center; justify-content: center; color: #06210f;
+  background: radial-gradient(circle at 30% 25%, var(--accent-strong), #241a4a 75%);
+  display: flex; align-items: center; justify-content: center; color: #fff;
 }
 .pill { font-size: 11px; font-weight: 500; padding: 3px 10px; border-radius: var(--radius-pill); }
 .pill-muted { background: var(--surface-2); color: var(--text-muted); }
@@ -49,12 +50,31 @@ main { flex: 1; padding: 8px 18px 96px; overflow-y: auto; }
 .hidden { display: none; }
 
 .card {
-  background: linear-gradient(165deg, var(--surface) 0%, #10120c 100%);
+  background: linear-gradient(165deg, var(--surface) 0%, #0d0c16 100%);
   border: 1px solid var(--border); border-radius: var(--radius-card);
   padding: 20px; margin-bottom: 14px;
 }
 
 .backtest-card { transition: background-color 0.4s ease, border-color 0.4s ease; }
+
+/* Dashboard "Market pulse" card - see renderMarketPulse() in app.js. */
+.pulse-top { display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; margin-bottom: 12px; }
+.pulse-mood { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; max-width: 260px; }
+.pulse-mood-value { font-size: 30px; font-weight: 700; letter-spacing: -0.02em; }
+.pulse-mood-value.up { color: var(--bullish); }
+.pulse-mood-value.down { color: var(--bearish); }
+.pulse-mood-label { font-size: 12px; color: var(--text-muted); }
+.pulse-breadth { display: flex; gap: 6px; flex-wrap: wrap; }
+.pulse-regime { display: flex; gap: 16px; font-size: 12px; color: var(--text-muted); margin-bottom: 14px; padding-bottom: 14px; border-bottom: 1px solid var(--border); }
+.pulse-columns { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+.pulse-col-title { font-size: 10px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-muted); margin-bottom: 8px; }
+.pulse-list { display: flex; flex-direction: column; gap: 0; }
+.pulse-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: 12px; padding: 7px 0; border-bottom: 1px solid var(--border); cursor: pointer; }
+.pulse-row:last-child { border-bottom: none; }
+.pulse-row-symbol { font-weight: 700; flex-shrink: 0; }
+.pulse-row-mid { color: var(--text-muted); font-size: 11px; flex: 1; text-align: left; padding: 0 6px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pulse-row-change { font-weight: 600; flex-shrink: 0; }
+
 .backtest-card.is-running { background: rgba(240,89,106,0.14); border-color: rgba(240,89,106,0.4); }
 .backtest-card.is-success { background: rgba(52,211,153,0.14); border-color: rgba(52,211,153,0.4); }
 .backtest-card.is-error { background: rgba(240,89,106,0.14); border-color: rgba(240,89,106,0.4); }
@@ -63,7 +83,7 @@ main { flex: 1; padding: 8px 18px 96px; overflow-y: auto; }
 .balance-card { position: relative; overflow: hidden; }
 .balance-card::before {
   content: ''; position: absolute; inset: 0;
-  background: radial-gradient(120% 90% at 15% -10%, rgba(143,217,168,0.16), transparent 60%);
+  background: radial-gradient(120% 90% at 15% -10%, rgba(109,79,209,0.18), transparent 60%);
   pointer-events: none;
 }
 .balance-card-row { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; flex-wrap: wrap; position: relative; }
@@ -107,6 +127,11 @@ main { flex: 1; padding: 8px 18px 96px; overflow-y: auto; }
 .badge-bullish { background: rgba(52,211,153,0.15); color: var(--bullish); }
 .badge-bearish { background: rgba(240,89,106,0.15); color: var(--bearish); }
 .badge-neutral { background: rgba(138,148,144,0.18); color: var(--neutral); }
+/* "Signal armed, waiting for retest" (see triggerVariants.js evaluateEntryWithRetest)
+   - not yet bullish/bearish/neutral, so it gets its own color rather than
+   overloading one of those three. Reuses --warn, same convention as the
+   CHoCH structure badge's "ambiguous, pay attention" state. */
+.badge-armed { background: rgba(245,166,35,0.16); color: var(--warn); white-space: nowrap; }
 
 .empty-hint { color: var(--text-muted); font-size: 13px; padding: 12px 4px; }
 
@@ -126,7 +151,7 @@ main { flex: 1; padding: 8px 18px 96px; overflow-y: auto; }
   width: 38px; height: 38px; border-radius: 50%; background: var(--surface-2); border: 1px solid var(--border);
   color: var(--text); display: flex; align-items: center; justify-content: center; cursor: pointer; flex-shrink: 0;
 }
-.icon-btn.active { background: rgba(143,217,168,0.16); border-color: var(--accent); color: var(--accent); }
+.icon-btn.active { background: rgba(109,79,209,0.16); border-color: var(--accent); color: var(--accent); }
 .icon-btn.active svg { fill: currentColor; }
 .icon-row { display: flex; gap: 8px; align-items: center; }
 
@@ -145,7 +170,8 @@ main { flex: 1; padding: 8px 18px 96px; overflow-y: auto; }
   flex-shrink: 0; background: var(--surface-2); border: 1px solid var(--border); color: var(--text-muted);
   border-radius: var(--radius-pill); padding: 8px 16px; font-size: 12px; font-weight: 600; cursor: pointer; white-space: nowrap;
 }
-.filter-pill.active { background: var(--accent); color: #06210f; border-color: var(--accent); }
+.filter-pill.active { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+#marketSortRow { margin-bottom: 10px; }
 
 /* A single rounded container split into equal segments, one active at a time
    - unmistakably a toggle (unlike a row of independent filter chips, which
@@ -153,7 +179,7 @@ main { flex: 1; padding: 8px 18px 96px; overflow-y: auto; }
    Watchlist/Top movers switch and Home's backtest window picker. */
 .view-toggle { display: flex; gap: 4px; background: var(--surface-2); border: 1px solid var(--border); border-radius: var(--radius-pill); padding: 4px; margin-bottom: 14px; }
 .view-toggle-btn { flex: 1; background: none; border: none; color: var(--text-muted); border-radius: var(--radius-pill); padding: 9px 10px; font-size: 12px; font-weight: 600; cursor: pointer; white-space: nowrap; }
-.view-toggle-btn.active { background: var(--accent); color: #06210f; }
+.view-toggle-btn.active { background: var(--accent); color: var(--accent-ink); }
 
 .coin-header { display: flex; align-items: center; justify-content: space-between; }
 .coin-title-row { display: flex; align-items: center; gap: 10px; }
@@ -168,7 +194,7 @@ main { flex: 1; padding: 8px 18px 96px; overflow-y: auto; }
   flex: 1; padding: 9px 6px; border-radius: var(--radius-pill); border: 1px solid var(--border);
   background: var(--surface); color: var(--text-muted); font-size: 12px; font-weight: 600; cursor: pointer;
 }
-.timeframe-btn.active { border-color: var(--accent); color: #06210f; background: var(--accent); }
+.timeframe-btn.active { border-color: var(--accent); color: var(--accent-ink); background: var(--accent); }
 
 .chart {
   width: 100%; height: 220px; background: var(--surface); border: 1px solid var(--border);
@@ -204,11 +230,11 @@ main { flex: 1; padding: 8px 18px 96px; overflow-y: auto; }
 .hint code { background: var(--surface-2); border-radius: 5px; padding: 1px 5px; }
 
 .rr-card { border: 1px solid var(--border); border-radius: 16px; padding: 12px 14px; cursor: pointer; background: var(--surface); }
-.rr-card.active { border-color: var(--accent); background: rgba(143,217,168,0.12); }
+.rr-card.active { border-color: var(--accent); background: rgba(109,79,209,0.14); }
 .rr-card-title { font-size: 13px; font-weight: 700; display: flex; justify-content: space-between; }
 .rr-card-desc { font-size: 11px; color: var(--text-muted); margin-top: 4px; }
 
-.badge-confidence { font-size: 10px; font-weight: 700; padding: 3px 9px; border-radius: var(--radius-pill); background: rgba(143,217,168,0.16); color: var(--accent); }
+.badge-confidence { font-size: 10px; font-weight: 700; padding: 3px 9px; border-radius: var(--radius-pill); background: rgba(109,79,209,0.18); color: var(--accent-ink); }
 
 .structure-row { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; flex-wrap: wrap; }
 .structure-badge { font-size: 11px; font-weight: 700; padding: 5px 12px; border-radius: var(--radius-pill); text-transform: uppercase; letter-spacing: 0.03em; }
@@ -229,7 +255,7 @@ main { flex: 1; padding: 8px 18px 96px; overflow-y: auto; }
 
 .mode-row { display: flex; gap: 8px; }
 .mode-chip { flex: 1; text-align: center; padding: 9px 6px; border-radius: 14px; border: 1px solid var(--border); font-size: 12px; color: var(--text-muted); }
-.mode-chip.active { border-color: var(--accent); color: #06210f; background: var(--accent); font-weight: 700; }
+.mode-chip.active { border-color: var(--accent); color: var(--accent-ink); background: var(--accent); font-weight: 700; }
 
 .indicator-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
 .indicator-cell { background: var(--surface-2); border: 1px solid var(--border); border-radius: 16px; padding: 12px 14px; }
@@ -270,33 +296,38 @@ main { flex: 1; padding: 8px 18px 96px; overflow-y: auto; }
   border-radius: var(--radius-pill); color: inherit;
 }
 .tab.active { color: var(--text); }
-.tab.active .tab-icon { background: rgba(143,217,168,0.16); color: var(--accent); }
+.tab.active .tab-icon { background: rgba(109,79,209,0.2); color: var(--accent); }
 
 /* ===================================================================
    Desktop shell — Chainx-referenced revamp (UI/UX only)
-   Adds: a violet chrome accent (kept separate from the bullish/bearish/
-   warn trio the chart legend and structure badges depend on), Manrope
-   display type for headings/big numbers, a persistent sidebar built by
-   repositioning the existing tabbar, a ticker strip, and a card-grid
-   reflow of Home / Market / Coin detail / Settings at >=960px. Nothing
-   below this point changes color, font or layout below the breakpoint —
-   the shipping mobile app (tabbar + single column) is untouched.
+   --accent/--accent-strong (above) now ARE the violet chrome accent used
+   throughout the app for selection/active chrome (toggles, chips, the
+   sidebar). --bullish/--bearish/--warn stay untouched - the chart legend,
+   ATR band, structure badges and P&L colors all key off those directly
+   and are never touched here. Below this point: a persistent sidebar
+   built by repositioning the existing tabbar, a ticker strip, and a
+   card-grid reflow of Home / Market / Coin detail / Settings at
+   >=960px. Nothing here changes color, font or layout below the
+   breakpoint - the shipping mobile app (tabbar + single column) is
+   untouched.
    =================================================================== */
 :root {
-  --violet: #6d4fd1;
-  --violet-strong: #8467e0;
-  --violet-soft: rgba(109, 79, 209, 0.14);
-  --violet-soft-2: rgba(109, 79, 209, 0.28);
   --font-display: 'Manrope', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
 }
 
 .ticker-strip { display: none; }
 .side-brand { display: none; }
 
-.card.list-card { display: block; }
-
 @media (min-width: 960px) {
-  .app { max-width: 1280px; margin: 0 auto; padding-left: 240px; position: relative; }
+  /* .app no longer centers itself as one box - that fought the sidebar,
+     which is position:fixed to the real viewport edge regardless of
+     where a centered, max-width .app would start. Instead .app spans the
+     full viewport, reserves 240px on the left for the sidebar, and each
+     content row (topbar / ticker / main) centers itself independently
+     inside the remaining space. */
+  .app { max-width: none; margin: 0; padding-left: 240px; position: relative; }
+
+  .topbar, .ticker-strip, main { max-width: 1040px; margin-left: auto; margin-right: auto; }
 
   .tabbar {
     position: fixed; left: 0; top: 0; bottom: 0; width: 240px; max-width: 240px;
@@ -308,23 +339,23 @@ main { flex: 1; padding: 8px 18px 96px; overflow-y: auto; }
   .side-brand-mark {
     width: 30px; height: 30px; border-radius: 50%; flex-shrink: 0; display: flex; align-items: center;
     justify-content: center; color: #fff;
-    background: radial-gradient(circle at 30% 25%, var(--violet-strong), #241a4a 75%);
+    background: radial-gradient(circle at 30% 25%, var(--accent-strong), #241a4a 75%);
   }
   .side-brand-text { font-family: var(--font-display); font-weight: 800; font-size: 15px; }
   .tab {
-    flex-direction: row; justify-content: flex-start; gap: 11px; padding: 10px 12px;
+    flex: none; flex-direction: row; justify-content: flex-start; gap: 11px; padding: 10px 12px;
     border-radius: 12px; font-size: 13px;
   }
   .tab .tab-icon { width: 26px; height: 26px; border-radius: 8px; }
-  .tab.active { color: var(--text); background: var(--violet-soft); }
-  .tab.active .tab-icon { background: transparent; color: var(--violet); }
+  .tab.active { color: var(--accent); background: rgba(109,79,209,0.16); font-weight: 700; }
+  .tab.active .tab-icon { background: transparent; color: var(--accent); }
 
-  .topbar { padding: 22px 0 14px; }
+  .topbar { padding: 22px 28px 14px; }
   .brand { font-family: var(--font-display); font-size: 16px; font-weight: 800; }
   .balance-chip { font-size: 15px; font-family: var(--font-display); font-weight: 800; color: var(--text); }
 
   .ticker-strip {
-    display: flex; gap: 18px; overflow-x: auto; padding: 10px 2px; margin-bottom: 6px;
+    display: flex; gap: 18px; overflow-x: auto; padding: 10px 28px; margin-bottom: 6px;
     border-top: 1px solid var(--border); border-bottom: 1px solid var(--border); scrollbar-width: none;
   }
   .ticker-strip::-webkit-scrollbar { display: none; }
@@ -333,45 +364,64 @@ main { flex: 1; padding: 8px 18px 96px; overflow-y: auto; }
   .ticker-price { font-variant-numeric: tabular-nums; color: var(--text); }
   .ticker-chip .up { color: var(--bullish); font-weight: 600; }
   .ticker-chip .down { color: var(--bearish); font-weight: 600; }
+  /* Phase 3: armed-coin cue on the ticker strip - same amber as .badge-armed,
+     a soft pulse so it reads as "live/waiting" rather than a static icon. */
+  .ticker-signal-dot {
+    width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; background: var(--warn);
+    box-shadow: 0 0 0 0 rgba(245,166,35,0.55);
+    animation: ticker-signal-pulse 1.8s ease-out infinite;
+  }
+  @keyframes ticker-signal-pulse {
+    0% { box-shadow: 0 0 0 0 rgba(245,166,35,0.55); }
+    70% { box-shadow: 0 0 0 5px rgba(245,166,35,0); }
+    100% { box-shadow: 0 0 0 0 rgba(245,166,35,0); }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .ticker-signal-dot { animation: none; }
+  }
 
-  main { padding: 8px 0 60px; }
+  main { padding: 8px 28px 60px; }
   .equity, .market-title, .coin-price { font-family: var(--font-display); }
 
   .card { transition: border-color 0.15s ease; }
-  .card:hover { border-color: var(--violet-soft-2); }
+  .card:hover { border-color: rgba(109,79,209,0.28); }
 
-  /* Dashboard */
-  #view-home { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; align-items: start; }
-  #view-home > .balance-card { grid-column: 1 / -1; }
-  #view-home > .backtest-card { grid-column: 1 / 2; }
-  #view-home > .positions-card { grid-column: 2 / 3; }
-  #view-home > .notifications-card { grid-column: 1 / -1; }
+  /* Dashboard - plain block flow. .home-row is the only two-up split
+     (backtest verdict + open positions) and is a flex row, not a shared
+     CSS Grid track: with Grid, a short card sharing a row with a tall
+     one gets stranded with dead space below it before the next row can
+     start (that was the Settings-page gap bug) - flex sizes each side
+     to its own content instead. */
+  #view-home:not(.hidden) { display: block; }
+  .home-row { display: flex; align-items: flex-start; gap: 16px; margin-bottom: 14px; }
+  .home-row > .card { flex: 1; min-width: 0; margin-bottom: 0; }
 
   /* Market */
   #watchlistList.stack, #moversList.stack { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
 
-  /* Coin detail — chart column left, supporting cards masonry right,
-     full-width detail cards below, sticky action bar at the bottom.
-     The chart itself (#coinChart canvas + drawChart()) is untouched -
-     only the card chrome around it moves. */
-  #view-coin { display: grid; grid-template-columns: 1.6fr 1fr; gap: 16px; align-items: start; }
-  #view-coin > .section-title-row { grid-column: 1 / -1; grid-row: 1; margin-top: 0; }
-  #view-coin > .chart-col { grid-column: 1; grid-row: 2 / span 3; }
-  #view-coin > .card-signal { grid-column: 2; grid-row: 2; }
-  #view-coin > .card-technical { grid-column: 2; grid-row: 3; }
-  #view-coin > .card-strategy { grid-column: 2; grid-row: 4; }
-  #view-coin > .card-performance, #view-coin > .card-freshness, #view-coin > .card-near { grid-column: 1 / -1; }
-  #view-coin > .card-position { grid-column: 1 / -1; position: sticky; bottom: 16px; z-index: 4; }
+  /* Coin detail — chart column left, supporting cards stacked right in
+     .coin-side-col (a flex column, not grid-row tracks shared with the
+     chart column, for the same masonry reason as above). Full-width
+     detail cards below, sticky action bar at the bottom. The chart
+     itself (#coinChart canvas + drawChart()) is untouched - only the
+     card chrome around it moves. */
+  #view-coin:not(.hidden) { display: block; }
+  #view-coin > .section-title-row { margin-top: 0; }
+  .coin-top-row { display: flex; align-items: flex-start; gap: 16px; margin-bottom: 14px; }
+  .coin-top-row > .chart-col { flex: 1.6; min-width: 0; }
+  .coin-top-row > .coin-side-col { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 16px; }
+  .coin-side-col > .card { margin-bottom: 0; }
+  #view-coin > .card-position { position: sticky; bottom: 16px; z-index: 4; }
 
-  /* Automation (left) / Settings (right) */
-  #view-settings { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; align-items: start; }
-  #view-settings > .card-autotrade { grid-column: 1; grid-row: 1; }
-  #view-settings > .card-ai { grid-column: 1; grid-row: 2; }
-  #view-settings > .card-telegram { grid-column: 2; grid-row: 1; }
-  #view-settings > .card-watchlist { grid-column: 2; grid-row: 2; }
-  #view-settings > .card-params { grid-column: 2; grid-row: 3; }
+  /* Automation (left) / Settings (right) - two independent flex columns;
+     same masonry fix as above, and it's also what lets .card-ai now
+     live in the Automation column beside .card-autotrade (see index.html -
+     it was reordered there and out of the Settings column). */
+  #view-settings:not(.hidden) { display: flex; align-items: flex-start; gap: 16px; }
+  .settings-col { display: flex; flex-direction: column; gap: 16px; flex: 1 1 0; min-width: 0; }
+  .settings-col > .card { margin-bottom: 0; }
 }
 
-@media (min-width: 1200px) {
-  .app { max-width: 1360px; }
+@media (min-width: 1280px) {
+  .topbar, .ticker-strip, main { max-width: 1180px; }
 }

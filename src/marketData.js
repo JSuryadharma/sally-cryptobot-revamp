@@ -13,6 +13,18 @@ import { enrichCandles } from './indicators.js';
 const CACHE_TTL_MS = { swing: 10 * 60_000, scalping: 2 * 60_000, dayTrade: 5 * 60_000, '4h': 15 * 60_000 };
 const cache = new Map();
 
+// Raw kline fetch count per mode - historically a flat 400 everywhere. The
+// chart's display window was narrowed (2026-09-20, chat) to the trailing 7
+// days for the intraday timeframes - server.js's /candles route slices this
+// down further - and 15m needs 672 candles to cover 7 days, more than the
+// flat 400 covered (only ~4 days). The other modes stay at 400: already far
+// more than a week (1h -> ~16 days, 4h -> ~66 days, 1D -> ~13 months) so
+// nothing else needs to change. A longer raw fetch never hurts the live
+// strategy's own indicator warm-up either (EMA/RSI/ATR only get more settled
+// with more lookback), so this is safe to share with loadSnapshot's normal
+// (non-chart) callers too.
+const RAW_FETCH_LIMIT = { scalping: 700 };
+
 export async function loadSnapshot(symbol, mode, { force = false, baseUrl } = {}) {
   const key = `${symbol}:${mode}`;
   const cached = cache.get(key);
@@ -20,7 +32,7 @@ export async function loadSnapshot(symbol, mode, { force = false, baseUrl } = {}
   if (!force && cached && now - cached.fetchedAt < (CACHE_TTL_MS[mode] ?? 5 * 60_000)) {
     return cached.snapshot;
   }
-  const raw = await fetchKlines(symbol, mode, 400, baseUrl);
+  const raw = await fetchKlines(symbol, mode, RAW_FETCH_LIMIT[mode] || 400, baseUrl);
   const candles = enrichCandles(raw);
 
   // Binance's klines response (fetched with no end time) always includes the

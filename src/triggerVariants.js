@@ -85,6 +85,35 @@ export function detectBollingerBreakout(candles) {
   return { fired: fresh, level: curr.bbUpper, rsiOk: true, adxOk: true };
 }
 
+// ATR/Keltner-channel-style breakout - requested 2026-09-20 as an alternative
+// to the Bollinger breakout above: same "single fresh bar beyond the upper
+// band" shape, but the band is EMA20 +/- ATR_BREAKOUT_MULT*ATR14 (a Keltner
+// channel) instead of SMA20 +/- 2 stdev (Bollinger). ATR reacts to TRUE
+// RANGE - gaps and high/low wicks included - so this band widens on raw
+// volatility regardless of whether closes themselves are dispersing, and it
+// reuses atr14, the same value the stop/target sizing already depends on, so
+// the breakout band and the resulting stop distance move together instead of
+// being sized off two unrelated volatility measures.
+//
+// NOT yet wired into evaluateEntryCombinedRetest/makeCombinedEntryState below
+// (the live path robotEngine.js actually calls) - see
+// evaluateEntryCombinedRetestAtr/makeCombinedEntryStateAtr further down for
+// the ready-to-swap-in alternative, kept separate on purpose until the
+// backtest comparison is reviewed (see chat: BTCUSDT, 6 months, underperformed
+// the live BB variant at every multiplier tried - 1.2 through 3).
+export const ATR_BREAKOUT_MULT = 2; // comparable band width to Bollinger's 2-stdev default
+
+export function detectAtrBreakout(candles) {
+  const curr = candles.at(-1);
+  const prev = candles.at(-2);
+  if (!curr || !prev) return { fired: false };
+  if (!finite(curr.ema20, curr.atr14, curr.close, prev.ema20, prev.atr14, prev.close)) return { fired: false };
+  const currUpper = curr.ema20 + curr.atr14 * ATR_BREAKOUT_MULT;
+  const prevUpper = prev.ema20 + prev.atr14 * ATR_BREAKOUT_MULT;
+  const fresh = prev.close <= prevUpper && curr.close > currUpper;
+  return { fired: fresh, level: roundToTick(currUpper), rsiOk: true, adxOk: true };
+}
+
 // --- retest gate: stateful, called once per bar per (symbol, mode) with a
 // small object the caller persists between bars.
 //
@@ -157,6 +186,22 @@ export function evaluateEntryCombinedRetest(candles, mode, state, opts = {}) {
   const bbResult = evaluateEntryWithRetest(candles, mode, detectBollingerBreakout, state.bb, { ...opts, triggerKind: 'bb' });
   if (bbResult.action === 'BUY') return bbResult;
   return emaResult.reason?.startsWith('armed') || emaResult.reason?.startsWith('signal') ? emaResult : bbResult;
+}
+
+// Same shape as evaluateEntryCombinedRetest above, with the ATR/Keltner
+// breakout (detectAtrBreakout) swapped in for the Bollinger breakout as the
+// second entry trigger. Not called from robotEngine.js yet - see the note
+// above detectAtrBreakout for why, and the chat for the backtest numbers.
+export function makeCombinedEntryStateAtr() {
+  return { ema: makeRetestState(), atr: makeRetestState() };
+}
+
+export function evaluateEntryCombinedRetestAtr(candles, mode, state, opts = {}) {
+  const emaResult = evaluateEntryWithRetest(candles, mode, detectEmaCross, state.ema, { ...opts, triggerKind: 'ema' });
+  if (emaResult.action === 'BUY') return emaResult;
+  const atrResult = evaluateEntryWithRetest(candles, mode, detectAtrBreakout, state.atr, { ...opts, triggerKind: 'atr' });
+  if (atrResult.action === 'BUY') return atrResult;
+  return emaResult.reason?.startsWith('armed') || emaResult.reason?.startsWith('signal') ? emaResult : atrResult;
 }
 
 // --- market structure (Break of Structure / Change of Character) ----------

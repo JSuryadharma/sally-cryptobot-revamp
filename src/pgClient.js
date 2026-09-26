@@ -89,6 +89,49 @@ export async function pgSet(key, value) {
   );
 }
 
+export async function pgSetMany(entries) {
+  await ensureSchema();
+  const client = await getPool().connect();
+  try {
+    await client.query('BEGIN');
+    for (const [key, value] of entries) {
+      await client.query(
+        `INSERT INTO kv_store (key, value, updated_at) VALUES ($1, $2, now())
+         ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = now()`,
+        [key, JSON.stringify(value)]
+      );
+    }
+    await client.query('COMMIT');
+  } catch (error) {
+    await client.query('ROLLBACK').catch(() => {});
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
+// A row-based lease rather than pg_advisory_lock: session-level advisory locks
+// are tied to one pooled connection and leak across serverless invocations.
+// The conditional upsert only overwrites a lease whose expiry has passed, so
+// exactly one caller gets a RETURNING row.
+export async function pgTryAcquireLease(key, owner, ttlMs) {
+  await ensureSchema();
+  const now = Date.now();
+  const { rows } = await getPool().query(
+    `INSERT INTO kv_store (key, value, updated_at) VALUES ($1, $2, now())
+     ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = now()
+     WHERE COALESCE((kv_store.value->>'expiresAt')::bigint, 0) < $3
+     RETURNING key`,
+    [key, JSON.stringify({ owner, expiresAt: now + ttlMs }), now]
+  );
+  return rows.length === 1;
+}
+
+export async function pgReleaseLease(key, owner) {
+  await ensureSchema();
+  await getPool().query(`DELETE FROM kv_store WHERE key = $1 AND value->>'owner' = $2`, [key, owner]);
+}
+
 export async function pgDel(key) {
   await ensureSchema();
   await getPool().query('DELETE FROM kv_store WHERE key = $1', [key]);

@@ -222,4 +222,6 @@ function bollingerBands(values, period, deviationMultiplier) {
 function isFiniteNumber(value) { return Number.isFinite(value); }
 function valueOrNull(value) { return isFiniteNumber(value) ? value : null; }
 function roundOrNull(value) { return isFiniteNumber(value) ? round(value) : null; }
-function round(value) { return Math.round(value * 10000) / 10000; }
+// Significant digits, not fixed decimals: a fixed 4-decimal round erased ATR
+// and EMA precision on sub-$0.10 coins (e.g. a DOGE 15m ATR of 0.00049 -> 0.0005).
+function round(value) { return value === 0 ? 0 : Number(value.toPrecision(10)); }

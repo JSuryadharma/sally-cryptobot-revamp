@@ -7,7 +7,9 @@
   "scripts": {
     "start": "node --env-file-if-exists=.env src/server.js",
     "dev": "node --env-file-if-exists=.env --watch src/server.js",
-    "check": "node --check src/server.js && node --check src/robotEngine.js && node --check src/decisionEngine.js && node --check src/settings.js && node --check src/triggerVariants.js && node --check src/liveStrategy.js && node --check src/riskManager.js && node --check src/strategyState.js && node --check public/app.js"
+    "check": "node --check src/server.js && node --check src/robotEngine.js && node --check src/decisionEngine.js && node --check src/settings.js && node --check src/triggerVariants.js && node --check src/liveStrategy.js && node --check src/riskManager.js && node --check src/strategyState.js && node --check src/engine/tick.js && node --check src/engine/core.js && node --check api/engine/tick.js && node --check scripts/backtest.mjs && node --check public/app.js",
+    "test": "node --test test/*.test.mjs",
+    "backtest": "node scripts/backtest.mjs"
   },
   "engines": {
     "node": ">=22"

@@ -1,0 +1,37 @@
+name: engine-tick
+
+# Drives the paper-trading engine on Vercel, where no process stays alive
+# between requests. GitHub runs schedules from the default branch only and can
+# start them several minutes late; the engine tolerates late or skipped ticks.
+on:
+  schedule:
+    - cron: '*/5 * * * *'
+  workflow_dispatch:
+
+concurrency:
+  group: engine-tick
+  cancel-in-progress: false
+
+jobs:
+  tick:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - name: Call the engine tick endpoint
+        env:
+          ENGINE_URL: ${{ vars.ENGINE_URL }}
+          ENGINE_TICK_SECRET: ${{ secrets.ENGINE_TICK_SECRET }}
+        run: |
+          if [ -z "$ENGINE_URL" ] || [ -z "$ENGINE_TICK_SECRET" ]; then
+            echo "Set the ENGINE_URL repository variable and the ENGINE_TICK_SECRET repository secret." >&2
+            exit 1
+          fi
+          status=$(curl -sS -o response.json -w '%{http_code}' --retry 2 --retry-delay 5 --max-time 90 \
+            -X POST "$ENGINE_URL/api/engine/tick" \
+            -H "Authorization: Bearer $ENGINE_TICK_SECRET")
+          cat response.json; echo
+          # 409 means another tick holds the lease - not a failure.
+          if [ "$status" != "200" ] && [ "$status" != "409" ]; then
+            echo "Tick failed with HTTP $status" >&2
+            exit 1
+          fi

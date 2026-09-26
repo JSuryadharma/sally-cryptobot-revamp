@@ -14,16 +14,18 @@ import { sendTelegramMessage, getTelegramStatus } from './notifications.js';
 import { analyzeStructure } from './marketStructure.js';
 import { readJson } from './storage.js';
 import { runAndStoreBacktest, VERDICT_KEY } from './backtestRunner.js';
-import { refreshIfStale, readCoinsCache, forceRefreshNow } from './refreshWatchlist.js';
+import { readCoinsCache, writeCoinCacheEntry } from './refreshWatchlist.js';
 import { checkConnection } from './pgClient.js';
+import { checkBearer } from './auth.js';
+import { handleTickRequest, readEngineStatus, runTick, runTickIfDue, withEngineLease } from './engine/tick.js';
 
 const notifications = new NotificationCenter();
-const latestBySymbol = new Map(); // symbol -> last refreshSymbol() result
 // '4h' is chart-only (see marketData.js) - not one of the three trading modes.
 const CHART_TIMEFRAMES = ['swing', 'scalping', 'dayTrade', '4h'];
 
 const server = http.createServer((req, res) => {
   route(req, res).catch((error) => {
+    if (error.code === 'LEASE_BUSY') return sendJson(res, 409, { error: error.message });
     console.error('[server] unhandled error:', error);
     sendJson(res, 500, { error: error.message || 'Internal error' });
   });
@@ -32,10 +34,23 @@ const server = http.createServer((req, res) => {
 const hub = new WebSocketHub(server);
 notifications.setBroadcast((message) => hub.broadcast(message));
 
+const ADMIN_ROUTES = [
+  /^\/api\/settings$/,
+  /^\/api\/coins\/[A-Z0-9]+\/(trade|refresh)$/i,
+  /^\/api\/backtest\/run$/,
+  /^\/api\/telegram\/test$/,
+  /^\/api\/notifications\/read$/
+];
+
 async function route(req, res) {
   const url = new URL(req.url, `http://${req.headers.host}`);
   const pathname = url.pathname;
   const method = req.method;
+
+  if (method !== 'GET' && ADMIN_ROUTES.some((pattern) => pattern.test(pathname))) {
+    const denied = checkBearer(req, 'ADMIN_TOKEN');
+    if (denied) return sendJson(res, denied.status, { error: denied.error });
+  }
 
   if (pathname === '/api/health' && method === 'GET') {
     const db = await checkConnection();
@@ -57,35 +72,27 @@ async function route(req, res) {
     });
   }
 
+  if (pathname === '/api/engine/tick') {
+    const { status, body } = await handleTickRequest(req);
+    return sendJson(res, status, body);
+  }
+
+  if (pathname === '/api/engine/status' && method === 'GET') {
+    return sendJson(res, 200, await readEngineStatus());
+  }
+
+  // Read-only: trading happens only in the engine tick (src/engine/tick.js).
   if (pathname === '/api/coins' && method === 'GET') {
     const settings = await readSettings();
-    // The in-memory Map is fast on a persistent host (Railway/Render/a VPS/
-    // local), but on a serverless host (Vercel) it starts empty on every
-    // invocation - the 24/7 tick() loop below has no persistent process to
-    // keep running on. refreshIfStale reads the shared cache and, if it's
-    // older than STALE_AFTER_MS (2 minutes), refreshes it inline before
-    // returning - the real mechanism this app relies on for freshness now,
-    // since Vercel Hobby's cron cap (once/day) can't do it alone. Concurrent
-    // requests de-dupe into one shared refresh (see refreshWatchlist.js).
-    const { coins: sharedCache } = await refreshIfStale(settings.watchlist);
-    const results = settings.watchlist.map((symbol) => latestBySymbol.get(symbol) || sharedCache[symbol]).filter(Boolean);
-    return sendJson(res, 200, { coins: results, watchlist: settings.watchlist });
+    const { coins: sharedCache, updatedAt } = await readCoinsCache();
+    const results = settings.watchlist.map((symbol) => sharedCache[symbol]).filter(Boolean);
+    return sendJson(res, 200, { coins: results, watchlist: settings.watchlist, updatedAt });
   }
 
   if (pathname === '/api/coins/refresh-all' && method === 'POST') {
-    // Manual, on-demand version of api/cron/refresh.js's job - exists because
-    // Vercel Cron's frequency is plan-gated (Hobby caps actual runs to once a
-    // day no matter the configured schedule), so this button works
-    // regardless of plan/cron timing. Takes ~15-30s for a full watchlist.
     try {
-      // forceRefreshNow shares its in-flight guard with refreshIfStale (see
-      // refreshWatchlist.js) - if the dashboard's own automatic poll, the
-      // GitHub Actions cron, and a manual click all land close together,
-      // they join the one run in progress instead of racing separate
-      // refreshAll() passes against the same portfolio.
-      const { cache, errors } = await forceRefreshNow(undefined);
-      for (const [symbol, result] of Object.entries(cache)) latestBySymbol.set(symbol, result);
-      return sendJson(res, 200, { refreshedCount: Object.keys(cache).length, errors });
+      const result = await runTickIfDue({ reason: 'dashboard' });
+      return sendJson(res, 200, result);
     } catch (error) {
       console.error('[api/coins/refresh-all] failed:', error);
       return sendJson(res, 500, { error: error.message || 'Refresh failed.' });
@@ -95,20 +102,20 @@ async function route(req, res) {
   const coinMatch = pathname.match(/^\/api\/coins\/([A-Z0-9]+)$/i);
   if (coinMatch && method === 'GET') {
     const symbol = coinMatch[1].toUpperCase();
-    let result = latestBySymbol.get(symbol);
-    if (!result) {
-      const { coins: sharedCache } = await readCoinsCache();
-      result = sharedCache[symbol];
+    let { coins: sharedCache } = await readCoinsCache();
+    if (!sharedCache[symbol]) {
+      // A just-added watchlist coin has no cache entry until the next tick.
+      await runTickIfDue({ reason: 'new-coin' }).catch((error) => console.warn('[api/coins/:symbol] tick failed:', error.message));
+      ({ coins: sharedCache } = await readCoinsCache());
     }
-    if (!result) result = await refreshOne(symbol);
-    return sendJson(res, 200, result);
+    if (!sharedCache[symbol]) return sendJson(res, 404, { error: `${symbol} has not been scanned yet - it appears after the next engine tick.` });
+    return sendJson(res, 200, sharedCache[symbol]);
   }
 
   const refreshMatch = pathname.match(/^\/api\/coins\/([A-Z0-9]+)\/refresh$/i);
   if (refreshMatch && method === 'POST') {
     const symbol = refreshMatch[1].toUpperCase();
-    const result = await refreshOne(symbol, { force: true });
-    return sendJson(res, 200, result);
+    return sendJson(res, 200, await withEngineLease(() => refreshOne(symbol, { force: true })));
   }
 
   const tradeMatch = pathname.match(/^\/api\/coins\/([A-Z0-9]+)\/trade$/i);
@@ -116,41 +123,7 @@ async function route(req, res) {
     const symbol = tradeMatch[1].toUpperCase();
     const body = await readBody(req);
     const action = String(body.action || '').toUpperCase();
-    const cached = latestBySymbol.get(symbol);
-    if (!cached) return sendJson(res, 400, { error: 'Coin has not loaded yet - try again in a moment.' });
-
-    const settings = await readSettings();
-    const cfg = await portfolioCfg(settings);
-    if (action === 'BUY') {
-      const mode = cached.activeMode;
-      const rrMultiple = RR_TEMPLATES[settings.autoTrade.riskRewardTemplate]?.ratio ?? RR_TEMPLATES.balanced.ratio;
-      // planManualEntry needs the *enriched* current candle, which lightSnapshot kept as `latest`.
-      const plan = planManualEntry(cached.modes[mode]?.latest ? [cached.modes[mode].latest] : [cached.latest], mode, { rrMultiple });
-      const result = await openPosition({
-        symbol, mode,
-        entryPrice: plan.entryPrice, stopPrice: plan.stopPrice, targetPrice: plan.targetPrice,
-        maxHoldUntil: plan.maxHoldUntil, reason: plan.reason
-      }, cfg);
-      if (result.transaction) {
-        await notifications.notify({ title: `Manual BUY ${symbol}`, message: `Bought at ${plan.entryPrice}.`, level: 'info', category: 'trade' });
-      }
-      await refreshOne(symbol, { force: true });
-      return sendJson(res, 200, result);
-    }
-    if (action === 'SELL') {
-      const portfolio = await getPortfolio(cfg);
-      const position = portfolio.positions[symbol];
-      if (!position) return sendJson(res, 400, { error: 'No open position to sell.' });
-      const price = cached.latest?.close ?? position.entryPrice;
-      const result = await closePosition({ symbol, exitPrice: price, reason: 'Manual sell - user override.' }, cfg);
-      if (result.transaction) {
-        const pnl = Math.round(result.transaction.realizedProfitIdr).toLocaleString('id-ID');
-        await notifications.notify({ title: `Manual SELL ${symbol}`, message: `Sold at ${price}. P&L: Rp ${pnl}.`, level: result.transaction.realizedProfitIdr >= 0 ? 'success' : 'warning', category: 'trade' });
-      }
-      await refreshOne(symbol, { force: true });
-      return sendJson(res, 200, result);
-    }
-    return sendJson(res, 400, { error: 'action must be BUY or SELL.' });
+    return sendJson(res, ...(await withEngineLease(() => manualTrade(symbol, action))));
   }
 
   const candlesMatch = pathname.match(/^\/api\/coins\/([A-Z0-9]+)\/candles$/i);
@@ -232,9 +205,10 @@ async function route(req, res) {
     const settings = await readSettings();
     const cfg = await portfolioCfg(settings);
     const portfolio = await getPortfolio(cfg);
+    const { coins } = await readCoinsCache();
     const prices = {};
     for (const symbol of Object.keys(portfolio.positions)) {
-      prices[symbol] = latestBySymbol.get(symbol)?.latest?.close;
+      prices[symbol] = coins[symbol]?.latest?.close;
     }
     return sendJson(res, 200, markToMarket(portfolio, prices, cfg));
   }
@@ -281,26 +255,45 @@ async function loadLatestBacktestVerdict() {
 
 async function refreshOne(symbol, opts = {}) {
   const result = await refreshSymbol(symbol, { notifications, broadcast: (m) => hub.broadcast(m), ...opts });
-  latestBySymbol.set(symbol, result);
+  await writeCoinCacheEntry(symbol, result);
   return result;
 }
 
-// --- 24/7 auto-refresh loop -------------------------------------------------
-// Runs every REFRESH_INTERVAL_SEC for every symbol on the watchlist, entirely
-// independent of anyone having the dashboard open - the point of "trade 24/7"
-// is that this loop keeps going as long as the Node process is running.
-let refreshInFlight = false;
-async function tick() {
-  if (refreshInFlight) return;
-  refreshInFlight = true;
-  try {
-    const settings = await readSettings();
-    for (const symbol of settings.watchlist) {
-      await refreshOne(symbol).catch((error) => console.warn(`[tick] ${symbol} failed:`, error.message));
+// Caller holds the engine lease.
+async function manualTrade(symbol, action) {
+  if (action !== 'BUY' && action !== 'SELL') return [400, { error: 'action must be BUY or SELL.' }];
+  const { coins } = await readCoinsCache();
+  const cached = coins[symbol];
+  if (!cached) return [400, { error: 'Coin has not been scanned yet - try again after the next engine tick.' }];
+
+  const settings = await readSettings();
+  const cfg = await portfolioCfg(settings);
+  if (action === 'BUY') {
+    const mode = cached.activeMode;
+    const rrMultiple = RR_TEMPLATES[settings.autoTrade.riskRewardTemplate]?.ratio ?? RR_TEMPLATES.balanced.ratio;
+    const plan = planManualEntry(cached.modes[mode]?.latest ? [cached.modes[mode].latest] : [cached.latest], mode, { rrMultiple });
+    const result = await openPosition({
+      symbol, mode,
+      entryPrice: plan.entryPrice, stopPrice: plan.stopPrice, targetPrice: plan.targetPrice,
+      maxHoldUntil: plan.maxHoldUntil, reason: plan.reason
+    }, cfg);
+    if (result.transaction) {
+      await notifications.notify({ title: `Manual BUY ${symbol}`, message: `Bought at ${plan.entryPrice}.`, level: 'info', category: 'trade' });
     }
-  } finally {
-    refreshInFlight = false;
+    await refreshOne(symbol, { force: true });
+    return [200, result];
   }
+  const portfolio = await getPortfolio(cfg);
+  const position = portfolio.positions[symbol];
+  if (!position) return [400, { error: 'No open position to sell.' }];
+  const price = cached.latest?.close ?? position.entryPrice;
+  const result = await closePosition({ symbol, exitPrice: price, reason: 'Manual sell - user override.' }, cfg);
+  if (result.transaction) {
+    const pnl = Math.round(result.transaction.realizedProfitIdr).toLocaleString('id-ID');
+    await notifications.notify({ title: `Manual SELL ${symbol}`, message: `Sold at ${price}. P&L: Rp ${pnl}.`, level: result.transaction.realizedProfitIdr >= 0 ? 'success' : 'warning', category: 'trade' });
+  }
+  await refreshOne(symbol, { force: true });
+  return [200, result];
 }
 
 // --- static file serving -----------------------------------------------------
@@ -347,11 +340,10 @@ function readBody(req) {
   });
 }
 
-// Self-rescheduling instead of a fixed setInterval, so refreshIntervalSec -
-// now a DB-backed setting, not an env var read once at startup - can be
-// changed from the Settings page and take effect on the very next cycle.
+// Local/persistent-host scheduler. On Vercel the GitHub Actions workflow calls
+// /api/engine/tick instead, because serverless instances don't keep timers alive.
 async function scheduleTick() {
-  await tick().catch((error) => console.warn('[tick] failed:', error.message));
+  await runTick({ reason: 'local-loop' }).catch((error) => console.warn('[tick] failed:', error.message));
   const settings = await readSettings().catch(() => null);
   const intervalSec = settings?.refreshIntervalSec ?? 60;
   setTimeout(scheduleTick, intervalSec * 1000);
@@ -359,5 +351,5 @@ async function scheduleTick() {
 
 server.listen(config.port, () => {
   console.log(`robocrypto listening on http://localhost:${config.port}`);
-  scheduleTick(); // runs once immediately, then reschedules itself using the current setting each time
+  if (!process.env.VERCEL) scheduleTick();
 });

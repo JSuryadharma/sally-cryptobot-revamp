@@ -1,4 +1,4 @@
-import { isPgConfigured, pgGet, pgSet, pgDel } from './pgClient.js';
+import { isPgConfigured, pgGet, pgSet, pgDel, pgSetMany, pgTryAcquireLease, pgReleaseLease } from './pgClient.js';
 
 // Every other module only ever calls readJson/writeJson - same interface as
 // robotrader's storage.js, now backed by Postgres only. Local files are not
@@ -32,4 +32,20 @@ export async function writeJson(fileName, value) {
 export async function deleteJson(fileName) {
   requirePg();
   await pgDel(KV_PREFIX + fileName);
+}
+
+// Writes several keys in one transaction, so e.g. portfolio and engine state never diverge.
+export async function writeJsonMany(entries) {
+  requirePg();
+  await pgSetMany(Object.entries(entries).map(([fileName, value]) => [KV_PREFIX + fileName, value]));
+}
+
+export async function tryAcquireLease(name, owner, ttlMs) {
+  requirePg();
+  return pgTryAcquireLease(`${KV_PREFIX}lease:${name}`, owner, ttlMs);
+}
+
+export async function releaseLease(name, owner) {
+  requirePg();
+  await pgReleaseLease(`${KV_PREFIX}lease:${name}`, owner);
 }

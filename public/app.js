@@ -38,8 +38,29 @@ const fmtIdr = (n) => 'Rp ' + Math.round(n || 0).toLocaleString('id-ID');
 const fmtPct = (n) => (n >= 0 ? '+' : '') + (n ?? 0).toFixed(2) + '%';
 const fmtUsd = (n) => '$' + Number(n ?? 0).toLocaleString('en-US', { maximumFractionDigits: n < 10 ? 4 : 2 });
 
-async function api(path, opts) {
-  const res = await fetch(path, opts && { method: opts.method || 'GET', headers: { 'Content-Type': 'application/json' }, body: opts.body ? JSON.stringify(opts.body) : undefined });
+const ADMIN_TOKEN_KEY = 'sally-admin-token';
+
+function readAdminToken() {
+  try { return localStorage.getItem(ADMIN_TOKEN_KEY) || ''; } catch { return ''; }
+}
+
+function saveAdminToken(token) {
+  try { token ? localStorage.setItem(ADMIN_TOKEN_KEY, token) : localStorage.removeItem(ADMIN_TOKEN_KEY); } catch { /* storage blocked - token lasts for this request only */ }
+}
+
+async function api(path, opts, { retried = false } = {}) {
+  const headers = { 'Content-Type': 'application/json' };
+  const token = readAdminToken();
+  if (opts?.method && opts.method !== 'GET' && token) headers.Authorization = `Bearer ${token}`;
+  const res = await fetch(path, opts && { method: opts.method || 'GET', headers, body: opts.body ? JSON.stringify(opts.body) : undefined });
+  if (res.status === 401 && !retried) {
+    const entered = window.prompt('Admin token required for this action:');
+    if (entered) {
+      saveAdminToken(entered.trim());
+      return api(path, opts, { retried: true });
+    }
+  }
+  if (res.status === 401) saveAdminToken('');
   if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || `Request failed (${res.status})`);
   return res.json();
 }
@@ -451,7 +472,7 @@ $('refreshAllBtn').addEventListener('click', async () => {
   btn.classList.add('active');
   try {
     await api('/api/coins/refresh-all', { method: 'POST' });
-    await loadMarket();
+    await Promise.all([loadMarket(), loadEngineStatus()]);
   } catch (error) {
     console.error('refresh-all failed:', error);
   } finally {
@@ -1268,34 +1289,38 @@ function refreshCurrentView() {
   else if (state.view === 'settings') loadSettings().catch(console.error);
 }
 
-// Automatic version of the "Refresh All" button (see refreshAllBtn's click
-// handler above) - the dashboard used to depend entirely on an external
-// trigger for a real data refresh: either someone clicking that button, or
-// the GitHub Actions cron (.github/workflows/trading-loop.yml) hitting this
-// same POST /api/coins/refresh-all roughly every 5 minutes. That's fine for
-// keeping the paper-trading robot alive with nobody watching, but it means
-// up to 5 minutes of visibly stale data for anyone who actually has the tab
-// open. This loop closes that gap: every 30s, force a real watchlist
-// refresh from the browser itself, then re-render whatever's on screen.
-// refresh-all's own in-flight guard (see refreshWatchlist.js's
-// forceRefreshNow) makes this safe to run alongside the cron and the manual
-// button without racing a second concurrent pass over the portfolio.
-const AUTO_REFRESH_ALL_MS = 30000;
-async function autoRefreshAllLoop() {
+function describeAge(ms) {
+  const minutes = Math.round(ms / 60_000);
+  if (minutes < 1) return 'just now';
+  if (minutes < 60) return `${minutes} min ago`;
+  const hours = Math.round(minutes / 60);
+  return hours < 48 ? `${hours}h ago` : `${Math.round(hours / 24)}d ago`;
+}
+
+async function loadEngineStatus() {
+  const pill = $('engineStatus');
   try {
-    await api('/api/coins/refresh-all', { method: 'POST' });
+    const status = await api('/api/engine/status');
+    const label = status.ageMs == null ? 'never ran' : describeAge(status.ageMs);
+    pill.textContent = status.halt ? `Engine: paused` : `Engine: ${label}`;
+    pill.title = status.halt
+      ? `New entries paused until ${new Date(status.halt.until).toLocaleString()} - ${status.halt.reason}`
+      : `Last engine tick: ${status.lastTickAt ? new Date(status.lastTickAt).toLocaleString() : 'none yet'}`;
+    pill.classList.toggle('stale', Boolean(status.stale));
+    pill.classList.toggle('ok', !status.stale && !status.halt);
   } catch (error) {
-    console.error('[autoRefreshAllLoop] refresh-all failed:', error);
+    pill.textContent = 'Engine: unknown';
+    pill.classList.remove('ok');
+    pill.classList.add('stale');
   }
-  refreshCurrentView();
 }
 
 async function bootstrap() {
   state.config = await api('/api/config');
   state.settings = await api('/api/settings');
-  await Promise.all([loadHome(), loadMarket()]);
+  await Promise.all([loadHome(), loadMarket(), loadEngineStatus()]);
   setInterval(refreshCurrentView, 8000);
-  setInterval(autoRefreshAllLoop, AUTO_REFRESH_ALL_MS);
+  setInterval(loadEngineStatus, 30_000);
 }
 
 bootstrap().catch((error) => {

@@ -5,7 +5,7 @@ name: engine-tick
 # start them several minutes late; the engine tolerates late or skipped ticks.
 on:
   schedule:
-    - cron: '*/5 * * * *'
+    - cron: '2-59/5 * * * *' # every 5 minutes, starting at 2 minutes past the hour
   workflow_dispatch:
 
 concurrency:

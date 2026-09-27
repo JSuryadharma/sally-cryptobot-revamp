@@ -59,12 +59,16 @@ function parseArgs(argv) {
   return args;
 }
 
+// Disk caching is a CLI-only convenience (see --no-cache) for re-running
+// scripts/backtest.mjs locally without refetching Binance history every time.
+// It must stay opt-in: the API route (src/backtestRunner.js) runs this on
+// Vercel, whose deployed filesystem is read-only outside /tmp, so writing a
+// cache file there fails every call.
 async function loadRaw({ baseUrl, symbol, tf, startMs, endMs, useCache }) {
+  if (!useCache) return fetchKlinesRange(baseUrl, symbol, tf, startMs, endMs);
   const cacheDir = path.join(ROOT, 'benchmarks', '.cache');
   const file = path.join(cacheDir, `${symbol}_${tf}_${startMs}_${endMs}.json`);
-  if (useCache) {
-    try { return JSON.parse(await fs.readFile(file, 'utf8')); } catch { /* not cached yet */ }
-  }
+  try { return JSON.parse(await fs.readFile(file, 'utf8')); } catch { /* not cached yet */ }
   const raw = await fetchKlinesRange(baseUrl, symbol, tf, startMs, endMs);
   await fs.mkdir(cacheDir, { recursive: true });
   await fs.writeFile(file, JSON.stringify(raw));

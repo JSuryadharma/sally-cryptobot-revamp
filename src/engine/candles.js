@@ -41,6 +41,21 @@ export async function loadLiveSeries(symbols, { baseUrl, nowMs = Date.now() } = 
   return { series, live, errors };
 }
 
+const CHART_TTL_MS = { '15m': 60_000, '1h': 3 * 60_000, '4h': 10 * 60_000, '1d': 15 * 60_000 };
+const chartCache = new Map();
+
+// Chart data for the coin page, including the still-forming candle so the
+// chart tracks the live price. Cached per instance to spare Binance's limits.
+export async function loadChartCandles(symbol, tf, { baseUrl, nowMs = Date.now() } = {}) {
+  const key = `${symbol}:${tf}`;
+  const cached = chartCache.get(key);
+  if (cached && nowMs - cached.at < CHART_TTL_MS[tf]) return cached.candles;
+  const raw = await fetchKlines(symbol, tf, LIVE_LIMITS[tf], baseUrl);
+  const candles = enrichCandles(raw);
+  chartCache.set(key, { at: nowMs, candles });
+  return candles;
+}
+
 async function fetchJsonWithRetry(url, attempts = 3) {
   for (let attempt = 1; ; attempt += 1) {
     try {

@@ -23,7 +23,7 @@ const KV_PREFIX = 'robocrypto:';
 
 // Every key this app has ever persisted under data/*.json - see storage.js's
 // callers (settings.js, tradingRobot.js, notifications.js, backtestRunner.js,
-// refreshWatchlist.js). Migrating a name that never existed locally is a
+// coinsCache.js). Migrating a name that never existed locally is a
 // harmless no-op (reported as "no local file").
 const KNOWN_FILES = [
   'settings.json',

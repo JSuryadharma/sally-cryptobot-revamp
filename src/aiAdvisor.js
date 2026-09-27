@@ -1,15 +1,10 @@
-// The Dribbble reference screenshot's "Technical Analysis / Overall Summary"
-// gauge (Bearish - Neutral - Bullish) plus a recommended trading mode. Local
-// mode (the default - no API key needed) computes this deterministically from
-// the same indicators already on the snapshot, so the dashboard works fully
-// out of the box. Optional OpenAI mode layers a natural-language paragraph on
-// top of the same computed score - it never replaces the underlying numbers,
-// only narrates them, same convention as robotrader's aiAdvisor.js.
+// Market summary for the coin page. Local mode (the default, no API key)
+// scores the daily candle's indicators deterministically; optional OpenAI mode
+// narrates the same numbers and never replaces them.
 
-import { ADX_TREND_FLOOR } from './decisionEngine.js';
+const ADX_TREND_FLOOR = 20;
 
-// -5..+5 rule-based score from the daily (swing-timeframe) snapshot, used as
-// the "big picture" gauge regardless of which mode is actually recommended.
+// -5..+5 rule-based score from the daily candle.
 export function scoreSnapshot(snapshot) {
   const c = snapshot?.latest;
   if (!c) return { score: 0, points: [] };
@@ -51,64 +46,24 @@ export function scoreToLabel(score) {
   return 'Neutral';
 }
 
-// Percent position along a Bearish(0) -> Bullish(100) gauge, matching the
-// three-segment bar in the reference screenshot.
 export function scoreToGaugePct(score) {
   const clamped = Math.max(-5, Math.min(5, score));
   return Math.round(((clamped + 5) / 10) * 100);
 }
 
-// ADX (trend strength) + ATR% (volatility) decide which of the three
-// backtested systems fits current conditions best for this coin. This is a
-// heuristic, not itself separately backtested - see README.
-export function recommendMode({ swing, scalping }) {
-  const adx = swing.latest?.adx14;
-  const swingAtrPct = swing.latest?.atrPct;
-  const scalpAtrPct = scalping.latest?.atrPct;
-
-  if (Number.isFinite(adx) && adx >= 25 && Number.isFinite(swingAtrPct) && swingAtrPct < 6) {
-    return {
-      mode: 'swing',
-      reason: `Daily ADX ${adx.toFixed(1)} shows a genuine trend with contained volatility (daily ATR ${swingAtrPct.toFixed(1)}%) - worth holding through the noise rather than reacting to every 15-minute wiggle.`
-    };
-  }
-  if (Number.isFinite(adx) && adx < 20) {
-    return {
-      mode: 'scalping',
-      reason: `Daily ADX ${adx.toFixed(1)} is range-bound / choppy - not enough sustained trend to swing, but 15m volatility (ATR ${Number.isFinite(scalpAtrPct) ? scalpAtrPct.toFixed(1) : 'n/a'}%) is tradeable for short in-and-out entries.`
-    };
-  }
-  // Landing here means neither the swing gate (ADX >= 25 AND daily ATR% < 6)
-  // nor the scalping gate (ADX < 20) matched. That covers two genuinely
-  // different situations that used to share one misleading reason string -
-  // a real ADX >= 25 trend that's simply too volatile for swing's ATR cap
-  // (previously described as "moderate, still-forming" even at, say, ADX 70+),
-  // versus an actually-moderate ADX in the 20-24 gap. Word each accurately.
-  const tooVolatileForSwing = Number.isFinite(adx) && adx >= 25;
-  return {
-    mode: 'dayTrade',
-    reason: tooVolatileForSwing
-      ? `Daily ADX ${adx.toFixed(1)} shows a real trend, but daily volatility (ATR ${Number.isFinite(swingAtrPct) ? swingAtrPct.toFixed(1) + '%' : 'n/a'}) is too wide for the swing bucket's cap - an hourly day-trade approach captures the intraday move without that overnight swing risk.`
-      : `Daily ADX ${Number.isFinite(adx) ? adx.toFixed(1) : 'n/a'} is a moderate, still-forming trend - an hourly day-trade approach captures the intraday move without swing-timeframe overnight risk.`
-  };
-}
-
-function localSummary({ symbol, snapshot, recommendation, entryOrExit }) {
+function localSummary({ symbol, snapshot, headline }) {
   const { score, points } = scoreSnapshot(snapshot);
   const label = scoreToLabel(score);
   const bullets = points.filter((p) => p.direction !== 'neutral').slice(0, 3).map((p) => p.label);
-  const action = entryOrExit?.action || 'HOLD';
-  const confidence = Number.isFinite(entryOrExit?.confidencePct) ? `${entryOrExit.confidencePct}% confidence` : null;
   return [
-    `${symbol}: ${label} overall (score ${score >= 0 ? '+' : ''}${score}/5).`,
+    `${symbol}: ${label} on the daily chart (score ${score >= 0 ? '+' : ''}${score}/5).`,
     bullets.length ? `Driven by: ${bullets.join(', ')}.` : 'Signals are mixed right now.',
-    `Recommended mode: ${recommendation.mode} - ${recommendation.reason}`,
-    `Current robot action: ${action}${confidence ? ` (${confidence})` : ''}. ${entryOrExit?.reason || ''}`
-  ].join(' ');
+    headline || ''
+  ].join(' ').trim();
 }
 
-export async function getMarketSummary({ symbol, snapshot, recommendation, entryOrExit, aiSettings }) {
-  const local = localSummary({ symbol, snapshot, recommendation, entryOrExit });
+export async function getMarketSummary({ symbol, snapshot, headline, entryOrExit, aiSettings }) {
+  const local = localSummary({ symbol, snapshot, headline });
   const { score, points } = scoreSnapshot(snapshot);
   const base = { mode: 'local', score, label: scoreToLabel(score), gaugePct: scoreToGaugePct(score), points, text: local, createdAt: new Date().toISOString() };
 
@@ -117,10 +72,10 @@ export async function getMarketSummary({ symbol, snapshot, recommendation, entry
 
   try {
     const prompt = [
-      `You are a terse crypto technical-analysis assistant inside a PAPER-TRADING dashboard (no real money moves). `,
-      `Symbol: ${symbol}. Recommended trading mode: ${recommendation.mode}. Robot action: ${entryOrExit?.action}.`,
-      `Indicators: ${JSON.stringify(points)}.`,
-      `In 2 short sentences, summarize the setup and note the key risk. Do not give financial advice or price predictions.`
+      'You are a terse crypto technical-analysis assistant inside a PAPER-TRADING dashboard (no real money moves). ',
+      `Symbol: ${symbol}. Robot status: ${headline}. Robot action: ${entryOrExit?.action}.`,
+      `Daily indicators: ${JSON.stringify(points)}.`,
+      'In 2 short sentences, summarize the setup and note the key risk. Do not give financial advice or price predictions.'
     ].join('\n');
     const response = await fetch(ai.openaiBaseUrl || 'https://api.openai.com/v1/responses', {
       method: 'POST',

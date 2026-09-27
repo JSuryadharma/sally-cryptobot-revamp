@@ -52,9 +52,8 @@ export async function fetchKlines(symbol, mode, limit = 400, baseUrl = DEFAULT_B
     // Binance's klines endpoint, called with no explicit end time, always
     // returns the currently-forming candle as the last row - its close is
     // just the latest trade price, still changing until this timestamp
-    // passes. closeTime (row[6], ms) is what marketData.js uses to tell a
-    // settled candle from a live one - see its own comment for why that
-    // distinction matters to the trading logic, not just display.
+    // passes. closeTime (row[6], ms) is how src/engine/candles.js tells a
+    // settled candle from the live one; the engine only trades on settled candles.
     closeTime: Number(row[6])
   }));
 }

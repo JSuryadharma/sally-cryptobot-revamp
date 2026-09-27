@@ -1,91 +1,106 @@
 # Sally Crypto Bot (project folder: robocrypto)
 
-A simple, 24/7 crypto paper-trading dashboard - the sibling to `robotrader`, rebuilt from scratch for Binance USDT pairs instead of a single IDX stock. Same spirit (real market data, a rule-based robot, Telegram alerts, a trade journal you can trust), deliberately smaller: no login, no Postgres, no build step, zero npm dependencies. Branded "Sally Crypto Bot" in the UI; the code/folder keep the working name `robocrypto`.
+A 24/7 crypto paper-trading robot and dashboard for Binance USDT pairs. It reads Binance's public market data (no API key), simulates buys and sells against a paper Rupiah balance, and explains in plain language what it is about to do and why.
 
-**This is paper trading only.** It never places a real order or touches a Binance account - it reads Binance's public market data (no API key needed) and simulates buys/sells against a fake Rupiah balance. Nothing here is investment advice; see "Honest results" below.
+**Paper trading only.** It never places a real order or touches a Binance account. Nothing here is investment advice.
 
-## Features
+## What the robot does
 
-- **Starting balance**: Rp 10,000,000 (simulated), configurable in `.env`.
-- **Trades 24/7**: a background loop re-checks every watchlist coin every 60 seconds (configurable), independent of whether the dashboard is open.
-- **Multi-coin**: BTC, ETH, and any other Binance USDT pair you add from the Market tab's "Top movers" list or by typing a symbol in Settings. Up to 4 coins can be held open at once (configurable), each getting a slice of the current cash balance.
-- **Three trading strategies, auto-selected per coin**: the same swing (EMA20/50 daily) and scalping (EMA9/21, 15-minute) rule sets that were backtested on a year of real BBCA and BTC/USDT data earlier this session, plus a new day-trade mode (EMA9/21, hourly) for conditions in between. Each coin's daily ADX (trend strength) and ATR% (volatility) decide which of the three fits right now - a strong, contained trend recommends swing; a choppy range recommends scalping; anything in between recommends day-trade. A coin that's already in a position keeps that position's original mode and stop/target until it exits, even if the recommendation later shifts.
-- **Binance kline integration**: live daily/15m/1h candles from Binance's public REST API for every tracked coin - no account, no key, no rate-limit risk beyond normal public usage.
-- **Technical-analysis summary**: a Bearish/Neutral/Bullish gauge per coin (EMA trend, RSI, MACD histogram, ADX/DI), written in plain language, computed locally with no API cost by default. Optionally layer an OpenAI-generated paragraph on top (`AI_ADVISOR_MODE=openai` + `OPENAI_API_KEY`) - the number never depends on it.
-- **Indicator-forward UI**: dark theme modeled on the reference screenshot - balance card, watchlist/market list, a coin detail page with the summary gauge, indicator grid, and Buy/Sell buttons, minimal body text.
-- **Robot confidence, as a percentage**: every BUY/HOLD/SELL decision carries a 0-100% confidence score (EMA separation vs. volatility, RSI centering, ADX trend strength, +DI/-DI agreement), shown as a badge in the Market list and as a ring gauge + indicator-grid entry on the coin detail page. This is a transparent readout of how "textbook" the current setup looks by the strategy's own rules - not a backtested probability of winning, and it's said plainly in the UI.
-- **Confidence-gated auto-trading**: in Settings, set the minimum confidence (default 55%) a BUY signal must clear before the robot actually opens a paper position - a signal below the bar is logged and shown ("signal seen, not executed") rather than silently dropped. Exits (stop-loss, take-profit, max hold, trend reversal) are never confidence-gated on purpose: gating a stop by confidence could leave a losing position open past its own risk plan.
-- **Configurable take-profit/stop-loss template**: three risk templates in Settings - Conservative (1:1.5), Balanced (1:2, the exact ratio backtested), Aggressive (1:3). Each keeps the stop distance at the mode's own backtested ATR multiple and only scales the target, so switching templates changes how far you let a winner run, not how tightly losses are cut.
-- **Chart timeframe, kline duration, and click-to-inspect**: the coin detail chart has its own timeframe switcher (15m / 1h / 4h / 1D, independent of whichever mode the robot is actually trading that coin under - 4h is chart-only, there's no fourth strategy), shows the candle interval and count above the chart, price axis labels and first/last dates on the chart itself, and a click on any candle shows its exact date/time and open/high/low/close.
-- **Signal significance: BOS / CHoCH + support/resistance**: below the chart, a swing-pivot read of whichever timeframe you're looking at - classifies the latest structure break as a **BOS** (Break of Structure: price closed past the last swing high/low in the direction the swings were already going - continuation) or a **CHoCH** (Change of Character: it broke the *other* way - an early reversal warning), plus the nearest support and resistance zones clustered from recent swing highs/lows (shown with how many times each has been touched). This is a descriptive read of the chart only - it does not feed the robot's entry/exit rules, which stay exactly the backtested EMA-cross/RSI/ATR logic below.
-- **Strategy parameters, in the open**: the Indicators card also lists the active mode's actual numbers - which EMAs are crossing, the RSI filter band, the stop-loss and take-profit ATR multiples (after your chosen risk template), and the max hold - so "why did/didn't it trade" is always answerable from the UI itself, not just the mode name.
-- **Telegram push**: same bot-token/chat-ID setup as robotrader, configurable from the Settings tab or `.env`.
-- **Trade journal-ready**: every simulated fill is a plain transaction record in `data/portfolio.json` - feed it into the `swing-trading-discipline` skill's journal script if you want R-multiple/expectancy tracking across these trades too.
+- **Strategies** (Settings > Auto-trading):
+  - **Swing:** trades 4-hour candles when the daily trend is up.
+  - **Trend:** trades daily candles.
+  - **Scalping** (15-minute candles) is available but off by default. It lost money in every backtest once trading costs were included.
+- **Entry: trend pullback.** Every condition has to hold on a closed candle:
+  1. The higher-timeframe trend is up, and Bitcoin is above its daily EMA50.
+  2. The coin has enough volume and movement.
+  3. The trading timeframe is in an uptrend.
+  4. Price pulled back to the EMA20 within the last 5 candles.
+  5. The newest candle closes above the previous candle's high.
+  6. Price is not stretched far above the EMA20.
+- **Risk:**
+  - Each trade risks 0.75% of equity at its stop-loss (configurable), with position size capped at 30% of equity.
+  - Total open risk is capped, and new entries pause after a daily loss, a losing streak, or a drawdown.
+  - Exits are never paused.
+- **Exits:**
+  - Stop-loss below the pullback low.
+  - Breakeven once the trade is +1R, then a wide ATR trailing stop so winners can run.
+  - A time stop for trades that go nowhere.
+  - Stops fill at the stop price on the candle that touched them, even if the engine runs late.
+- **Predictions:** for every coin the dashboard shows:
+  - the stage: not in play, watching, setting up, ready, or holding;
+  - which of the conditions pass;
+  - the exact trigger price and when the deciding candle closes;
+  - the trade it would place (entry, stop, size, money at risk);
+  - anything that would stop it firing.
 
-## Honest results (read this before trusting the "recommended" badge)
+## How it runs
 
-The swing and scalping parameters here are exactly what were backtested on one year of real BBCA and BTC/USDT data earlier this session - and that backtest came out net-negative for both, after realistic costs (see the delivered Word report and CSVs). The day-trade mode and the swing/scalping/day-trade *picker* itself (based on ADX/ATR) are new and have **not** been separately backtested - they're a reasonable heuristic, not a proven edge. Treat every "Bullish" badge and "recommended" chip as a transparent readout of the rules, not a signal to trust blindly. This dashboard is built to watch the *process* (sizing, discipline, a clean record of every trade) run continuously - not because these three systems are known money-makers.
+The server does no trading on its own timer on Vercel. A GitHub Actions workflow (`.github/workflows/engine-tick.yml`) calls `POST /api/engine/tick` every ~5 minutes with `ENGINE_TICK_SECRET`. Each tick:
 
-## Benchmarking the robot against real history
+1. Takes a Postgres lease, so two ticks can never trade at once.
+2. Replays any candles it missed.
+3. Saves the portfolio and engine state in one transaction.
+4. Sends Telegram alerts.
+5. Writes the dashboard's per-coin predictions.
 
-`scripts/benchmark.mjs` runs a walk-forward backtest of the live robot - the same `evaluateEntry`/`evaluateExit`/`recommendMode` code the app runs, not a re-implementation of it - against real Binance history, starting from the same Rp 10,000,000 balance and the same confidence threshold / risk template as your Settings:
+Opening the dashboard never trades. Running locally, `npm start` also ticks on a timer.
 
-```bash
-node scripts/benchmark.mjs --months 3
-```
-
-It fetches daily, hourly, and 15-minute candles for each watchlist coin, replays a 15-minute clock across the whole window, and at each step re-derives exactly what the live app would have known at that moment (no lookahead) - which mode is recommended, whether a fresh entry signal fired, whether confidence cleared your threshold, and whether an open position hit its stop/target/max-hold/trend-exit. It prints a summary (return %, win rate, profit factor, max drawdown, signals blocked by the confidence gate) and writes the full detail to `benchmarks/<timestamp>/` (summary.json, trades.csv, equity-curve.csv) - a separate folder from `data/`, so a benchmark run never touches your live paper-trading balance or history.
-
-This needs real internet access to Binance, which a sandboxed assistant session doesn't have - run it the same way you run `npm start`, on the machine where the app actually runs. Flags: `--months <n>`, `--min-confidence <pct>`, `--rr conservative|balanced|aggressive`, `--symbols BTCUSDT,ETHUSDT,...`, `--end <ISO date>`. Like the original swing/scalping backtest, this is still a rule-based simulation on historical prices, not a guarantee of future results - see "Honest results" above.
-
-## Confidence % is not the same as "there's a signal"
-
-A high confidence reading and an actual BUY signal are two different checks, and it's normal to see one without the other: `evaluateEntry()` only returns `BUY` on the bar where the fast EMA *freshly* crosses above the slow EMA with RSI confirming - one specific bar, not "any bar where the trend looks good." Confidence is scored independently on every bar, fresh cross or not, as a read of how textbook the current setup looks (EMA separation, RSI centering, ADX, +DI/-DI agreement). So a coin can sit at 80-90% confidence for days *after* a strong cross while deep in an established trend, with the robot correctly doing nothing (`HOLD`, reason: "No fresh bullish EMA cross on the latest candle") because there is no new entry to take - the cross already happened and, without a position, there's nothing to manage. The confidence threshold in Settings only gates a signal that *has* fired; it can never manufacture one. `scripts/mockAutotradeTest.mjs` reproduces this exact scenario (and the two cases where a trade does execute) against synthetic candles - see the comment at the top of that file for how to run it.
+The engine lives in `src/engine/`. `core.js` is pure and shared by the live tick and the backtester, so a backtest runs exactly the code that trades.
 
 ## Setup
 
 ```bash
-cd robocrypto
-cp .env.example .env    # edit balance, watchlist, Telegram token if you want
-npm start                # no install step - zero dependencies
+cp .env.example .env    # DATABASE_URL (Postgres), PORT, ADMIN_TOKEN, ENGINE_TICK_SECRET
+npm install
+npm start               # http://localhost:3300
 ```
 
-Open `http://localhost:3300`. That's it - no database, no login screen.
+On Vercel, set these environment variables:
+- `DATABASE_URL`
+- `ADMIN_TOKEN`: protects settings changes, manual trades and backtests. The dashboard asks for it once.
+- `ENGINE_TICK_SECRET`
 
-To keep it running in the background the way robotrader's restart script does, `restart-robocrypto.command` (double-click on macOS) stops any previous instance and starts a fresh one with output logged to `robocrypto.log`.
+In the GitHub repository settings, add the `ENGINE_URL` repository variable and the `ENGINE_TICK_SECRET` repository secret. Scheduled workflows only run from the default branch.
 
-### Telegram
+## Backtesting
 
-In Settings, paste a bot token (from [@BotFather](https://t.me/BotFather)) and the chat ID to DM, then "Send test". Trade fills push notifications by default (see `TELEGRAM_DEFAULT_CATEGORIES` in `src/notifications.js` to change which categories push vs. stay in-app only).
+```bash
+npm run backtest -- --months 12
+```
 
-### Changing the coin universe
+This runs `src/engine/core.js` over real Binance history, with 0.2% round-trip costs plus 0.05% slippage per fill. It prints win rate, profit factor, expectancy in R, drawdown and a 0.3% cost stress test, and writes a report to `benchmarks/v2-<timestamp>/`.
 
-Edit `WATCHLIST` in `.env` (comma-separated Binance symbols, e.g. `BTCUSDT,ETHUSDT,SOLUSDT`), or add/remove coins live from the Settings tab - changes persist to `data/settings.json` and take effect on the next 60-second tick.
+Two flags:
+- `--train <months>` adds a small parameter grid on the earlier part of the window.
+- `--no-cache` refetches history.
+
+`docs/engine-v2-summary.pdf` documents the 2024-2026 results. v2 beat the previous engine on both test years. On the most recent year it was roughly flat after a market crash, and it did not pass the strict pass criteria set before testing. Judge it on live paper results, not on a single backtest.
+
+## Tests
+
+```bash
+npm test     # engine, sizing, exits, catch-up replay, predictions
+npm run check
+```
 
 ## Project layout
 
 ```
-src/
-  config.js        env-driven settings
-  storage.js       flat-file JSON read/write (data/*.json) - no database
-  binanceData.js   public Binance REST calls: klines, 24hr tickers, top movers
-  marketData.js    fetch + indicator-enrich + short in-memory cache, per coin/mode
-  indicators.js    EMA/RSI/ATR/ADX/Bollinger/MACD (adapted from robotrader)
-  decisionEngine.js  swing/scalping/day-trade entry+exit rules (backtested params)
-  marketStructure.js swing pivots -> BOS/CHoCH signal + support/resistance (chart-only, informational)
-  aiAdvisor.js     Bearish/Neutral/Bullish gauge + mode recommendation + summary text
-  tradingRobot.js  paper portfolio: open/close positions, mark-to-market
-  robotEngine.js   ties the above together per coin, per tick
-  notifications.js in-app + Telegram push (adapted from robotrader)
-  settings.js      watchlist / auto-trade / Telegram settings, flat-file backed
-  websocket.js     hand-rolled WebSocket hub (no "ws" dependency)
-  server.js        the http server, routes, and the 24/7 refresh loop
-public/            the dashboard itself (plain HTML/CSS/JS, no build step)
-data/              created on first run - portfolio.json, settings.json, notifications.json
+src/engine/       trading engine: config, setups, prediction, position manager, sizing,
+                  risk brakes, ledger, core loop, candles, coin views, tick
+src/server.js     http routes (dashboard API, tick endpoint, static files)
+src/settings.js   stored settings and engine configuration
+src/tradingRobot.js  stored paper portfolio
+src/aiAdvisor.js  daily-chart summary (local, or OpenAI if configured)
+src/marketStructure.js  swing pivots and support/resistance for the chart
+api/engine/tick.js      Vercel function called by the GitHub Actions schedule
+scripts/backtest.mjs    walk-forward backtester
+public/           dashboard (plain HTML/CSS/JS, no build step)
+test/             node --test suites
 ```
 
 ## Safety notes
 
-- No Binance API key is used anywhere in this codebase - only `https://api.binance.com/api/v3/*` public endpoints.
-- No real funds ever move. `tradingRobot.js` only ever edits `data/portfolio.json`.
-- If you ever want this to place real orders, that is a substantial and risky rewrite (signed Binance API calls, key storage, real slippage/liquidity handling) that should be done deliberately and separately - this project intentionally does not include it.
+- No Binance API key is used anywhere, only public market-data endpoints.
+- No real funds ever move. The portfolio is a record in Postgres.
+- Placing real orders would be a separate, deliberate project (signed API calls, key storage, real fills), and this codebase does not include it.

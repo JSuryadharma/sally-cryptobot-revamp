@@ -1,14 +1,28 @@
 import { randomUUID } from 'node:crypto';
-import { readJson, writeJson, tryAcquireLease, releaseLease } from '../storage.js';
-import { refreshWatchlistAndCache, readCoinsCache } from '../refreshWatchlist.js';
-import { getStrategyState } from '../strategyState.js';
+import { readJson, writeJson, writeJsonMany, tryAcquireLease, releaseLease } from '../storage.js';
+import { readCoinsCache, writeCoinsCache } from '../coinsCache.js';
+import { readSettings, engineCfgFromSettings } from '../settings.js';
+import { getPortfolio, PORTFOLIO_KEY } from '../tradingRobot.js';
+import { resolveUsdIdrRate } from '../binanceData.js';
+import { NotificationCenter } from '../notifications.js';
 import { checkBearer } from '../auth.js';
+import { resolveEngineCfg, profilesFor, BTC_SYMBOL } from './config.js';
+import { advance, createEngineState } from './core.js';
+import { loadLiveSeries } from './candles.js';
+import { buildCoinView } from './views.js';
+import { entryBlock } from './riskGuard.js';
+import { placeStop } from './setups.js';
+import { sizePosition } from './sizing.js';
+import { openPositionQty, sellPosition } from './ledger.js';
+import { predictCoin } from './prediction.js';
 
 const LEASE_NAME = 'engine';
 const LEASE_TTL_MS = 120_000;
 const TICK_LOG_KEY = 'engine-ticks.json';
+export const ENGINE_STATE_KEY = 'engine-state.json';
 const TICK_LOG_MAX = 300;
 const STALE_AFTER_MS = 20 * 60_000;
+const SCHEDULE_MS = 5 * 60_000;
 export const MIN_TICK_GAP_MS = 60_000;
 
 export class LeaseBusyError extends Error {
@@ -28,24 +42,77 @@ export async function withEngineLease(fn) {
   }
 }
 
-function summarizeResults(coins) {
-  const signals = [];
-  const fills = [];
-  for (const coin of Object.values(coins)) {
-    const decision = coin.entryOrExit || {};
-    if (decision.action === 'BUY' || decision.action === 'SELL') {
-      signals.push({
-        symbol: coin.symbol, mode: coin.activeMode, action: decision.action,
-        confidencePct: decision.confidencePct, executed: Boolean(decision.executed),
-        reason: String(decision.reason || '').slice(0, 200)
+async function loadContext() {
+  const settings = await readSettings();
+  const cfg = resolveEngineCfg(engineCfgFromSettings(settings));
+  const [portfolio, storedState, usdIdrRate] = await Promise.all([
+    getPortfolio(settings),
+    readJson(ENGINE_STATE_KEY, null),
+    resolveUsdIdrRate(settings.usdIdrRate, settings.binanceBaseUrl)
+  ]);
+  const engineState = storedState?.version === 2 ? storedState : createEngineState();
+  return { settings, cfg, portfolio, engineState, usdIdrRate };
+}
+
+async function notifyResults(notifications, out, cfg) {
+  const labels = profilesFor(cfg);
+  for (const tx of out.transactions) {
+    if (tx.type === 'BUY') {
+      await notifications.notify({
+        title: `BUY ${tx.symbol}`,
+        message: `${tx.reason} Confidence ${tx.confidencePct ?? 0}% (${labels[tx.profile]?.label || tx.profile}). Stop ${tx.stopPrice}, risk Rp ${Math.round(tx.riskIdr).toLocaleString('id-ID')}.`,
+        level: 'info', category: 'trade'
+      });
+    } else {
+      const pnl = Math.round(tx.realizedProfitIdr).toLocaleString('id-ID');
+      const r = tx.rMultiple != null ? ` Trade result ${tx.rMultiple}R.` : '';
+      await notifications.notify({
+        title: `${tx.partial ? 'PARTIAL SELL' : 'SELL'} ${tx.symbol}`,
+        message: `${tx.reason} Realized P&L: Rp ${pnl}.${r}`,
+        level: tx.realizedProfitIdr >= 0 ? 'success' : 'warning', category: 'trade'
       });
     }
-    if (coin.transaction) {
-      const tx = coin.transaction;
-      fills.push({ symbol: tx.symbol, type: tx.type, price: tx.price, realizedProfitIdr: tx.realizedProfitIdr ?? null });
-    }
   }
-  return { signals, fills };
+  for (const event of out.riskEvents) {
+    await notifications.notify({ title: 'New entries paused', message: `${event.reason}. Open positions keep their stops.`, level: 'warning', category: 'trade' });
+  }
+}
+
+// One full engine pass. Caller holds the lease.
+async function enginePass({ notifications = new NotificationCenter() } = {}) {
+  const startedAt = Date.now();
+  const { settings, cfg, portfolio, engineState, usdIdrRate } = await loadContext();
+  const held = Object.keys(portfolio.positions || {});
+  const symbols = [...new Set([...settings.watchlist, ...held, BTC_SYMBOL])];
+  const { series, live, errors } = await loadLiveSeries(symbols, { baseUrl: settings.binanceBaseUrl, nowMs: startedAt });
+
+  // Auto-trade off stops new entries only; open positions keep their stops.
+  const tradeSymbols = settings.autoTrade.enabled ? settings.watchlist.filter((s) => series[s]) : [];
+  const out = advance(engineState, portfolio, series, { nowMs: startedAt, live: true, usdIdrRate, cfg, tradeSymbols });
+  portfolio.updatedAt = new Date().toISOString();
+  await writeJsonMany({ [PORTFOLIO_KEY]: portfolio, [ENGINE_STATE_KEY]: engineState });
+  await notifyResults(notifications, out, cfg);
+
+  const coins = {};
+  for (const symbol of new Set([...settings.watchlist, ...held])) {
+    if (!series[symbol]) continue;
+    coins[symbol] = await buildCoinView({ symbol, series, live, cfg, portfolio, engineState, settings, usdIdrRate, nowMs: startedAt, fills: out.transactions });
+  }
+  await writeCoinsCache(coins);
+
+  return {
+    startedAt: new Date(startedAt).toISOString(),
+    durationMs: Date.now() - startedAt,
+    barsProcessed: out.barsProcessed,
+    symbolsOk: Object.keys(coins).length,
+    symbolsFailed: [...new Set(errors.map((e) => e.symbol))].map((symbol) => ({ symbol, error: errors.find((e) => e.symbol === symbol).error })),
+    signals: out.signals.slice(0, 40),
+    fills: out.transactions.map((t) => ({
+      symbol: t.symbol, type: t.type, partial: Boolean(t.partial), price: t.price, profile: t.profile,
+      realizedProfitIdr: t.realizedProfitIdr ?? null, rMultiple: t.rMultiple ?? null, reason: t.reason
+    })),
+    riskEvents: out.riskEvents
+  };
 }
 
 async function appendTickLog(entry) {
@@ -62,16 +129,7 @@ export async function runTick({ reason = 'scheduler' } = {}) {
   const startedAt = Date.now();
   let entry;
   try {
-    entry = await withEngineLease(async () => {
-      const { cache, errors } = await refreshWatchlistAndCache(undefined, { force: true });
-      return {
-        startedAt: new Date(startedAt).toISOString(), reason,
-        durationMs: Date.now() - startedAt,
-        symbolsOk: Object.keys(cache).length,
-        symbolsFailed: errors,
-        ...summarizeResults(cache)
-      };
-    });
+    entry = { ...(await withEngineLease(() => enginePass())), reason };
   } catch (error) {
     if (error.code === 'LEASE_BUSY') return { skipped: 'locked' };
     entry = { startedAt: new Date(startedAt).toISOString(), reason, durationMs: Date.now() - startedAt, error: error.message };
@@ -91,23 +149,112 @@ export async function runTickIfDue({ reason = 'dashboard' } = {}) {
   return runTick({ reason });
 }
 
+// Manual paper trade from the coin page. Runs under the lease, then a normal
+// engine pass so every view reflects the new position straight away.
+export async function runManualTrade(symbol, action) {
+  if (action !== 'BUY' && action !== 'SELL') return { status: 400, body: { error: 'action must be BUY or SELL.' } };
+  return withEngineLease(async () => {
+    const { settings, cfg, portfolio, engineState, usdIdrRate } = await loadContext();
+    const { series, live, errors } = await loadLiveSeries([symbol, BTC_SYMBOL], { baseUrl: settings.binanceBaseUrl });
+    if (!series[symbol]) return { status: 502, body: { error: `Couldn't load ${symbol} prices: ${errors[0]?.error || 'unknown error'}` } };
+    const nowMs = Date.now();
+    let result;
+
+    if (action === 'BUY') {
+      if (portfolio.positions[symbol]) return { status: 400, body: { error: 'Already holding this coin.' } };
+      if (Object.keys(portfolio.positions).length >= cfg.maxOpenPositions) return { status: 400, body: { error: `All ${cfg.maxOpenPositions} position slots are in use.` } };
+      const { headline } = predictCoin({ symbol, series, live, cfg: { ...cfg, profiles: { ...cfg.profiles, swing: true } }, portfolio, risk: engineState.risk, symbolState: engineState.symbols?.[symbol], autoTradeOn: true, usdIdrRate, nowMs });
+      const profile = profilesFor(cfg)[headline?.profile || 'swing'];
+      const closed = series[symbol][profile.triggerTf];
+      const last = closed.at(-1);
+      const price = live[symbol][profile.triggerTf].close;
+      const entry = price * (1 + cfg.slippagePct / 100);
+      let low = live[symbol][profile.triggerTf].low;
+      for (const c of closed.slice(-cfg.setup.pullbackLookback)) low = Math.min(low, c.low);
+      const placed = placeStop(entry, low - cfg.setup.stopBufferAtr * last.atr14, last.atr14, cfg);
+      const stop = placed.stop ?? Number((entry - cfg.setup.maxStopAtr * last.atr14).toPrecision(8));
+      const sized = sizePosition({ portfolio, entryPrice: entry, stopPrice: stop, usdIdrRate, cfg });
+      if (!(sized.qty > 0)) return { status: 400, body: { error: `Can't size this trade: ${sized.reason}.` } };
+      result = openPositionQty(portfolio, {
+        symbol, profile: profile.key, setup: 'manual', quantity: sized.qty, entryPrice: entry, stopPrice: stop,
+        riskIdr: sized.riskIdr, score: null, reason: 'Manual buy - user override.', timeMs: nowMs, barTime: last.time,
+        usdIdrRate, roundTripCostPct: cfg.roundTripCostPct
+      });
+      // The position is managed from the next closed candle on, never the one before the fill.
+      const symbolState = (engineState.symbols[symbol] ||= { lastBarTime: {}, cooldownUntilMs: {} });
+      symbolState.lastBarTime[profile.triggerTf] = last.time;
+    } else {
+      const position = portfolio.positions[symbol];
+      if (!position) return { status: 400, body: { error: 'No open position to sell.' } };
+      const tf = profilesFor(cfg)[position.profile || 'swing']?.triggerTf || '4h';
+      const price = live[symbol]?.[tf]?.close ?? position.entryPrice;
+      result = sellPosition(portfolio, {
+        symbol, price: price * (1 - cfg.slippagePct / 100), reason: 'Manual sell - user override.', exitKind: 'manual',
+        timeMs: nowMs, usdIdrRate, roundTripCostPct: cfg.roundTripCostPct
+      });
+    }
+
+    await writeJsonMany({ [PORTFOLIO_KEY]: portfolio, [ENGINE_STATE_KEY]: engineState });
+    const tx = result.transaction;
+    const notifications = new NotificationCenter();
+    if (tx) {
+      const detail = tx.type === 'BUY'
+        ? `Bought at ${tx.price}, stop ${tx.stopPrice}.`
+        : `Sold at ${tx.price}. P&L: Rp ${Math.round(tx.realizedProfitIdr).toLocaleString('id-ID')}.`;
+      await notifications.notify({ title: `Manual ${tx.type} ${symbol}`, message: detail, level: 'info', category: 'trade' });
+    }
+    const entry = { ...(await enginePass({ notifications })), reason: `manual-${action.toLowerCase()}` };
+    if (tx) {
+      entry.fills.unshift({
+        symbol: tx.symbol, type: tx.type, partial: false, price: tx.price, profile: tx.profile,
+        realizedProfitIdr: tx.realizedProfitIdr ?? null, rMultiple: tx.rMultiple ?? null, reason: tx.reason
+      });
+    }
+    await appendTickLog(entry);
+    return { status: tx ? 200 : 400, body: tx ? { transaction: tx } : { error: result.note || 'Trade not executed.' } };
+  });
+}
+
+function activityFrom(log) {
+  const items = [];
+  const seen = new Set();
+  for (const tick of log.slice(0, 60)) {
+    const at = tick.startedAt;
+    for (const f of tick.fills || []) items.push({ kind: 'fill', at, ...f });
+    for (const e of tick.riskEvents || []) items.push({ kind: 'pause', at, reason: e.reason });
+    for (const s of tick.signals || []) {
+      if (s.taken) continue;
+      const key = `${s.symbol}|${s.profile}|${s.barTime}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      items.push({ kind: 'skipped', at, symbol: s.symbol, profile: s.profile, score: s.score, reason: s.skip });
+    }
+  }
+  return items.slice(0, 30);
+}
+
 export async function readEngineStatus() {
-  const [log, coinsCache, strategyState] = await Promise.all([readTickLog(), readCoinsCache(), getStrategyState()]);
+  const [log, coinsCache, settings, storedState] = await Promise.all([readTickLog(), readCoinsCache(), readSettings(), readJson(ENGINE_STATE_KEY, null)]);
   const last = log[0] || null;
   const lastCompleted = log.find((t) => !t.error) || null;
   const lastTickAt = lastCompleted?.startedAt || null;
-  const ageMs = lastTickAt ? Date.now() - new Date(lastTickAt).getTime() : null;
-  const halted = strategyState.risk?.haltedUntilMs && strategyState.risk.haltedUntilMs > Date.now();
+  const lastMs = lastTickAt ? new Date(lastTickAt).getTime() : null;
+  const ageMs = lastMs != null ? Date.now() - lastMs : null;
+  const cfg = resolveEngineCfg(engineCfgFromSettings(settings));
+  const pause = storedState?.risk ? entryBlock(storedState.risk, Date.now(), cfg) : null;
   return {
     lastTick: last,
     lastTickAt,
     ageMs,
     stale: ageMs == null || ageMs > STALE_AFTER_MS,
+    nextTickEta: lastMs != null ? new Date(lastMs + SCHEDULE_MS).toISOString() : null,
+    autoTradeEnabled: settings.autoTrade.enabled,
     coinsUpdatedAt: coinsCache.updatedAt,
     recentErrors: log.slice(0, 20).filter((t) => t.error || t.symbolsFailed?.length).map((t) => ({
       startedAt: t.startedAt, error: t.error || null, symbolsFailed: t.symbolsFailed || []
     })),
-    halt: halted ? { until: new Date(strategyState.risk.haltedUntilMs).toISOString(), reason: strategyState.risk.haltReason } : null
+    halt: pause ? { reason: pause, until: storedState.risk.haltedUntilMs ? new Date(storedState.risk.haltedUntilMs).toISOString() : null, untilEndOfDay: Boolean(storedState.risk.haltDayKey) } : null,
+    activity: activityFrom(log)
   };
 }
 

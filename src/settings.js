@@ -1,19 +1,7 @@
 import { readJson, writeJson } from './storage.js';
-import { RR_TEMPLATES, STRATEGY_PARAMS } from './decisionEngine.js';
+import { PROFILES, DEFAULT_ENGINE_CFG } from './engine/config.js';
 
 const SETTINGS_FILE = 'settings.json';
-
-// null (the default) = fully automatic: robotEngine.js picks swing/scalping/
-// dayTrade per coin from aiAdvisor.js's recommendMode() (daily ADX/ATR
-// regime). Setting this to one of the STRATEGY_PARAMS keys pins EVERY
-// watchlist coin to that mode's rules regardless of what the regime picker
-// would otherwise recommend - e.g. forcing 'scalping' means every coin is
-// evaluated on 15m EMA9/21 + RSI7, even on a day the daily trend is strong
-// enough that recommendMode() would have picked swing. This only affects
-// which mode is used to open a NEW position; a coin already holding a
-// position keeps trading under the mode it was bought under (see
-// robotEngine.js) so an override never silently moves a live trade's stop/target.
-const MODE_OVERRIDE_VALUES = [null, ...Object.keys(STRATEGY_PARAMS)];
 
 // Everything the app needs to run its own business logic lives here now,
 // not in .env - watchlist, trading parameters, Binance's base URL, Telegram,
@@ -25,16 +13,18 @@ function defaultSettings() {
     watchlist: ['BTCUSDT', 'ETHUSDT', 'BNBUSDT', 'SOLUSDT', 'XRPUSDT'],
     autoTrade: {
       enabled: true,
-      // Gate on ENTRIES only - a signal below this confidence is logged but
-      // not executed. Exits (stop/target/max-hold/trend-reversal) always
-      // execute regardless, on purpose: gating a stop-loss by confidence
-      // would mean a "low confidence" reading could leave a losing position
-      // open past its own risk plan, which defeats the point of a stop.
-      minConfidencePct: 55,
-      riskRewardTemplate: 'balanced',
-      // See MODE_OVERRIDE_VALUES above. null = automatic regime-based pick.
-      modeOverride: null
+      // Minimum v2 setup score (0-100) to enter. 0 = the validated default:
+      // the backtests found the score ranks setups but is not a useful gate.
+      minConfidencePct: 0
     },
+    strategies: { swing: true, trend: true, scalping: false },
+    riskPerTradePct: DEFAULT_ENGINE_CFG.riskPerTradePct,
+    maxPortfolioRiskPct: DEFAULT_ENGINE_CFG.maxPortfolioRiskPct,
+    dailyLossLimitPct: DEFAULT_ENGINE_CFG.dailyLossLimitPct,
+    maxConsecutiveLosses: DEFAULT_ENGINE_CFG.maxConsecutiveLosses,
+    drawdownHaltPct: DEFAULT_ENGINE_CFG.drawdownHaltPct,
+    slippagePct: DEFAULT_ENGINE_CFG.slippagePct,
+    minTradeQuoteVolumeUsdt: DEFAULT_ENGINE_CFG.minTradeQuoteVolumeUsdt,
     telegram: { enabled: true, botToken: '', chatId: '', categories: ['trade', 'ai-review'] },
     // Optional AI advisor - default "local" mode is deterministic rule-based
     // summarization (works immediately, no key, no cost). Switch mode to
@@ -110,10 +100,23 @@ function normalize(raw, watchlistFallback) {
     watchlist: boundedList(raw.watchlist, watchlistFallback || base.watchlist),
     autoTrade: {
       enabled: raw.autoTrade?.enabled !== false,
-      minConfidencePct: boundedNumber(raw.autoTrade?.minConfidencePct, base.autoTrade.minConfidencePct, 0, 100),
-      riskRewardTemplate: RR_TEMPLATES[raw.autoTrade?.riskRewardTemplate] ? raw.autoTrade.riskRewardTemplate : base.autoTrade.riskRewardTemplate,
-      modeOverride: MODE_OVERRIDE_VALUES.includes(raw.autoTrade?.modeOverride ?? null) ? (raw.autoTrade?.modeOverride ?? null) : base.autoTrade.modeOverride
+      // The pre-v2 engine stored 55 here, on a different score scale; only a
+      // value saved after the v2 switch (marked scoreVersion 2) is honored.
+      minConfidencePct: raw.autoTrade?.scoreVersion === 2
+        ? boundedNumber(raw.autoTrade?.minConfidencePct, base.autoTrade.minConfidencePct, 0, 100)
+        : base.autoTrade.minConfidencePct,
+      scoreVersion: 2
     },
+    strategies: Object.fromEntries(Object.keys(PROFILES).map((key) => [
+      key, typeof raw.strategies?.[key] === 'boolean' ? raw.strategies[key] : base.strategies[key]
+    ])),
+    riskPerTradePct: boundedNumber(raw.riskPerTradePct, base.riskPerTradePct, 0.1, 5),
+    maxPortfolioRiskPct: boundedNumber(raw.maxPortfolioRiskPct, base.maxPortfolioRiskPct, 0.5, 20),
+    dailyLossLimitPct: boundedNumber(raw.dailyLossLimitPct, base.dailyLossLimitPct, 0.5, 20),
+    maxConsecutiveLosses: Math.round(boundedNumber(raw.maxConsecutiveLosses, base.maxConsecutiveLosses, 1, 20)),
+    drawdownHaltPct: boundedNumber(raw.drawdownHaltPct, base.drawdownHaltPct, 2, 50),
+    slippagePct: boundedNumber(raw.slippagePct, base.slippagePct, 0, 2),
+    minTradeQuoteVolumeUsdt: boundedNumber(raw.minTradeQuoteVolumeUsdt, base.minTradeQuoteVolumeUsdt, 0, 10_000_000_000),
     telegram: {
       enabled: raw.telegram?.enabled !== false,
       // Never let an empty field submitted by the client wipe out a token/chat ID
@@ -164,6 +167,7 @@ export async function updateSettings(patch) {
     ...current,
     ...patch,
     autoTrade: { ...current.autoTrade, ...(patch.autoTrade || {}) },
+    strategies: { ...current.strategies, ...(patch.strategies || {}) },
     telegram: { ...current.telegram, ...(patch.telegram || {}) },
     ai: { ...current.ai, ...(patch.ai || {}) }
   };
@@ -199,9 +203,33 @@ export function publicSettings(settings) {
     refreshIntervalSec: settings.refreshIntervalSec,
     topMoversCount: settings.topMoversCount,
     minQuoteVolumeUsdt: settings.minQuoteVolumeUsdt,
-    riskRewardTemplates: RR_TEMPLATES,
-    // For the Settings > Strategy mode picker - labels only, same data
-    // describeStrategyParams() draws from, so the UI never hardcodes them.
-    strategyModes: Object.fromEntries(Object.entries(STRATEGY_PARAMS).map(([key, p]) => [key, { label: p.label }]))
+    strategies: settings.strategies,
+    riskPerTradePct: settings.riskPerTradePct,
+    maxPortfolioRiskPct: settings.maxPortfolioRiskPct,
+    dailyLossLimitPct: settings.dailyLossLimitPct,
+    maxConsecutiveLosses: settings.maxConsecutiveLosses,
+    drawdownHaltPct: settings.drawdownHaltPct,
+    slippagePct: settings.slippagePct,
+    minTradeQuoteVolumeUsdt: settings.minTradeQuoteVolumeUsdt,
+    strategyProfiles: Object.fromEntries(Object.values(PROFILES).map((p) => [p.key, { label: p.label, triggerTf: p.triggerTf, filterTf: p.filterTf }]))
+  };
+}
+
+// Engine configuration for the live tick and manual trades, from the stored settings.
+export function engineCfgFromSettings(settings) {
+  return {
+    riskPerTradePct: settings.riskPerTradePct,
+    maxPortfolioRiskPct: settings.maxPortfolioRiskPct,
+    maxOpenPositions: settings.maxOpenPositions,
+    tradeAllocationPct: settings.tradeAllocationPct,
+    roundTripCostPct: settings.roundTripCostPct,
+    slippagePct: settings.slippagePct,
+    minConfidencePct: settings.autoTrade.minConfidencePct,
+    minTradeQuoteVolumeUsdt: settings.minTradeQuoteVolumeUsdt,
+    dailyLossLimitPct: settings.dailyLossLimitPct,
+    maxConsecutiveLosses: settings.maxConsecutiveLosses,
+    drawdownHaltPct: settings.drawdownHaltPct,
+    timeZone: settings.timeZone,
+    profiles: { ...settings.strategies }
   };
 }

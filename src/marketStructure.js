@@ -6,9 +6,8 @@
 //
 // This is a supplementary, descriptive layer for the chart only - it reads
 // swing highs/lows the same way price-action/"smart money concepts" traders
-// do, but it does NOT feed decisionEngine.js. The robot's actual entries and
-// exits stay exactly the backtested EMA-cross/RSI/ATR rules; this module only
-// gives a human a faster read of the chart they're already looking at.
+// do, but it does NOT feed the trading engine (src/engine/). This module only
+// gives a human a faster read of the chart they are already looking at.
 
 const PIVOT_LOOKBACK = 3; // bars required on each side for a candle to count as a swing high/low
 const SR_TOLERANCE_PCT = 0.4; // pivots within this %% of each other are treated as one zone

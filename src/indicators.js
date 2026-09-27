@@ -1,8 +1,6 @@
 // Adapted from robotrader's src/indicators.js (same math, MIT-style internal reuse
 // within this user's own two projects). Extended to also expose the extra EMA spans
-// (9/20/21/50) and the 7-period RSI that robocrypto's swing/scalping/day-trade
-// strategies need, and to export the ema()/rsi() helpers directly so decisionEngine.js
-// can be explicit about which line it's reading instead of guessing field names.
+// (9/20/21/50) and the 7-period RSI, and exports the ema()/rsi() helpers.
 
 export function enrichCandles(candles) {
   const sorted = candles.slice().sort((a, b) => a.time - b.time);

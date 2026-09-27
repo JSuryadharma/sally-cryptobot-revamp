@@ -1,52 +1,88 @@
+'use strict';
+
 const state = {
-  view: 'home',
-  coinSymbol: null,
-  chartMode: null, // which timeframe the chart is showing right now - independent of the coin's trading mode until the user picks one
-  chartCandles: [],
-  chartHighlight: null,
-  chartStructure: null,
+  view: 'dashboard',
   config: null,
-  coins: [],
-  portfolio: null,
-  notifications: [],
-  movers: [],
   settings: null,
-  lastDetail: null,
-  backtestVerdict: null,
-  marketSort: 'armed' // 'armed' | 'confidence' | 'change' - see #marketSortRow
+  coins: [],
+  coinsUpdatedAt: null,
+  portfolio: null,
+  status: null,
+  verdict: null,
+  prices: {},
+  movers: [],
+  moversError: null,
+  seenNotifications: null,
+  coinSymbol: null,
+  planProfile: null,
+  chartTf: null,
+  chartCandles: [],
+  chartStructure: null,
+  chartHighlight: null,
+  stageFilter: 'all',
+  search: '',
+  backtestMonths: 1,
+  lastSegments: {}
 };
 
-const MODES = ['swing', 'scalping', 'dayTrade'];
-// Chart timeframe switcher shows one extra option ('4h') that isn't one of
-// the three trading modes above - it's chart-only, see marketData.js.
-const CHART_TIMEFRAMES = ['scalping', 'dayTrade', '4h', 'swing'];
-const INTERVAL_LABEL = { swing: '1D', scalping: '15m', dayTrade: '1h', '4h': '4H' };
-const KLINE_DURATION_LABEL = { swing: '1 candle = 1 day', scalping: '1 candle = 15 minutes', dayTrade: '1 candle = 1 hour', '4h': '1 candle = 4 hours' };
-const TIMEFRAME_TITLE = { swing: 'Swing (1D)', scalping: 'Scalping (15m)', dayTrade: 'Day-trade (1h)', '4h': '4-hour chart' };
-// The chart overlays EMA 9/20/50 together on every timeframe (2026-09-20,
-// chat) - previously each timeframe only showed two of these (its own
-// STRATEGY_PARAMS pair from decisionEngine.js, e.g. 20/50 for swing, 9/21 for
-// the rest), so the "9-20-50 alignment" read the Simple-strategy discussion
-// relies on wasn't visible together on any single chart. The "EMA fast/slow"
-// values in the Technical Analysis indicator grid (renderCoinDetail) are
-// unrelated - those reflect the coin's ACTIVE trading mode's own strategy
-// pair, not the chart's selected timeframe, and are left as they were.
-const CHART_EMA_TRIO = { fast: 'ema9', mid: 'ema20', slow: 'ema50' };
+const STAGE_LABEL = { blocked: 'Not in play', watching: 'Watching', 'setting-up': 'Setting up', ready: 'Ready to buy', holding: 'Holding' };
+const STAGE_ORDER = { ready: 0, 'setting-up': 1, holding: 2, watching: 3, blocked: 4 };
+const TF_MS = { '15m': 900_000, '1h': 3_600_000, '4h': 14_400_000, '1d': 86_400_000 };
+const TF_LABEL = { '15m': '15m', '1h': '1H', '4h': '4H', '1d': '1D' };
+const TF_WORD = { '15m': '15-minute', '1h': '1-hour', '4h': '4-hour', '1d': 'daily' };
+const RING_CIRCUMFERENCE = 119.4;
+const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
 
 const $ = (id) => document.getElementById(id);
 const fmtIdr = (n) => 'Rp ' + Math.round(n || 0).toLocaleString('id-ID');
-const fmtPct = (n) => (n >= 0 ? '+' : '') + (n ?? 0).toFixed(2) + '%';
-const fmtUsd = (n) => '$' + Number(n ?? 0).toLocaleString('en-US', { maximumFractionDigits: n < 10 ? 4 : 2 });
+const fmtIdrShort = (n) => {
+  const v = Math.abs(n || 0);
+  const sign = n < 0 ? '-' : '';
+  if (v >= 1e9) return `${sign}Rp ${(v / 1e9).toFixed(2)}B`;
+  if (v >= 1e6) return `${sign}Rp ${(v / 1e6).toFixed(2)}M`;
+  if (v >= 1e3) return `${sign}Rp ${Math.round(v / 1e3)}k`;
+  return `${sign}Rp ${Math.round(v)}`;
+};
+const fmtPct = (n, digits = 2) => `${n >= 0 ? '+' : ''}${Number(n ?? 0).toFixed(digits)}%`;
+function fmtPrice(n) {
+  if (!Number.isFinite(n)) return '-';
+  const abs = Math.abs(n);
+  const digits = abs >= 1000 ? 2 : abs >= 1 ? 4 : abs >= 0.01 ? 5 : 8;
+  return '$' + Number(n).toLocaleString('en-US', { maximumFractionDigits: digits, minimumFractionDigits: abs >= 1000 ? 2 : 0 });
+}
+function escapeHtml(value) {
+  return String(value ?? '').replace(/[&<>"']/g, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch]));
+}
+function base(symbol) { return symbol.replace(/USDT$/, ''); }
+function fmtCountdown(ms) {
+  if (!Number.isFinite(ms)) return '-';
+  if (ms <= 0) return 'now';
+  const s = Math.floor(ms / 1000);
+  const d = Math.floor(s / 86400), h = Math.floor((s % 86400) / 3600), m = Math.floor((s % 3600) / 60), sec = s % 60;
+  if (d > 0) return `${d}d ${h}h`;
+  if (h > 0) return `${h}h ${String(m).padStart(2, '0')}m`;
+  return `${m}m ${String(sec).padStart(2, '0')}s`;
+}
+function fmtAgo(ms) {
+  if (!Number.isFinite(ms)) return 'never';
+  const m = Math.round(ms / 60000);
+  if (m < 1) return 'just now';
+  if (m < 60) return `${m} min ago`;
+  const h = Math.round(m / 60);
+  return h < 48 ? `${h}h ago` : `${Math.round(h / 24)}d ago`;
+}
+function fmtClock(ms) {
+  const tz = state.config?.timeZone;
+  const far = Math.abs(ms - Date.now()) > 6 * 86_400_000;
+  const opts = far ? { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit', timeZone: tz } : { weekday: 'short', hour: '2-digit', minute: '2-digit', timeZone: tz };
+  try { return new Intl.DateTimeFormat(undefined, opts).format(new Date(ms)); }
+  catch { return new Date(ms).toLocaleString(); }
+}
 
+// --- API (admin token for state-changing calls) --------------------------------
 const ADMIN_TOKEN_KEY = 'sally-admin-token';
-
-function readAdminToken() {
-  try { return localStorage.getItem(ADMIN_TOKEN_KEY) || ''; } catch { return ''; }
-}
-
-function saveAdminToken(token) {
-  try { token ? localStorage.setItem(ADMIN_TOKEN_KEY, token) : localStorage.removeItem(ADMIN_TOKEN_KEY); } catch { /* storage blocked - token lasts for this request only */ }
-}
+function readAdminToken() { try { return localStorage.getItem(ADMIN_TOKEN_KEY) || ''; } catch { return ''; } }
+function saveAdminToken(token) { try { token ? localStorage.setItem(ADMIN_TOKEN_KEY, token) : localStorage.removeItem(ADMIN_TOKEN_KEY); } catch { /* storage blocked */ } }
 
 async function api(path, opts, { retried = false } = {}) {
   const headers = { 'Content-Type': 'application/json' };
@@ -57,1273 +93,922 @@ async function api(path, opts, { retried = false } = {}) {
     const entered = window.prompt('Admin token required for this action:');
     if (entered) {
       saveAdminToken(entered.trim());
+      renderAdminTokenState();
       return api(path, opts, { retried: true });
     }
   }
-  if (res.status === 401) saveAdminToken('');
+  if (res.status === 401) { saveAdminToken(''); renderAdminTokenState(); }
   if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || `Request failed (${res.status})`);
   return res.json();
 }
 
-// --- navigation --------------------------------------------------------
+// --- small animation helpers ---------------------------------------------------
+function animateNumber(el, target, format) {
+  const from = Number(el.dataset.value);
+  el.dataset.value = String(target);
+  if (!Number.isFinite(from) || reducedMotion.matches || from === target) { el.textContent = format(target); return; }
+  const start = performance.now();
+  const step = (now) => {
+    const t = Math.min(1, (now - start) / 700);
+    const eased = 1 - Math.pow(1 - t, 3);
+    el.textContent = format(from + (target - from) * eased);
+    if (t < 1) requestAnimationFrame(step);
+  };
+  requestAnimationFrame(step);
+}
+
+function flash(el, direction) {
+  if (!el || reducedMotion.matches) return;
+  el.classList.remove('flash-up', 'flash-down');
+  void el.offsetWidth;
+  el.classList.add(direction > 0 ? 'flash-up' : 'flash-down');
+}
+
+function toast(title, message) {
+  const host = $('toastHost');
+  const el = document.createElement('div');
+  el.className = 'toast';
+  el.innerHTML = `<b>${escapeHtml(title)}</b>${escapeHtml(message || '')}`;
+  host.appendChild(el);
+  setTimeout(() => { el.classList.add('out'); setTimeout(() => el.remove(), 320); }, 6000);
+}
+
+// --- navigation ----------------------------------------------------------------
+const VIEW_TITLE = { dashboard: 'Dashboard', radar: 'Radar', settings: 'Settings' };
 function showView(name) {
   state.view = name;
   document.querySelectorAll('.view').forEach((el) => el.classList.add('hidden'));
   $(`view-${name}`).classList.remove('hidden');
-  document.querySelectorAll('.tab').forEach((el) => el.classList.toggle('active', el.dataset.view === name));
+  document.querySelectorAll('.nav-tab').forEach((el) => el.classList.toggle('active', el.dataset.view === name));
+  $('pageTitle').textContent = name === 'coin' ? base(state.coinSymbol || '') : VIEW_TITLE[name];
+  window.scrollTo({ top: 0, behavior: reducedMotion.matches ? 'auto' : 'smooth' });
+  renderCurrentView();
 }
-
-document.querySelectorAll('.tab').forEach((btn) => btn.addEventListener('click', () => { showView(btn.dataset.view); refreshCurrentView(); }));
-$('backButton').addEventListener('click', () => { showView('market'); refreshCurrentView(); });
+document.querySelectorAll('.nav-tab').forEach((btn) => btn.addEventListener('click', () => showView(btn.dataset.view)));
+document.querySelectorAll('[data-goto]').forEach((btn) => btn.addEventListener('click', () => showView(btn.dataset.goto)));
+$('backButton').addEventListener('click', () => showView('radar'));
 
 function openCoin(symbol) {
-  if (symbol !== state.coinSymbol) state.chartMode = null; // reset timeframe choice when switching coins
+  if (symbol !== state.coinSymbol) { state.chartTf = null; state.planProfile = null; state.chartHighlight = null; }
   state.coinSymbol = symbol;
   showView('coin');
-  loadCoinDetail(symbol);
+  loadChart().catch(console.error);
 }
 
-// --- HOME ---------------------------------------------------------------
-async function loadHome() {
-  const [portfolio, notifs, verdict] = await Promise.all([api('/api/portfolio'), api('/api/notifications'), api('/api/backtest-verdict')]);
-  state.portfolio = portfolio;
-  state.notifications = notifs.items || [];
-  state.backtestVerdict = verdict;
-  renderHome();
+// --- data ----------------------------------------------------------------------
+function coinBySymbol(symbol) { return state.coins.find((c) => c.symbol === symbol) || null; }
+function livePrice(coin) {
+  return state.prices[coin.symbol]?.price ?? coin.prediction?.headline?.trigger?.livePrice ?? coin.prediction?.headline?.livePrice ?? coin.latest?.close;
+}
+function liveChange(coin) { return state.prices[coin.symbol]?.changePct ?? coin.latest?.changePct ?? 0; }
+function headline(coin) { return coin?.prediction?.headline || null; }
+const PROFILE_SHORT = { swing: 'Swing', trend: 'Trend', scalping: 'Scalp' };
+function shortProfile(h) { return h?.profile ? `${PROFILE_SHORT[h.profile] || h.profile} · ${TF_LABEL[h.timeframe] || ''}` : ''; }
+function stageOf(coin) { return headline(coin)?.stage || 'blocked'; }
+
+async function loadCore() {
+  const [coins, portfolio, status] = await Promise.allSettled([api('/api/coins'), api('/api/portfolio'), api('/api/engine/status')]);
+  if (coins.status === 'fulfilled') { state.coins = coins.value.coins || []; state.coinsUpdatedAt = coins.value.updatedAt; }
+  if (portfolio.status === 'fulfilled') state.portfolio = portfolio.value;
+  if (status.status === 'fulfilled') state.status = status.value;
+  renderHeader();
+  renderCurrentView();
 }
 
-function renderHome() {
+async function loadPrices() {
+  try {
+    const { prices } = await api('/api/prices');
+    const previous = state.prices;
+    state.prices = prices || {};
+    for (const [symbol, p] of Object.entries(state.prices)) {
+      const before = previous[symbol]?.price;
+      if (Number.isFinite(before) && before !== p.price) {
+        document.querySelectorAll(`[data-price="${symbol}"]`).forEach((el) => { el.textContent = fmtPrice(p.price); flash(el, p.price - before); });
+      }
+    }
+    updateLiveDistances();
+  } catch (error) {
+    console.warn('prices unavailable', error.message);
+  }
+}
+
+async function loadNotifications() {
+  try {
+    const { items } = await api('/api/notifications');
+    if (state.seenNotifications) {
+      const fresh = (items || []).filter((n) => !state.seenNotifications.has(n.id) && n.category === 'trade').slice(0, 3);
+      for (const n of fresh.reverse()) toast(n.title, n.message);
+    }
+    state.seenNotifications = new Set((items || []).map((n) => n.id));
+  } catch (error) {
+    console.warn('notifications unavailable', error.message);
+  }
+}
+
+async function loadVerdict() {
+  state.verdict = await api('/api/backtest-verdict').catch(() => null);
+  renderVerdict();
+}
+
+function renderCurrentView() {
+  if (state.view === 'dashboard') renderDashboard();
+  else if (state.view === 'radar') renderRadar();
+  else if (state.view === 'coin') renderCoin();
+  else if (state.view === 'settings') renderSettings();
+}
+
+// --- header + robot status -------------------------------------------------------
+function robotStatus() {
+  const s = state.status;
+  if (!s) return { cls: '', title: 'Checking the robot...', sub: '' };
+  if (s.stale) return { cls: 'bad', title: 'The engine has not checked in', sub: `Last check ${fmtAgo(s.ageMs)}. Check the GitHub Actions workflow.` };
+  const next = s.nextTickEta ? Date.parse(s.nextTickEta) - Date.now() : null;
+  const nextText = next == null ? '' : next > 0 ? `, next in ~${Math.max(1, Math.round(next / 60000))} min` : ', next any moment';
+  const sub = `Last check ${fmtAgo(s.ageMs)}${nextText}.`;
+  if (s.halt) return { cls: 'warn', title: 'New entries are paused', sub: `${s.halt.reason}. ${sub}` };
+  if (!s.autoTradeEnabled) return { cls: 'warn', title: 'Watching only', sub: `Auto-trade is off, so the robot won't open trades. ${sub}` };
+  return { cls: 'ok', title: 'Robot is running', sub };
+}
+
+function renderHeader() {
+  const status = robotStatus();
+  const pill = $('enginePill');
+  pill.className = `engine-pill ${status.cls}`;
+  $('enginePillText').textContent = state.status?.stale ? 'Engine stale' : state.status ? `Checked ${fmtAgo(state.status.ageMs)}` : 'Engine';
+  pill.title = status.sub;
   const p = state.portfolio;
-  if (!p) return;
-  $('headerBalance').textContent = fmtIdr(p.equityIdr ?? p.balanceIdr);
-  $('equityValue').textContent = fmtIdr(p.equityIdr ?? p.balanceIdr);
-  const retEl = $('returnValue');
-  const ret = p.totalReturnPct ?? 0;
-  retEl.textContent = `${fmtPct(ret)} since start`;
-  retEl.className = 'sub ' + (ret >= 0 ? 'up' : 'down');
-  $('cashValue').textContent = fmtIdr(p.balanceIdr);
-  const positionsValue = (p.equityIdr ?? p.balanceIdr) - p.balanceIdr;
-  $('positionsValue').textContent = fmtIdr(positionsValue);
-  $('realizedValue').textContent = fmtIdr(p.realizedProfitIdr || 0);
-
-  const positions = Object.values(p.positions || {});
-  const list = $('positionsList');
-  list.innerHTML = '';
-  if (!positions.length) {
-    list.innerHTML = '<div class="empty-hint">No open positions - the robot is watching for a fresh entry signal.</div>';
-  } else {
-    for (const pos of positions) {
-      const row = document.createElement('div');
-      row.className = 'row-item';
-      const pnl = pos.unrealizedProfitPct ?? 0;
-      row.innerHTML = `
-        <div class="row-left">
-          <div class="coin-dot">${pos.symbol.replace('USDT', '').slice(0, 3)}</div>
-          <div><div class="row-symbol">${pos.symbol}</div><div class="row-sub">${modeLabel(pos.mode)} · entry ${fmtUsd(pos.entryPrice)}</div></div>
-        </div>
-        <div class="row-right">
-          <div class="row-price">${fmtIdr(pos.marketValueIdr ?? pos.investedIdr)}</div>
-          <div class="row-change ${pnl >= 0 ? 'up' : 'down'}" style="color:${pnl >= 0 ? 'var(--bullish)' : 'var(--bearish)'}">${fmtPct(pnl)}</div>
-        </div>`;
-      row.addEventListener('click', () => openCoin(pos.symbol));
-      list.appendChild(row);
-    }
-  }
-
-  renderBacktestVerdict();
-
-  const notifList = $('notificationsList');
-  notifList.innerHTML = '';
-  if (!state.notifications.length) {
-    notifList.innerHTML = '<div class="empty-hint">No notifications yet.</div>';
-  } else {
-    for (const n of state.notifications.slice(0, 12)) {
-      const div = document.createElement('div');
-      div.className = 'notif-item';
-      div.innerHTML = `<div class="notif-title ${n.level}">${escapeHtml(n.title)}</div><div>${escapeHtml(n.message)}</div><div class="notif-meta">${new Date(n.createdAt).toLocaleString()}</div>`;
-      notifList.appendChild(div);
-    }
-  }
+  if (p) $('headerBalance').textContent = fmtIdr(p.equityIdr ?? p.balanceIdr);
 }
 
-function modeLabel(mode) {
-  return { swing: 'Swing', scalping: 'Scalping', dayTrade: 'Day-trade' }[mode] || mode;
+// --- dashboard -------------------------------------------------------------------
+function renderDashboard() {
+  const status = robotStatus();
+  $('statusRing').className = `status-ring ${status.cls}`;
+  $('statusTitle').textContent = status.title;
+  $('statusSub').textContent = status.sub;
+  const inPlay = state.coins.filter((c) => ['ready', 'setting-up'].includes(stageOf(c))).length;
+  const positions = Object.keys(state.portfolio?.positions || {}).length;
+  const max = state.settings?.maxOpenPositions ?? '-';
+  $('statusChips').innerHTML = [
+    `<span class="pill ${inPlay ? 'warn' : ''}">${inPlay} coin${inPlay === 1 ? '' : 's'} setting up</span>`,
+    `<span class="pill">${positions}/${max} positions</span>`,
+    state.settings ? `<span class="pill">Risk ${state.settings.riskPerTradePct}% per trade</span>` : ''
+  ].join('');
+
+  renderDecision();
+  renderEquity();
+  renderFiring();
+  renderPositions();
+  renderActivity();
+  renderVerdict();
 }
 
-// Animates an element's displayed number from whatever it last showed (tracked
-// via a data attribute, since the DOM text itself may carry a suffix like
-// "/100") up/down to `target` - an ease-out rolling-odometer effect rather
-// than the score just popping into place.
-function animateRollingNumber(el, target, { suffix = '', duration = 800 } = {}) {
-  const start = Number(el.dataset.rollValue) || 0;
-  el.dataset.rollValue = String(target);
-  if (start === target) { el.textContent = `${target}${suffix}`; return; }
-  const startTime = performance.now();
-  function tick(now) {
-    const t = Math.min(1, (now - startTime) / duration);
-    const eased = 1 - Math.pow(1 - t, 3);
-    const value = Math.round(start + (target - start) * eased);
-    el.textContent = `${value}${suffix}`;
-    if (t < 1) requestAnimationFrame(tick);
-  }
-  requestAnimationFrame(tick);
-}
-
-// Last .claude/skills/backtest-expert verdict, read via /api/backtest-verdict -
-// so "auto-trade is on" is never shown without "and here's whether the last
-// backtest actually cleared Deploy" right next to it. This never triggers a
-// backtest itself - it only reads whatever evaluate_backtest.mjs last wrote.
-const VERDICT_BADGE_CLASS = { Deploy: 'badge-bullish', Refine: 'badge-neutral', Abandon: 'badge-bearish' };
-function renderBacktestVerdict() {
-  const v = state.backtestVerdict;
-  const badge = $('verdictBadge');
-  const scoreEl = $('verdictScore');
-  const metaEl = $('verdictMeta');
-  if (!v || !v.available) {
-    badge.className = 'badge badge-neutral';
-    badge.textContent = 'N/A';
-    scoreEl.textContent = 'No backtest run yet';
-    scoreEl.dataset.rollValue = '0';
-    metaEl.innerHTML = 'Run <code>node scripts/benchmark.mjs</code> then the <code>backtest-expert</code> skill\'s <code>evaluate_backtest.mjs --summary</code> to populate this.';
+function renderDecision() {
+  const candidates = state.coins.map((c) => ({ coin: c, h: headline(c) })).filter((x) => x.h && x.h.decisionAt && x.h.stage !== 'holding');
+  const inPlay = candidates.filter((x) => ['ready', 'setting-up'].includes(x.h.stage));
+  const pool = inPlay.length ? inPlay : candidates;
+  const ring = $('decisionRing');
+  if (!pool.length) {
+    $('decisionCountdown').textContent = '-';
+    $('decisionText').textContent = 'Waiting for the first engine check.';
+    ring.dataset.deadline = '';
     return;
   }
-  badge.className = 'badge ' + (VERDICT_BADGE_CLASS[v.verdict] || 'badge-neutral');
-  badge.textContent = v.verdict || '-';
-  animateRollingNumber(scoreEl, v.totalScore, { suffix: '/100' });
-  const when = v.generatedAtIso ? new Date(v.generatedAtIso).toLocaleString() : 'unknown time';
-  const flagCount = (v.redFlags || []).length;
-  const flagNote = flagCount ? `${flagCount} red flag${flagCount === 1 ? '' : 's'}: ${v.redFlags.map((f) => f.message).join(' ')}` : 'No red flags.';
-  const s = v.benchmarkSummary;
-  const summaryNote = s ? ` · ${s.months}mo, ${s.closedTrades} trades, ${fmtPct(s.totalReturnPct)} return, win ${s.winRate ?? 'n/a'}%` : '';
-  metaEl.textContent = `As of ${when}${summaryNote} - ${flagNote}`;
+  pool.sort((a, b) => a.h.decisionAt - b.h.decisionAt);
+  const next = pool[0].h;
+  const sameTime = pool.filter((x) => x.h.decisionAt === next.decisionAt);
+  $('decisionCountdown').dataset.deadline = String(next.decisionAt);
+  ring.dataset.deadline = String(next.decisionAt);
+  ring.dataset.period = String(TF_MS[next.timeframe]);
+  ring.classList.toggle('signal', inPlay.length > 0);
+  const names = sameTime.slice(0, 3).map((x) => base(x.coin.symbol)).join(', ');
+  $('decisionText').innerHTML = inPlay.length
+    ? `The ${TF_WORD[next.timeframe]} candle closes at <b>${escapeHtml(fmtClock(next.decisionAt))}</b>. ${escapeHtml(names)} could fire then.`
+    : `No coin is set up yet. The next ${TF_WORD[next.timeframe]} check is at ${escapeHtml(fmtClock(next.decisionAt))}.`;
+  tickClock();
 }
 
-// --- run a backtest from the app itself (POST /api/backtest/run) -----------
-let backtestMonths = 1;
-document.querySelectorAll('#backtestMonthsRow .view-toggle-btn').forEach((btn) => {
-  btn.addEventListener('click', () => {
-    document.querySelectorAll('#backtestMonthsRow .view-toggle-btn').forEach((b) => b.classList.toggle('active', b === btn));
-    backtestMonths = Number(btn.dataset.months);
+function renderEquity() {
+  const p = state.portfolio;
+  if (!p) return;
+  const equity = p.equityIdr ?? p.balanceIdr;
+  animateNumber($('equityValue'), equity, fmtIdr);
+  const ret = p.totalReturnPct ?? 0;
+  $('returnValue').innerHTML = `<span class="${ret >= 0 ? 'up' : 'down'}">${fmtPct(ret)}</span> since start (${fmtIdr(p.initialBalanceIdr)})`;
+  $('cashValue').textContent = fmtIdrShort(p.balanceIdr);
+  $('positionsValue').textContent = fmtIdrShort(equity - p.balanceIdr);
+  $('realizedValue').textContent = fmtIdrShort(p.realizedProfitIdr || 0);
+}
+
+function segmentsHtml(h, key) {
+  if (!h?.conditions) return '';
+  const prev = state.lastSegments[key] || [];
+  const now = h.conditions.map((c) => (c.na ? 'na' : c.ok ? 'on' : 'off'));
+  state.lastSegments[key] = now;
+  return `<div class="segments" aria-label="${h.met} of ${h.total} conditions met">${now.map((s, i) => {
+    const pop = s === 'on' && prev[i] && prev[i] !== 'on' ? ' pop' : '';
+    const signal = s === 'on' && h.stage === 'setting-up' && i >= 4 ? ' signal' : '';
+    return `<span class="seg ${s}${pop}${signal}" title="${escapeHtml(h.conditions[i].label)}"></span>`;
+  }).join('')}</div>`;
+}
+
+function triggerLine(coin, h) {
+  if (!h) return 'Not enough data yet.';
+  if (h.stage === 'holding') return `Stop at <b>${fmtPrice(h.stopPrice)}</b> (${h.distanceToStopPct}% away)`;
+  if (h.stage === 'ready') return `Would buy near <b>${fmtPrice(h.plan?.entryPrice ?? livePrice(coin))}</b> if the candle closes like this`;
+  if (h.stage === 'setting-up') {
+    return `Buys if the ${TF_LABEL[h.timeframe]} candle closes above <b>${fmtPrice(h.trigger.price)}</b> <span class="muted" data-dist="${coin.symbol}" data-trigger="${h.trigger.price}">${distanceText(h.trigger.price, livePrice(coin))}</span>`;
+  }
+  if (h.stage === 'watching') {
+    return h.conditions.find((c) => c.key === 'tfTrend')?.ok
+      ? 'Uptrend intact, waiting for a pullback to the EMA20'
+      : `Waiting for the ${TF_WORD[h.timeframe]} chart to turn up again`;
+  }
+  const failing = h.conditions.filter((c) => !c.ok && !c.na)[0];
+  return failing ? `Waiting because ${escapeHtml(failing.failText)}` : 'Not in play';
+}
+
+function distanceText(trigger, price) {
+  if (!Number.isFinite(trigger) || !Number.isFinite(price)) return '';
+  const d = ((trigger - price) / price) * 100;
+  return d > 0 ? `(${d.toFixed(2)}% above now)` : '(price is above it now)';
+}
+
+function updateLiveDistances() {
+  document.querySelectorAll('[data-dist]').forEach((el) => {
+    const coin = coinBySymbol(el.dataset.dist);
+    if (coin) el.textContent = distanceText(Number(el.dataset.trigger), livePrice(coin));
   });
-});
-
-$('runBacktestBtn').addEventListener('click', async () => {
-  const btn = $('runBacktestBtn');
-  const hint = $('backtestRunHint');
-  const card = $('backtestCard');
-  btn.disabled = true;
-  btn.textContent = 'Running...';
-  hint.style.display = 'block';
-  card.classList.remove('is-success', 'is-error');
-  card.classList.add('is-running');
-  try {
-    state.backtestVerdict = await api('/api/backtest/run', { method: 'POST', body: { months: backtestMonths } });
-    renderBacktestVerdict();
-    card.classList.remove('is-running');
-    card.classList.add('is-success');
-  } catch (error) {
-    $('verdictMeta').textContent = `Backtest run failed: ${error.message}`;
-    card.classList.remove('is-running');
-    card.classList.add('is-error');
-  } finally {
-    btn.disabled = false;
-    btn.textContent = 'Run backtest now';
-    hint.style.display = 'none';
-  }
-});
-
-// --- MARKET ---------------------------------------------------------------
-async function loadMarket() {
-  // allSettled, not all: a Binance ticker hiccup on /api/movers should never
-  // blank out the watchlist half of this tab, which comes from /api/coins.
-  const [coinsResult, moversResult] = await Promise.allSettled([api('/api/coins'), api('/api/movers')]);
-  state.coins = coinsResult.status === 'fulfilled' ? coinsResult.value.coins || [] : [];
-  state.movers = moversResult.status === 'fulfilled' ? moversResult.value.movers || [] : [];
-  state.moversError = moversResult.status === 'fulfilled' ? moversResult.value.error : moversResult.reason?.message;
-  renderMarket();
 }
 
-function sortCoins(coins, mode) {
-  const arr = [...coins];
-  if (mode === 'confidence') {
-    arr.sort((a, b) => (b.entryOrExit?.confidencePct ?? -1) - (a.entryOrExit?.confidencePct ?? -1));
-  } else if (mode === 'change') {
-    arr.sort((a, b) => (b.latest?.changePct ?? -Infinity) - (a.latest?.changePct ?? -Infinity));
-  } else {
-    arr.sort((a, b) => {
-      const aArmed = a.entryOrExit?.armedLevel != null ? 1 : 0;
-      const bArmed = b.entryOrExit?.armedLevel != null ? 1 : 0;
-      if (aArmed !== bArmed) return bArmed - aArmed;
-      return (b.entryOrExit?.confidencePct ?? -1) - (a.entryOrExit?.confidencePct ?? -1);
-    });
-  }
-  return arr;
+function rankCoins(coins) {
+  return [...coins].sort((a, b) => {
+    const ha = headline(a), hb = headline(b);
+    return (STAGE_ORDER[stageOf(a)] - STAGE_ORDER[stageOf(b)])
+      || ((hb?.met ?? 0) / (hb?.total || 1) - (ha?.met ?? 0) / (ha?.total || 1))
+      || ((ha?.decisionAt ?? Infinity) - (hb?.decisionAt ?? Infinity));
+  });
 }
 
-function badgeClass(label) {
-  if (label === 'Bullish') return 'badge-bullish';
-  if (label === 'Bearish') return 'badge-bearish';
-  return 'badge-neutral';
+function renderFiring() {
+  const list = $('firingList');
+  if (!state.coins.length) { list.innerHTML = '<div class="empty">No coins scanned yet. The robot fills this in on its next check.</div>'; return; }
+  const ranked = rankCoins(state.coins.filter((c) => stageOf(c) !== 'holding'));
+  const top = ranked.filter((c) => stageOf(c) !== 'blocked').slice(0, 3);
+  if (!top.length) {
+    list.innerHTML = `<div class="empty">Nothing is close to firing. ${ranked.length} coins are out of play right now, mostly because their trend is down.</div>`;
+    return;
+  }
+  list.innerHTML = top.map((coin, i) => {
+    const h = headline(coin);
+    const period = TF_MS[h.timeframe];
+    return `<div class="card fire-card enter" style="--i:${i}" data-open="${coin.symbol}">
+      <div class="fire-head">
+        <div class="coin-name"><span class="coin-dot">${escapeHtml(base(coin.symbol).slice(0, 4))}</span><div><b>${escapeHtml(base(coin.symbol))}</b><small>${escapeHtml(shortProfile(h))}</small></div></div>
+        <span class="stage-chip ${h.stage}">${STAGE_LABEL[h.stage]}</span>
+      </div>
+      ${segmentsHtml(h, `fire-${coin.symbol}`)}
+      <div class="fire-trigger">${triggerLine(coin, h)}</div>
+      <div class="fire-foot">
+        <svg class="ring sm" viewBox="0 0 44 44" aria-hidden="true"><circle class="ring-track" cx="22" cy="22" r="19"/><circle class="ring-fill ${h.stage === 'ready' ? 'bull' : 'signal'}" data-deadline="${h.decisionAt}" data-period="${period}" cx="22" cy="22" r="19"/></svg>
+        <span>Decides in <span class="count" data-deadline="${h.decisionAt}">${fmtCountdown(h.decisionAt - Date.now())}</span></span>
+        ${h.plan?.riskIdr ? `<span style="margin-left:auto">Risk ${fmtIdrShort(h.plan.riskIdr)}</span>` : ''}
+      </div>
+    </div>`;
+  }).join('');
+  bindOpeners(list);
+  tickClock();
 }
 
-function renderMarket() {
-  const list = $('watchlistList');
-  list.innerHTML = '';
-  const query = ($('marketSearch').value || '').trim().toUpperCase();
-  const visibleCoins = sortCoins(query ? state.coins.filter((c) => c.symbol.includes(query)) : state.coins, state.marketSort);
-  if (!state.coins.length) list.innerHTML = '<div class="empty-hint">Loading watchlist...</div>';
-  else if (!visibleCoins.length) list.innerHTML = `<div class="empty-hint">No watchlist coin matches "${escapeHtml(query)}".</div>`;
-  for (const coin of visibleCoins) {
-    list.appendChild(coinRow(coin.symbol, coin.latest?.close, coin.latest?.changePct, coin.summary?.label, coin.activeMode, coin.entryOrExit, coin.sparkline));
-  }
-
-  const movers = $('moversList');
-  movers.innerHTML = '';
-  if (state.moversError) {
-    movers.innerHTML = `<div class="empty-hint">Top movers unavailable: ${escapeHtml(state.moversError)}</div>`;
-  } else if (!state.movers.length) {
-    movers.innerHTML = '<div class="empty-hint">Loading top movers...</div>';
-  }
-  for (const m of state.movers) {
-    const row = document.createElement('div');
-    row.className = 'row-item';
-    row.innerHTML = `
-      <div class="row-left"><div class="coin-dot">${m.symbol.replace('USDT', '').slice(0, 3)}</div><div><div class="row-symbol">${m.symbol}</div><div class="row-sub">Vol ${fmtUsd(m.quoteVolume)}</div></div></div>
-      <div class="row-right"><div class="row-price">${fmtUsd(m.price)}</div><div class="row-change" style="color:${m.changePct >= 0 ? 'var(--bullish)' : 'var(--bearish)'}">${fmtPct(m.changePct)}</div></div>`;
-    row.addEventListener('click', () => addToWatchlistAndOpen(m.symbol));
-    movers.appendChild(row);
-  }
-
-  renderTickerStrip();
-  renderMarketPulse();
+function exitBarHtml(exit) {
+  const stop = exit.stopPrice, entry = exit.entryPrice, price = exit.livePrice;
+  const points = [stop, entry, price, exit.breakevenArmPrice].filter(Number.isFinite);
+  const lo = Math.min(...points), hi = Math.max(...points);
+  const pad = (hi - lo) * 0.12 || entry * 0.01;
+  const pos = (v) => `${(((v - (lo - pad)) / (hi - lo + 2 * pad)) * 100).toFixed(1)}%`;
+  return `<div class="exit-bar">
+      <span class="marker stop" style="left:${pos(stop)}" title="Stop ${fmtPrice(stop)}"></span>
+      <span class="marker entry" style="left:${pos(entry)}" title="Entry ${fmtPrice(entry)}"></span>
+      ${Number.isFinite(exit.breakevenArmPrice) ? `<span class="marker be" style="left:${pos(exit.breakevenArmPrice)}" title="Breakeven arms at ${fmtPrice(exit.breakevenArmPrice)}"></span>` : ''}
+      <span class="marker price" style="left:${pos(price)}" title="Now ${fmtPrice(price)}"></span>
+    </div>
+    <div class="exit-labels"><span class="down">Stop ${fmtPrice(stop)}</span><span>${Number.isFinite(exit.breakevenArmPrice) ? `Breakeven at ${fmtPrice(exit.breakevenArmPrice)}` : exit.stopKind === 'trailing' ? 'Trailing stop active' : 'Stop at breakeven'}</span></div>`;
 }
 
-// Desktop-only ticker strip along the top of the shell (hidden on mobile via
-// CSS). Built from the same watchlist poll loadMarket() already fetches for
-// the Market tab - no new data source, no new endpoint. It's as fresh as the
-// last Market-tab visit or the initial app load, since that's when
-// renderMarket() (and therefore this) runs.
-//
-// Phase 3: each chip also gets a small pulsing amber dot when that coin is
-// "armed" (entryOrExit.armedLevel set - the same EMA/BB-retest wait state
-// the Market list's "Armed" badge and the Market Pulse card already surface,
-// see coinRow() and renderMarketPulse() above). Purely a glance-level cue
-// that something is close to firing while you're not on the Market tab -
-// same data, no new endpoint, hover for the same detail the badge shows.
-function renderTickerStrip() {
-  const el = $('tickerStrip');
-  if (!el || !state.coins.length) return;
-  el.innerHTML = state.coins.slice(0, 14).map((c) => {
-    const chg = c.latest?.changePct ?? 0;
-    const armedLevel = c.entryOrExit?.armedLevel;
-    const armedTitle = armedLevel != null
-      ? `Armed at ${armedLevel} (${c.entryOrExit.triggerKind === 'bb' ? 'Bollinger' : 'EMA'} retest) - waiting ${c.entryOrExit.barsWaited ?? 0}/${c.entryOrExit.windowBars ?? '?'} bars`
-      : '';
-    const dot = armedLevel != null ? `<span class="ticker-signal-dot" title="${escapeHtml(armedTitle)}"></span>` : '';
-    return `<span class="ticker-chip">${dot}<b>${c.symbol.replace('USDT', '')}</b><span class="ticker-price">${fmtUsd(c.latest?.close)}</span><span class="${chg >= 0 ? 'up' : 'down'}">${fmtPct(chg)}</span></span>`;
+function renderPositions() {
+  const list = $('positionsList');
+  const positions = Object.values(state.portfolio?.positions || {});
+  if (!positions.length) { list.innerHTML = '<div class="empty">No open positions. The robot buys when a coin on the radar reaches "Ready" and the candle closes.</div>'; return; }
+  list.innerHTML = positions.map((pos, i) => {
+    const coin = coinBySymbol(pos.symbol);
+    const exit = coin?.prediction?.exit;
+    const pnl = pos.unrealizedProfitIdr ?? 0;
+    return `<div class="card position-card enter" style="--i:${i}" data-open="${pos.symbol}">
+      <div class="position-head">
+        <div class="coin-name"><span class="coin-dot">${escapeHtml(base(pos.symbol).slice(0, 4))}</span><div><b>${escapeHtml(base(pos.symbol))}</b><small>${escapeHtml(shortProfile(exit) || pos.profile || "")} · entry ${fmtPrice(pos.entryPrice)}</small></div></div>
+        <div class="row-right"><b class="${pnl >= 0 ? 'up' : 'down'}">${pnl >= 0 ? '+' : ''}${fmtIdrShort(pnl)}</b><span class="muted small">${exit?.rNow != null ? `${exit.rNow >= 0 ? '+' : ''}${exit.rNow}R` : fmtPct(pos.unrealizedProfitPct ?? 0)}</span></div>
+      </div>
+      ${exit ? exitBarHtml(exit) : ''}
+      ${exit?.nextCheckAt ? `<div class="muted small">Stop checked when the ${TF_WORD[exit.timeframe]} candle closes, in <span data-deadline="${exit.nextCheckAt}">${fmtCountdown(exit.nextCheckAt - Date.now())}</span>${exit.timeStopAt ? `. Exits by ${escapeHtml(fmtClock(exit.timeStopAt))} unless it reaches +0.5R.` : '.'}</div>` : ''}
+    </div>`;
+  }).join('');
+  bindOpeners(list);
+}
+
+function renderActivity() {
+  const list = $('activityList');
+  const items = state.status?.activity || [];
+  if (!items.length) { list.innerHTML = '<div class="muted small">Nothing yet. Trades, skipped signals and pauses show up here.</div>'; return; }
+  list.innerHTML = items.slice(0, 12).map((item) => {
+    const when = fmtAgo(Date.now() - Date.parse(item.at));
+    if (item.kind === 'fill') {
+      const buy = item.type === 'BUY';
+      const pnl = item.realizedProfitIdr != null && !buy ? ` · ${item.realizedProfitIdr >= 0 ? '+' : ''}${fmtIdrShort(item.realizedProfitIdr)}` : '';
+      return `<div class="activity-item"><span class="icon ${buy ? 'buy' : 'sell'}">${buy ? 'B' : 'S'}</span><div><b>${buy ? 'Bought' : item.partial ? 'Sold part of' : 'Sold'} ${escapeHtml(base(item.symbol))}</b> at ${fmtPrice(item.price)}${pnl}<small>${escapeHtml(item.reason || '')} · ${when}</small></div></div>`;
+    }
+    if (item.kind === 'pause') return `<div class="activity-item"><span class="icon pause">!</span><div><b>Entries paused</b><small>${escapeHtml(item.reason)} · ${when}</small></div></div>`;
+    return `<div class="activity-item"><span class="icon skip">-</span><div>Skipped ${escapeHtml(base(item.symbol))}<small>${escapeHtml(item.reason || '')} · ${when}</small></div></div>`;
   }).join('');
 }
 
-// Dashboard "Market pulse" card - aggregates the same per-coin fields the
-// Market tab and Coin Detail already display (summary label/gauge from
-// aiAdvisor.js, activeMode, entryOrExit.armedLevel), just rolled up across
-// the whole watchlist instead of one coin at a time. Nothing here reads a
-// new endpoint or changes what the robot decides - it's a client-side
-// aggregation of data loadMarket() already fetched.
-function renderMarketPulse() {
-  const card = $('marketPulseCard');
-  if (!card) return;
-  const coins = state.coins || [];
-  const withSummary = coins.filter((c) => c.summary?.label);
-  const moodEl = $('pulseMoodValue');
-  const moodLabelEl = $('pulseMoodLabel');
-  const breadthEl = $('pulseBreadth');
-  const regimeEl = $('pulseRegime');
-  const signalsEl = $('pulseSignals');
-  const moversEl = $('pulseMovers');
-
-  if (!withSummary.length) {
-    moodEl.textContent = '-';
-    moodEl.className = 'pulse-mood-value';
-    moodLabelEl.textContent = 'Waiting for watchlist data...';
-    breadthEl.innerHTML = '';
-    regimeEl.innerHTML = '';
-    signalsEl.innerHTML = '<div class="empty-hint">No data yet.</div>';
-    moversEl.innerHTML = '<div class="empty-hint">No data yet.</div>';
-    return;
-  }
-
-  // Mood: average of each coin's Bearish(0)<->Bullish(100) gauge score -
-  // same scoreToGaugePct() scale already driving the Coin Detail gauge.
-  const avgGauge = Math.round(withSummary.reduce((sum, c) => sum + (c.summary.gaugePct ?? 50), 0) / withSummary.length);
-  moodEl.textContent = String(avgGauge);
-  moodEl.className = 'pulse-mood-value ' + (avgGauge >= 60 ? 'up' : avgGauge <= 40 ? 'down' : '');
-  moodLabelEl.textContent = avgGauge >= 60
-    ? 'Bullish tilt across your watchlist'
-    : avgGauge <= 40
-      ? 'Bearish tilt across your watchlist'
-      : 'Mixed / range-bound watchlist';
-
-  const counts = { Bullish: 0, Neutral: 0, Bearish: 0 };
-  for (const c of withSummary) counts[c.summary.label] = (counts[c.summary.label] || 0) + 1;
-  breadthEl.innerHTML = `
-    <span class="badge badge-bullish">${counts.Bullish} bullish</span>
-    <span class="badge badge-neutral">${counts.Neutral} neutral</span>
-    <span class="badge badge-bearish">${counts.Bearish} bearish</span>`;
-
-  // Regime mix: swing = the mode picked when there's a genuine, contained
-  // trend (recommendMode() in aiAdvisor.js); scalping/dayTrade both mean it
-  // picked a shorter timeframe because the daily trend was choppy or too
-  // volatile - "trending vs choppy" at a glance, no new computation.
-  const regimeCounts = { swing: 0, scalping: 0, dayTrade: 0 };
-  for (const c of coins) if (c.activeMode) regimeCounts[c.activeMode] = (regimeCounts[c.activeMode] || 0) + 1;
-  const trending = regimeCounts.swing;
-  const choppy = regimeCounts.scalping + regimeCounts.dayTrade;
-  regimeEl.innerHTML = `<span>${trending} trending (swing)</span><span>${choppy} choppy (scalp / day-trade)</span>`;
-
-  // Signals to watch: coins the entry logic has already armed (waiting on a
-  // retest) - the same armedLevel/triggerKind the chart annotates per-coin,
-  // just surfaced across the whole watchlist without opening each one.
-  const armed = coins
-    .filter((c) => c.entryOrExit?.armedLevel != null)
-    .sort((a, b) => (b.entryOrExit.confidencePct ?? 0) - (a.entryOrExit.confidencePct ?? 0))
-    .slice(0, 5);
-  signalsEl.innerHTML = '';
-  if (!armed.length) {
-    signalsEl.innerHTML = '<div class="empty-hint">No armed setups right now.</div>';
-  } else {
-    for (const c of armed) {
-      const kind = c.entryOrExit.triggerKind === 'bb' ? 'BB retest' : 'EMA retest';
-      const row = document.createElement('div');
-      row.className = 'pulse-row';
-      row.innerHTML = `<span class="pulse-row-symbol">${c.symbol}</span><span class="pulse-row-mid">${kind}${c.entryOrExit.directionBlocked ? ' · blocked' : ''}</span><span class="badge-confidence">${c.entryOrExit.confidencePct ?? 0}%</span>`;
-      row.addEventListener('click', () => openCoin(c.symbol));
-      signalsEl.appendChild(row);
-    }
-  }
-
-  // Top movers: reuse state.movers (already fetched alongside state.coins
-  // in this same loadMarket() call) ranked by absolute move instead of raw
-  // volume, so a big loser surfaces here just as readily as a big gainer.
-  moversEl.innerHTML = '';
-  const topMovers = [...(state.movers || [])].sort((a, b) => Math.abs(b.changePct ?? 0) - Math.abs(a.changePct ?? 0)).slice(0, 5);
-  if (!topMovers.length) {
-    moversEl.innerHTML = '<div class="empty-hint">No mover data.</div>';
-  } else {
-    for (const m of topMovers) {
-      const row = document.createElement('div');
-      row.className = 'pulse-row';
-      row.innerHTML = `<span class="pulse-row-symbol">${m.symbol}</span><span class="pulse-row-change" style="color:${(m.changePct ?? 0) >= 0 ? 'var(--bullish)' : 'var(--bearish)'}">${fmtPct(m.changePct)}</span>`;
-      row.addEventListener('click', () => addToWatchlistAndOpen(m.symbol));
-      moversEl.appendChild(row);
-    }
-  }
+function renderVerdict() {
+  const v = state.verdict;
+  const badge = $('verdictBadge');
+  if (!v?.available) { badge.className = 'pill'; badge.textContent = 'None'; $('verdictMeta').textContent = 'No backtest run yet. Run one to see how the current rules did recently.'; return; }
+  badge.className = `pill ${v.verdict === 'Deploy' ? 'good' : v.verdict === 'Abandon' ? 'bad' : 'warn'}`;
+  badge.textContent = `${v.verdict} · ${v.totalScore}/100`;
+  const s = v.benchmarkSummary || {};
+  $('verdictMeta').textContent = `${s.months ?? '?'} month${s.months === 1 ? '' : 's'}: ${s.closedTrades ?? 0} trades, return ${fmtPct(s.totalReturnPct ?? 0)}, win rate ${s.winRate ?? '-'}%, max drawdown ${s.maxDrawdownPct ?? '-'}%${s.openAtEnd ? `, ${s.openAtEnd} still open` : ''}. Run ${new Date(v.generatedAtIso).toLocaleString()}.`;
 }
 
-function coinRow(symbol, price, changePct, label, mode, entryOrExit, sparkline) {
-  const row = document.createElement('div');
-  row.className = 'row-item';
-  const confidencePct = entryOrExit?.confidencePct;
-  const armedLevel = entryOrExit?.armedLevel;
-  const armedTitle = armedLevel != null
-    ? `Armed at ${armedLevel} (${entryOrExit.triggerKind === 'bb' ? 'Bollinger' : 'EMA'} retest) - waiting ${entryOrExit.barsWaited ?? 0}/${entryOrExit.windowBars ?? '?'} bars`
-    : '';
-  row.innerHTML = `
-    <div class="row-left"><div class="coin-dot">${symbol.replace('USDT', '').slice(0, 3)}</div>
-      <div><div class="row-symbol">${symbol}</div><div class="row-sub">${mode ? modeLabel(mode) : ''}</div></div></div>
-    <div class="row-mid"><canvas class="row-spark" width="60" height="28"></canvas></div>
-    <div class="row-right">
-      <div class="row-price">${price != null ? fmtUsd(price) : '-'}</div>
-      <div class="row-change" style="color:${(changePct ?? 0) >= 0 ? 'var(--bullish)' : 'var(--bearish)'}">${changePct != null ? fmtPct(changePct) : ''}</div>
-      <div style="margin-top:4px; display:flex; gap:4px; justify-content:flex-end; flex-wrap:wrap;">
-        ${armedLevel != null ? `<span class="badge badge-armed" title="${escapeHtml(armedTitle)}">Armed - ${entryOrExit.triggerKind === 'bb' ? 'BB' : 'EMA'} ${entryOrExit.barsWaited ?? 0}/${entryOrExit.windowBars ?? '?'}</span>` : ''}
-        ${label ? `<span class="badge ${badgeClass(label)}">${label}</span>` : ''}
-        ${confidencePct != null ? `<span class="badge-confidence">${confidencePct}%</span>` : ''}
-      </div>
-    </div>`;
-  row.addEventListener('click', () => openCoin(symbol));
-  drawMiniSpark(row.querySelector('.row-spark'), sparkline);
-  return row;
-}
-
-async function addToWatchlistAndOpen(symbol) {
-  if (!state.settings.watchlist.includes(symbol)) {
-    const next = { ...state.settings, watchlist: [...state.settings.watchlist, symbol] };
-    state.settings = await api('/api/settings', { method: 'POST', body: { watchlist: next.watchlist } });
-  }
-  openCoin(symbol);
-}
-
-$('refreshMovers').addEventListener('click', loadMarket);
-$('marketSearch').addEventListener('input', renderMarket);
-
-document.querySelectorAll('#marketSortRow .filter-pill').forEach((btn) => {
-  btn.addEventListener('click', () => {
-    state.marketSort = btn.dataset.sort;
-    document.querySelectorAll('#marketSortRow .filter-pill').forEach((b) => b.classList.toggle('active', b === btn));
-    renderMarket();
-  });
-});
-
-$('refreshAllBtn').addEventListener('click', async () => {
-  const btn = $('refreshAllBtn');
-  if (btn.disabled) return;
+document.querySelectorAll('#backtestMonthsRow button').forEach((btn) => btn.addEventListener('click', () => {
+  document.querySelectorAll('#backtestMonthsRow button').forEach((b) => b.classList.toggle('active', b === btn));
+  state.backtestMonths = Number(btn.dataset.months);
+}));
+$('runBacktestBtn').addEventListener('click', async () => {
+  const btn = $('runBacktestBtn');
   btn.disabled = true;
-  btn.classList.add('active');
+  btn.textContent = 'Running, this takes up to a minute...';
   try {
-    await api('/api/coins/refresh-all', { method: 'POST' });
-    await Promise.all([loadMarket(), loadEngineStatus()]);
+    state.verdict = await api('/api/backtest/run', { method: 'POST', body: { months: state.backtestMonths } });
+    renderVerdict();
   } catch (error) {
-    console.error('refresh-all failed:', error);
+    $('verdictMeta').textContent = `Backtest failed: ${error.message}`;
   } finally {
     btn.disabled = false;
-    btn.classList.remove('active');
+    btn.textContent = 'Run backtest';
   }
 });
 
-document.querySelectorAll('#view-market .view-toggle-btn').forEach((btn) => {
-  btn.addEventListener('click', () => {
-    document.querySelectorAll('#view-market .view-toggle-btn').forEach((b) => b.classList.toggle('active', b === btn));
-    const showMovers = btn.dataset.list === 'movers';
-    $('watchlistSection').classList.toggle('hidden', showMovers);
-    $('moversSection').classList.toggle('hidden', !showMovers);
-  });
+function bindOpeners(root) {
+  root.querySelectorAll('[data-open]').forEach((el) => el.addEventListener('click', () => openCoin(el.dataset.open)));
+}
+
+// --- radar -----------------------------------------------------------------------
+function renderRadar() {
+  const list = $('radarList');
+  if (state.stageFilter === 'movers') { renderMovers(list); return; }
+  const q = state.search.trim().toUpperCase();
+  let coins = rankCoins(state.coins);
+  if (q) coins = coins.filter((c) => c.symbol.includes(q));
+  if (state.stageFilter !== 'all') coins = coins.filter((c) => stageOf(c) === state.stageFilter);
+  if (!state.coins.length) { list.innerHTML = '<div class="empty">No coins scanned yet.</div>'; return; }
+  if (!coins.length) { list.innerHTML = '<div class="empty">No coins match this filter.</div>'; return; }
+  list.innerHTML = coins.map((coin, i) => {
+    const h = headline(coin);
+    const change = liveChange(coin);
+    const stage = stageOf(coin);
+    const when = h?.decisionAt && stage !== 'holding' && stage !== 'blocked' ? ` · decides in <span data-deadline="${h.decisionAt}">${fmtCountdown(h.decisionAt - Date.now())}</span>` : '';
+    return `<div class="row enter" style="--i:${Math.min(i, 12)}" data-open="${coin.symbol}">
+      <div class="coin-name"><span class="coin-dot">${escapeHtml(base(coin.symbol).slice(0, 4))}</span><div><b>${escapeHtml(base(coin.symbol))}</b><small>${escapeHtml(shortProfile(h))}</small></div></div>
+      <div class="row-mid">
+        <div style="display:flex;align-items:center;gap:8px"><span class="stage-chip ${stage}">${STAGE_LABEL[stage]}</span>${h?.total ? `<span class="muted small">${h.met}/${h.total}</span>` : ''}</div>
+        ${stage !== 'holding' ? segmentsHtml(h, `radar-${coin.symbol}`) : ''}
+        <div class="muted">${triggerLine(coin, h)}${when}</div>
+      </div>
+      <div class="row-right"><b data-price="${coin.symbol}">${fmtPrice(livePrice(coin))}</b><span class="change ${change >= 0 ? 'up' : 'down'}">${fmtPct(change)}</span></div>
+    </div>`;
+  }).join('');
+  bindOpeners(list);
+}
+
+async function renderMovers(list) {
+  list.innerHTML = '<div class="skeleton-card"></div>';
+  try {
+    const { movers, error } = await api('/api/movers');
+    state.movers = movers || [];
+    state.moversError = error;
+  } catch (error) {
+    state.moversError = error.message;
+  }
+  if (state.stageFilter !== 'movers') return;
+  if (state.moversError) { list.innerHTML = `<div class="empty">Top movers unavailable: ${escapeHtml(state.moversError)}</div>`; return; }
+  const watch = new Set(state.settings?.watchlist || []);
+  list.innerHTML = state.movers.map((m, i) => `<div class="row enter" style="--i:${i}">
+      <div class="coin-name"><span class="coin-dot">${escapeHtml(base(m.symbol).slice(0, 4))}</span><div><b>${escapeHtml(base(m.symbol))}</b><small>24h volume $${Math.round(m.quoteVolume / 1e6)}M</small></div></div>
+      <div class="row-mid"><span class="muted">${watch.has(m.symbol) ? 'On your watchlist' : 'Not on your watchlist'}</span></div>
+      <div class="row-right"><b>${fmtPrice(m.price)}</b><span class="change ${m.changePct >= 0 ? 'up' : 'down'}">${fmtPct(m.changePct)}</span>
+      ${watch.has(m.symbol) ? '' : `<button class="link-btn" data-add="${m.symbol}">Add to watchlist</button>`}</div>
+    </div>`).join('') || '<div class="empty">No movers right now.</div>';
+  list.querySelectorAll('[data-add]').forEach((btn) => btn.addEventListener('click', async () => {
+    btn.disabled = true;
+    await saveSettings({ watchlist: [...(state.settings?.watchlist || []), btn.dataset.add] }).catch((e) => toast('Could not add coin', e.message));
+    btn.replaceWith(Object.assign(document.createElement('span'), { className: 'muted small', textContent: 'Added. It appears after the next check.' }));
+  }));
+}
+
+document.querySelectorAll('#stageFilter .chip').forEach((chip) => chip.addEventListener('click', () => {
+  state.stageFilter = chip.dataset.stage;
+  document.querySelectorAll('#stageFilter .chip').forEach((c) => c.classList.toggle('active', c === chip));
+  renderRadar();
+}));
+$('radarSearch').addEventListener('input', (e) => { state.search = e.target.value; renderRadar(); });
+$('refreshBtn').addEventListener('click', async () => {
+  const btn = $('refreshBtn');
+  btn.disabled = true;
+  try {
+    const result = await api('/api/coins/refresh-all', { method: 'POST' });
+    if (result.skipped === 'recent') toast('Already up to date', 'The engine checked less than a minute ago.');
+    await Promise.all([loadCore(), loadPrices()]);
+  } catch (error) {
+    toast('Check failed', error.message);
+  } finally {
+    btn.disabled = false;
+  }
 });
 
-// --- COIN DETAIL ---------------------------------------------------------------
-async function loadCoinDetail(symbol) {
-  $('coinSymbol').textContent = symbol;
-  const detail = await api(`/api/coins/${symbol}`);
-  state.lastDetail = detail;
-  if (!state.chartMode) state.chartMode = detail.activeMode;
-  renderCoinDetail(detail);
-  await loadChart(symbol, state.chartMode);
+// --- coin detail -------------------------------------------------------------------
+function planFor(coin) {
+  const p = coin?.prediction;
+  if (!p) return null;
+  if (p.exit) return p.exit;
+  const keys = Object.keys(p.byProfile || {});
+  if (!keys.length) return p.headline;
+  if (!state.planProfile || !p.byProfile[state.planProfile]) state.planProfile = p.headline?.profile || keys[0];
+  return p.byProfile[state.planProfile];
 }
 
-async function loadChart(symbol, mode) {
-  const candlesRes = await api(`/api/coins/${symbol}/candles?mode=${mode}`);
-  state.chartCandles = candlesRes.candles;
-  state.chartHighlight = null;
-  state.chartStructure = candlesRes.structure;
-  renderTimeframeRow();
-  $('chartInterval').textContent = `${INTERVAL_LABEL[mode]} · ${KLINE_DURATION_LABEL[mode]} · ${state.chartCandles.length} candles`;
-  $('chartDetail').textContent = 'Tap a candle for its price and date';
-  drawChart(state.chartCandles, null);
-  drawMiniSpark($('coinSpark'), state.chartCandles.slice(-30).map((c) => c.close));
-  renderStructure(candlesRes.structure);
-}
-
-function renderTimeframeRow() {
-  const row = $('timeframeRow');
-  row.innerHTML = '';
-  for (const mode of CHART_TIMEFRAMES) {
-    const btn = document.createElement('button');
-    btn.className = 'timeframe-btn' + (mode === state.chartMode ? ' active' : '');
-    btn.textContent = INTERVAL_LABEL[mode];
-    btn.title = TIMEFRAME_TITLE[mode] || modeLabel(mode);
-    btn.addEventListener('click', () => {
-      state.chartMode = mode;
-      loadChart(state.coinSymbol, mode).catch(console.error);
-    });
-    row.appendChild(btn);
+function renderCoin() {
+  const coin = coinBySymbol(state.coinSymbol);
+  $('coinSymbol').textContent = state.coinSymbol || '-';
+  if (!coin) {
+    $('planSentence').textContent = 'This coin has not been scanned yet. It appears after the next engine check.';
+    ['planStepper', 'planHighlight', 'planBlockers', 'planChecklist', 'planTrade', 'planTabs'].forEach((id) => { $(id).innerHTML = ''; });
+    return;
   }
+  const price = livePrice(coin);
+  const priceEl = $('coinPrice');
+  priceEl.dataset.price = coin.symbol;
+  priceEl.textContent = fmtPrice(price);
+  const change = liveChange(coin);
+  $('coinChange').className = `change ${change >= 0 ? 'up' : 'down'}`;
+  $('coinChange').textContent = `${fmtPct(change)} today`;
+  $('watchlistStar').classList.toggle('active', (state.settings?.watchlist || []).includes(coin.symbol));
+
+  const plan = planFor(coin);
+  const stage = plan?.stage || 'blocked';
+  $('coinStage').className = `stage-chip ${stage}`;
+  $('coinStage').textContent = STAGE_LABEL[stage];
+
+  const profiles = Object.values(coin.prediction?.byProfile || {});
+  $('planTabs').innerHTML = profiles.length > 1 ? `<div class="segmented small" role="group" aria-label="Strategy">${profiles.map((p) => `<button class="${p.profile === state.planProfile ? 'active' : ''}" data-profile="${p.profile}">${escapeHtml(shortProfile(p))}</button>`).join('')}</div>` : '';
+  $('planTabs').querySelectorAll('[data-profile]').forEach((b) => b.addEventListener('click', () => { state.planProfile = b.dataset.profile; state.chartTf = null; renderCoin(); loadChart().catch(console.error); }));
+
+  if (stage === 'holding') renderExitPlan(coin, plan);
+  else renderEntryPlan(coin, plan);
+
+  renderDetails(coin);
+  renderActionBar(coin, plan);
+  if (state.chartCandles.length) drawChart();
+  tickClock();
 }
 
-// --- signal significance: BOS / CHoCH + nearest support/resistance ---------
-function renderStructure(structure) {
-  const badge = $('structureBadge');
-  const levelEl = $('structureLevel');
-  const noteEl = $('structureNote');
-  const sig = structure?.signal;
-  if (!sig || sig.type === 'None') {
-    badge.className = 'structure-badge none';
-    badge.textContent = sig ? 'No fresh break' : 'Not enough history';
-    levelEl.textContent = '';
-  } else {
-    badge.className = `structure-badge ${sig.type.toLowerCase()}-${sig.direction}`;
-    badge.textContent = `${sig.type} · ${sig.direction}`;
-    levelEl.textContent = sig.level != null ? `at ${fmtUsd(sig.level)}` : '';
-  }
-  noteEl.textContent = sig?.description || 'Not enough swing history on this timeframe yet to read structure.';
-
-  const grid = $('srGrid');
-  grid.innerHTML = '';
-  grid.appendChild(srColumn('Support', structure?.supportResistance?.support || []));
-  grid.appendChild(srColumn('Resistance', structure?.supportResistance?.resistance || []));
-}
-
-function srColumn(title, levels) {
-  const col = document.createElement('div');
-  const rows = levels.length
-    ? levels.map((l) => `<div class="sr-level"><span>${fmtUsd(l.price)}</span><span>${l.touches}&times;</span></div>`).join('')
-    : '<div class="sr-level"><span>-</span><span></span></div>';
-  col.innerHTML = `<div class="sr-col-title">${title}</div>${rows}`;
-  return col;
-}
-
-// --- strategy parameters (the active mode's actual numbers) ----------------
-function renderParams(p) {
-  const grid = $('paramGrid');
-  grid.innerHTML = '';
-  if (!p) { grid.innerHTML = '<div class="empty-hint">-</div>'; return; }
-  const cells = [
-    ['EMA cross', p.emaCrossLabel],
-    ['RSI filter', `${p.rsiLabel} ${p.rsiRangeLabel}`],
-    ['Trailing stop', `${p.slAtrMult}&times; ATR below the highest price since entry`],
-    ['Take-profit', `${p.tpAtrMult}&times; ATR`],
-    ['Max hold', p.holdLabel]
+function stepperHtml(plan) {
+  const ok = (k) => plan.conditions.find((c) => c.key === k)?.ok || plan.conditions.find((c) => c.key === k)?.na;
+  const steps = [
+    { label: 'Trend', done: ['htfTrend', 'btcGate', 'tradeable', 'tfTrend'].every(ok) },
+    { label: 'Pullback', done: ok('pullback') },
+    { label: 'Reclaim', done: ok('reclaim') && ok('noChase') },
+    { label: 'Buy', done: false }
   ];
-  for (const [label, val] of cells) {
-    const cell = document.createElement('div');
-    cell.className = 'indicator-cell';
-    cell.innerHTML = `<div class="label">${label}</div><div class="value">${val}</div>`;
-    grid.appendChild(cell);
-  }
+  let currentSet = false;
+  return steps.map((s) => {
+    let cls = s.done ? 'done' : '';
+    if (!s.done && !currentSet) { cls = 'current'; currentSet = true; }
+    return `<li class="${cls}">${s.label}</li>`;
+  }).join('');
 }
 
-// --- "how close to a trade?" - the gap between now and an actual BUY/SELL --
-function renderNearCondition(near) {
-  const noteEl = $('nearConditionNote');
-  const grid = $('nearConditionGrid');
-  grid.innerHTML = '';
-  if (!near) { noteEl.textContent = 'Not enough data yet.'; return; }
-  noteEl.textContent = near.note;
-  const cells = near.kind === 'exit'
-    ? [
-        ['Distance to stop', near.distanceToStopPct != null ? `${near.distanceToStopPct}%` : '-'],
-        ['Distance to target', near.distanceToTargetPct != null ? `${near.distanceToTargetPct}%` : '-']
-      ]
-    : [
-        ['EMA gap', near.emaGapPct != null ? `${near.emaGapPct >= 0 ? '+' : ''}${near.emaGapPct}%` : '-'],
-        ['RSI vs. band', near.rsiValue != null ? near.rsiValue.toFixed(1) : '-'],
-        ['ADX vs. floor', near.adxValue != null ? near.adxValue.toFixed(1) : '-']
-      ];
-  for (const [label, val] of cells) {
-    const cell = document.createElement('div');
-    cell.className = 'indicator-cell';
-    cell.innerHTML = `<div class="label">${label}</div><div class="value">${val}</div>`;
-    grid.appendChild(cell);
-  }
+function renderEntryPlan(coin, plan) {
+  if (!plan) { $('planSentence').textContent = 'Not enough data yet.'; return; }
+  const sentence = plan.profile === headline(coin)?.profile ? coin.prediction.sentence : null;
+  $('planSentence').textContent = sentence || triggerLine(coin, plan).replace(/<[^>]+>/g, '');
+  $('planStepper').innerHTML = stepperHtml(plan);
+  const period = TF_MS[plan.timeframe];
+  const highlight = plan.stage === 'setting-up' || plan.stage === 'ready'
+    ? `<div><div class="muted">${plan.stage === 'ready' ? 'Buys at the candle close if it holds' : 'Buy trigger: close above'}</div><div class="big-number">${fmtPrice(plan.stage === 'ready' ? (plan.plan?.entryPrice ?? plan.trigger.livePrice) : plan.trigger.price)}</div>
+       <div class="muted" data-dist="${coin.symbol}" data-trigger="${plan.trigger.price}">${distanceText(plan.trigger.price, livePrice(coin))}</div></div>`
+    : `<div><div class="muted">Next check</div><div class="big-number">${escapeHtml(plan.decisionLabel)}</div><div class="muted">${plan.stage === 'watching' ? 'Waiting for a pullback to the EMA20.' : 'Not in play until the trend turns up.'}</div></div>`;
+  $('planHighlight').innerHTML = `
+    <svg class="ring" viewBox="0 0 44 44" aria-hidden="true"><circle class="ring-track" cx="22" cy="22" r="19"/><circle class="ring-fill ${plan.stage === 'ready' ? 'bull' : 'signal'}" data-deadline="${plan.decisionAt}" data-period="${period}" cx="22" cy="22" r="19"/></svg>
+    ${highlight}
+    <div style="margin-left:auto;text-align:right"><div class="muted">${TF_LABEL[plan.timeframe]} candle closes in</div><div class="big-number" data-deadline="${plan.decisionAt}">${fmtCountdown(plan.decisionAt - Date.now())}</div><div class="muted small">${escapeHtml(plan.decisionLabel)}, robot acts within ~5-15 min</div></div>`;
+  $('planBlockers').innerHTML = plan.blockers?.length && plan.stage !== 'blocked'
+    ? `<div class="blockers">${plan.blockers.map((b) => `<div>${escapeHtml(b)}</div>`).join('')}</div>` : '';
+  $('planChecklist').innerHTML = plan.conditions.map((c) => `<div class="check ${c.na ? '' : c.ok ? 'ok' : 'fail'}">
+      <span class="mark">${c.na ? '-' : c.ok ? '&#10003;' : '&#10007;'}</span>
+      <div>${escapeHtml(c.label)}<small>${escapeHtml(c.detail)}</small></div></div>`).join('')
+    + (plan.pullbackValidFor > 0 && plan.stage !== 'blocked' ? `<div class="muted small" style="margin-top:8px">The pullback still counts for the next ${plan.pullbackValidFor} candle${plan.pullbackValidFor === 1 ? '' : 's'}.</div>` : '');
+  $('planTrade').innerHTML = plan.plan ? `
+    <div class="kv"><span>Expected entry</span><b>${fmtPrice(plan.plan.entryPrice)}</b></div>
+    <div class="kv"><span>Stop-loss</span><b>${fmtPrice(plan.plan.stopPrice)}</b> <span>${plan.plan.stopDistancePct}% below entry</span></div>
+    <div class="kv"><span>Position size</span><b>${fmtIdr(plan.plan.positionIdr)}</b></div>
+    <div class="kv"><span>Money at risk</span><b>${fmtIdr(plan.plan.riskIdr)}</b></div>` : '';
 }
 
-function renderCoinDetail(detail) {
-  const latest = detail.latest || {};
-  $('coinPrice').textContent = fmtUsd(latest.close);
-  const changeEl = $('coinChange');
-  const changeAbs = latest.change != null ? `${latest.change >= 0 ? '+' : ''}${fmtUsd(latest.change)} ` : '';
-  changeEl.textContent = `${changeAbs}(${fmtPct(latest.changePct || 0)})`;
-  changeEl.className = 'coin-change ' + ((latest.changePct || 0) >= 0 ? 'up' : 'down');
+function renderExitPlan(coin, exit) {
+  const pos = state.portfolio?.positions?.[coin.symbol];
+  $('planSentence').textContent = coin.prediction.sentence;
+  $('planStepper').innerHTML = '<li class="done">Trend</li><li class="done">Pullback</li><li class="done">Reclaim</li><li class="done">Bought</li>';
+  const pnl = pos?.unrealizedProfitIdr ?? 0;
+  $('planHighlight').innerHTML = `
+    <div><div class="muted">Open result</div><div class="big-number ${pnl >= 0 ? 'up' : 'down'}">${pnl >= 0 ? '+' : ''}${fmtIdr(pnl)}</div><div class="muted">${exit.rNow != null ? `${exit.rNow >= 0 ? '+' : ''}${exit.rNow}R` : ''}</div></div>
+    ${exit.nextCheckAt ? `<div style="margin-left:auto;text-align:right"><div class="muted">Next stop check in</div><div class="big-number" data-deadline="${exit.nextCheckAt}">${fmtCountdown(exit.nextCheckAt - Date.now())}</div><div class="muted small">${escapeHtml(exit.nextCheckLabel || '')}</div></div>` : ''}`;
+  $('planBlockers').innerHTML = '';
+  $('planChecklist').innerHTML = `<div style="margin-bottom:12px">${exitBarHtml(exit)}</div>`;
+  $('planTrade').innerHTML = `
+    <div class="kv"><span>Entry</span><b>${fmtPrice(exit.entryPrice)}</b></div>
+    <div class="kv"><span>Stop (${escapeHtml(exit.stopKind)})</span><b>${fmtPrice(exit.stopPrice)}</b> <span>${exit.distanceToStopPct}% away</span></div>
+    <div class="kv"><span>Breakeven arms at</span><b>${exit.breakevenArmPrice ? fmtPrice(exit.breakevenArmPrice) : 'Already armed'}</b></div>
+    <div class="kv"><span>Time stop</span><b>${exit.timeStopAt ? escapeHtml(fmtClock(exit.timeStopAt)) : 'Not active'}</b></div>`;
+}
 
-  const inWatchlist = (state.settings?.watchlist || []).includes(detail.symbol);
-  $('watchlistStar').classList.toggle('active', inWatchlist);
-
-  const gaugePct = detail.summary?.gaugePct ?? 50;
-  $('gaugeMarker').style.left = gaugePct + '%';
-  $('summaryText').textContent = detail.summary?.text || '-';
-
-  const confidencePct = detail.entryOrExit?.confidencePct ?? 0;
-  const ring = $('confidenceRing');
-  ring.className = 'confidence-ring ' + (confidencePct >= 70 ? 'high' : confidencePct >= 40 ? 'mid' : 'low');
-  $('confidenceValue').textContent = `${confidencePct}%`;
-  const minConf = detail.minConfidencePct ?? state.settings?.autoTrade?.minConfidencePct;
-  const action = detail.entryOrExit?.action || 'HOLD';
-  const executed = detail.entryOrExit?.executed;
-  let note;
-  if (action === 'BUY' && executed === false) note = `Signal seen but below your ${minConf}% threshold - not executed.`;
-  else if (action === 'BUY' && executed) note = `Executed - confidence cleared your ${minConf}% threshold.`;
-  else if (action === 'SELL') note = 'Exits always execute regardless of confidence (risk management overrides).';
-  else note = `Your auto-trade threshold is ${minConf}%.`;
-  $('confidenceNote').textContent = note;
-
-  const modeRow = $('modeRow');
-  modeRow.innerHTML = '';
-  for (const m of MODES) {
-    const chip = document.createElement('div');
-    chip.className = 'mode-chip' + (m === detail.activeMode ? ' active' : '');
-    chip.textContent = modeLabel(m);
-    modeRow.appendChild(chip);
-  }
-  $('modeReason').textContent = detail.modeOverride
-    ? `Pinned to ${modeLabel(detail.modeOverride)} in Settings - overriding the regime pick (which would otherwise be: ${detail.recommendation?.reason || 'n/a'})`
-    : (detail.recommendation?.reason || '-');
-  renderParams(detail.strategyParams);
-  renderNearCondition(detail.nearCondition);
-  renderFetchInfo(detail.modes, detail.activeMode);
-
-  const grid = $('indicatorGrid');
-  grid.innerHTML = '';
+function renderDetails(coin) {
+  $('summaryText').textContent = coin.summary?.text || '-';
+  const l = coin.latest || {};
   const cells = [
-    ['EMA fast', numOrDash(latest.ema9 ?? latest.ema20)],
-    ['EMA slow', numOrDash(latest.ema21 ?? latest.ema50)],
-    ['RSI', numOrDash(latest.rsi14 ?? latest.rsi7)],
-    ['ADX (trend strength)', numOrDash(latest.adx14)],
-    ['ATR %', numOrDash(latest.atrPct)],
-    ['Confidence', `${confidencePct}%`]
+    ['Daily RSI14', l.rsi14?.toFixed?.(1)], ['Daily ADX14', l.adx14?.toFixed?.(1)], ['Daily ATR', l.atrPct != null ? `${l.atrPct.toFixed(2)}%` : null],
+    ['Daily EMA20', fmtPrice(l.ema20)], ['Daily EMA50', fmtPrice(l.ema50)], ['Setup score', coin.entryOrExit?.confidencePct != null ? `${coin.entryOrExit.confidencePct}` : null]
   ];
-  for (const [label, val] of cells) {
-    const cell = document.createElement('div');
-    cell.className = 'indicator-cell';
-    cell.innerHTML = `<div class="label">${label}</div><div class="value">${val}</div>`;
-    grid.appendChild(cell);
-  }
-
-  const posEl = $('positionDetail');
-  const buyBtn = $('buyBtn');
-  const sellBtn = $('sellBtn');
-  const openPosition = (state.portfolio?.positions || {})[detail.symbol];
-  if (openPosition) {
-    posEl.textContent = `Holding since ${new Date(openPosition.openedAt).toLocaleString()} · entry ${fmtUsd(openPosition.entryPrice)} · trailing stop ${fmtUsd(openPosition.stopPrice)} (high since entry ${fmtUsd(openPosition.highWaterMark ?? openPosition.entryPrice)}) · target ${fmtUsd(openPosition.targetPrice)}`;
-    buyBtn.disabled = true;
-    sellBtn.disabled = false;
-  } else {
-    posEl.textContent = detail.entryOrExit?.reason || 'No open position.';
-    buyBtn.disabled = false;
-    sellBtn.disabled = true;
-  }
+  $('indicatorGrid').innerHTML = cells.map(([k, v]) => `<div class="kv"><span>${k}</span><b>${escapeHtml(v ?? '-')}</b></div>`).join('');
+  const s = state.chartStructure;
+  const sr = s?.supportResistance || {};
+  $('structureGrid').innerHTML = s ? [
+    ['Structure', s.signal?.type && s.signal.type !== 'None' ? `${s.signal.type} ${s.signal.direction}` : s.trend || '-'],
+    ['Nearest support', sr.support?.[0] ? fmtPrice(sr.support[0].price) : '-'],
+    ['Nearest resistance', sr.resistance?.[0] ? fmtPrice(sr.resistance[0].price) : '-']
+  ].map(([k, v]) => `<div class="kv"><span>${k}</span><b>${escapeHtml(v)}</b></div>`).join('') : '';
 }
 
-function numOrDash(v) { return v != null ? Number(v).toFixed(2) : '-'; }
+function renderActionBar(coin, plan) {
+  const pos = state.portfolio?.positions?.[coin.symbol];
+  $('buyBtn').disabled = Boolean(pos);
+  $('sellBtn').disabled = !pos;
+  $('positionDetail').textContent = pos
+    ? `Holding ${Number(pos.quantity).toPrecision(6)} ${base(coin.symbol)} since ${new Date(pos.openedAt).toLocaleString()}.`
+    : 'Manual trades use the same stop-loss and risk sizing as the robot.';
+}
 
 $('watchlistStar').addEventListener('click', async () => {
   const symbol = state.coinSymbol;
-  const inWatchlist = (state.settings?.watchlist || []).includes(symbol);
-  const next = inWatchlist ? state.settings.watchlist.filter((s) => s !== symbol) : [...state.settings.watchlist, symbol];
-  state.settings = await api('/api/settings', { method: 'POST', body: { watchlist: next } });
-  $('watchlistStar').classList.toggle('active', !inWatchlist);
+  const list = state.settings?.watchlist || [];
+  const next = list.includes(symbol) ? list.filter((s) => s !== symbol) : [...list, symbol];
+  await saveSettings({ watchlist: next }).catch((e) => toast('Could not update watchlist', e.message));
+  renderCoin();
 });
+$('buyBtn').addEventListener('click', () => manualTrade('BUY'));
+$('sellBtn').addEventListener('click', () => manualTrade('SELL'));
 
-$('buyBtn').addEventListener('click', async () => {
-  if (!confirm(`Simulate a paper BUY on ${state.coinSymbol}?`)) return;
-  await api(`/api/coins/${state.coinSymbol}/trade`, { method: 'POST', body: { action: 'BUY' } });
-  await Promise.all([loadHome(), loadCoinDetail(state.coinSymbol)]);
-});
-$('sellBtn').addEventListener('click', async () => {
-  if (!confirm(`Simulate a paper SELL on ${state.coinSymbol}?`)) return;
-  await api(`/api/coins/${state.coinSymbol}/trade`, { method: 'POST', body: { action: 'SELL' } });
-  await Promise.all([loadHome(), loadCoinDetail(state.coinSymbol)]);
-});
-
-// --- chart: price/date axis labels + click-to-inspect -----------------------
-function chartX(i, count, w) {
-  return count > 1 ? (i / (count - 1)) * (w - 10) + 5 : w / 2;
-}
-
-// Finds the candle whose time is closest to a given unix-seconds timestamp -
-// used to place a structure pivot (from analyzeStructure, computed over more
-// history than the trimmed ~120 visible candles) at the right x position.
-function indexForTime(candles, time) {
-  let closest = 0, closestDist = Infinity;
-  candles.forEach((c, i) => {
-    const dist = Math.abs(c.time - time);
-    if (dist < closestDist) { closestDist = dist; closest = i; }
-  });
-  return closest;
-}
-
-// Every bar where the fast EMA crossed the slow one, in either direction -
-// this is a chart-reading aid only (marks history so a whipsaw-prone coin is
-// visibly obvious), separate from decisionEngine.js's own fresh-cross check
-// which only cares about the single latest bar.
-function findEmaCrosses(candles, fastKey, slowKey) {
-  const crosses = [];
-  for (let i = 1; i < candles.length; i += 1) {
-    const fPrev = candles[i - 1][fastKey], sPrev = candles[i - 1][slowKey];
-    const fNow = candles[i][fastKey], sNow = candles[i][slowKey];
-    if (![fPrev, sPrev, fNow, sNow].every(Number.isFinite)) continue;
-    if (fPrev <= sPrev && fNow > sNow) crosses.push({ index: i, direction: 'bullish' });
-    else if (fPrev >= sPrev && fNow < sNow) crosses.push({ index: i, direction: 'bearish' });
+async function manualTrade(action) {
+  const symbol = state.coinSymbol;
+  if (!confirm(`Place a paper ${action} on ${base(symbol)}? This uses paper money only.`)) return;
+  const btn = action === 'BUY' ? $('buyBtn') : $('sellBtn');
+  btn.disabled = true;
+  try {
+    await api(`/api/coins/${symbol}/trade`, { method: 'POST', body: { action } });
+    toast(`Paper ${action.toLowerCase()} placed`, `${base(symbol)} ${action === 'BUY' ? 'bought' : 'sold'}.`);
+    await Promise.all([loadCore(), loadNotifications()]);
+  } catch (error) {
+    toast(`${action} failed`, error.message);
+  } finally {
+    renderCoin();
   }
-  return crosses;
 }
 
-function drawChart(candles, highlightIndex) {
+// --- chart ------------------------------------------------------------------------
+async function loadChart() {
+  const coin = coinBySymbol(state.coinSymbol);
+  const plan = planFor(coin);
+  if (!state.chartTf) state.chartTf = plan?.timeframe || '4h';
+  renderTfRow();
+  const res = await api(`/api/coins/${state.coinSymbol}/candles?tf=${state.chartTf}`);
+  state.chartCandles = res.candles || [];
+  state.chartStructure = res.structure;
+  state.chartHighlight = null;
+  $('chartDetail').textContent = 'Tap a candle to inspect it';
+  drawChart();
+  if (coin) renderDetails(coin);
+}
+
+function renderTfRow() {
+  $('tfRow').innerHTML = ['15m', '1h', '4h', '1d'].map((tf) => `<button class="${tf === state.chartTf ? 'active' : ''}" data-tf="${tf}">${TF_LABEL[tf]}</button>`).join('');
+  $('tfRow').querySelectorAll('[data-tf]').forEach((b) => b.addEventListener('click', () => { state.chartTf = b.dataset.tf; loadChart().catch(console.error); }));
+}
+
+const CHART = { up: '#1A8F5A', down: '#D1433F', ema20: '#1F6FEB', ema50: '#9A988F', grid: '#EEEDE8', text: '#6B6A64', signal: '#C98A10', signalSoft: 'rgba(201,138,16,0.10)', stop: '#D1433F', entry: '#6B6A64' };
+
+function drawChart() {
   const canvas = $('coinChart');
+  const candles = state.chartCandles;
+  const rect = canvas.getBoundingClientRect();
+  const dpr = window.devicePixelRatio || 1;
+  canvas.width = Math.max(1, Math.round(rect.width * dpr));
+  canvas.height = Math.max(1, Math.round(rect.height * dpr));
   const ctx = canvas.getContext('2d');
-  const w = canvas.width, h = canvas.height;
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  const w = rect.width, h = rect.height;
   ctx.clearRect(0, 0, w, h);
   if (!candles.length) return;
 
-  const structure = state.chartStructure;
-  const emaKeys = CHART_EMA_TRIO;
-
-  // Trend structure: connect the last two same-direction swing pivots -
-  // swing LOWS in an uptrend (higher lows), swing HIGHS in a downtrend
-  // (lower highs). Skipped entirely when the trend reads as range/undefined,
-  // or there aren't two matching pivots yet.
-  let trendPoints = null;
-  if (structure?.trend === 'uptrend' && (structure.swingLows || []).length >= 2) {
-    trendPoints = structure.swingLows.slice(-2);
-  } else if (structure?.trend === 'downtrend' && (structure.swingHighs || []).length >= 2) {
-    trendPoints = structure.swingHighs.slice(-2);
+  const coin = coinBySymbol(state.coinSymbol);
+  const plan = planFor(coin);
+  const sameTf = plan && plan.timeframe === state.chartTf;
+  ctx.font = '600 11px Inter, sans-serif';
+  const widest = Math.max(...[...candles.map((c) => c.high), ...candles.map((c) => c.low)].map((p) => ctx.measureText(fmtPrice(p)).width));
+  const pad = { l: 8, r: Math.ceil(widest) + 16, t: 12, b: 22 };
+  const levels = [];
+  if (sameTf && plan.stage !== 'holding' && ['setting-up', 'ready'].includes(plan.stage)) {
+    levels.push({ price: plan.trigger.price, color: CHART.signal, dash: [6, 4], label: `Buy trigger ${fmtPrice(plan.trigger.price)}`, below: false });
+    if (plan.plan?.stopPrice) levels.push({ price: plan.plan.stopPrice, color: CHART.stop, dash: [2, 4], label: `Planned stop ${fmtPrice(plan.plan.stopPrice)}`, below: true });
+  }
+  if (plan?.stage === 'holding') {
+    levels.push({ price: plan.entryPrice, color: CHART.entry, dash: [], label: `Entry ${fmtPrice(plan.entryPrice)}`, below: false });
+    levels.push({ price: plan.stopPrice, color: CHART.stop, dash: [6, 4], label: `Stop ${fmtPrice(plan.stopPrice)}`, below: true });
+    if (plan.breakevenArmPrice) levels.push({ price: plan.breakevenArmPrice, color: CHART.signal, dash: [2, 4], label: `Breakeven at ${fmtPrice(plan.breakevenArmPrice)}`, below: false });
   }
 
-  // ATR14 volatility envelope - close +/- one ATR, the same envelope
-  // decisionEngine.js's own stop/target math is derived from - computed PER
-  // CANDLE and drawn as two moving lines the price weaves through, not a
-  // single snapshot from just the latest candle held flat across the whole
-  // chart width (which is what this used to be: two static reference
-  // levels, not really a "band"). Shown as a standalone reference regardless
-  // of any open position or pending signal - see server.js's /candles route
-  // for atr14.
-  const atrBandSeries = candles.map((c) => (Number.isFinite(c.atr14) && c.atr14 > 0 && Number.isFinite(c.close))
-    ? { high: c.close + c.atr14, low: Math.max(0, c.close - c.atr14) }
-    : null);
-  const atrBand = atrBandSeries.at(-1);
+  let min = Math.min(...candles.map((c) => c.low)), max = Math.max(...candles.map((c) => c.high));
+  for (const l of levels) { min = Math.min(min, l.price); max = Math.max(max, l.price); }
+  const span = (max - min) || max * 0.01;
+  min -= span * 0.04; max += span * 0.04;
+  const plotW = w - pad.l - pad.r, plotH = h - pad.t - pad.b;
+  const x = (i) => pad.l + (candles.length === 1 ? plotW / 2 : (i / (candles.length - 1)) * plotW);
+  const y = (p) => pad.t + (1 - (p - min) / (max - min)) * plotH;
+  const step = plotW / Math.max(1, candles.length - 1);
 
-  // Buy-point prediction: the armed EMA/BB-retest level from the live
-  // combined-entry strategy (triggerVariants.js, via liveStrategy.js),
-  // surfaced on /api/coins/:symbol as entryOrExit.armedLevel whenever this
-  // coin isn't currently held and a retest is waiting to confirm. Absent
-  // entirely (not just null) on an exit-shaped result, so this doubles as
-  // the "not currently holding" check.
-  const detail = state.lastDetail;
-  const predicted = detail?.symbol === state.coinSymbol ? detail.entryOrExit : null;
-  const armedLevel = Number.isFinite(predicted?.armedLevel) ? predicted.armedLevel : null;
-
-  // Y-range comes from the visible candles' own high/low (not just close,
-  // so wicks and the trendline both fit) widened just enough to include the
-  // trendline's own two points, the ATR band, and a pending buy-point level
-  // if any of those fall outside the plain candle range. Support/resistance/
-  // structure levels that still fall outside this are skipped below rather
-  // than distorting the whole chart to fit a level that's long since aged
-  // out of the visible window.
-  const highs = candles.map((c) => c.high ?? c.close);
-  const lows = candles.map((c) => c.low ?? c.close);
-  let min = Math.min(...lows), max = Math.max(...highs);
-  if (trendPoints) {
-    for (const p of trendPoints) { min = Math.min(min, p.price); max = Math.max(max, p.price); }
-  }
-  for (const b of atrBandSeries) { if (b) { min = Math.min(min, b.low); max = Math.max(max, b.high); } }
-  if (armedLevel != null) { min = Math.min(min, armedLevel); max = Math.max(max, armedLevel); }
-  const range = (max - min) || 1;
-  const yFor = (price) => h - 24 - ((price - min) / range) * (h - 40);
-
-  const closes = candles.map((c) => c.close);
-  const last = closes.at(-1), first = closes[0];
-  const lineColor = last >= first ? '#34d399' : '#f0596a';
-  const legendItems = [];
-
-  // --- support / resistance zones (subtle, drawn first so everything else layers on top) ---
-  ctx.lineWidth = 1;
-  ctx.setLineDash([3, 3]);
-  const support = (structure?.supportResistance?.support || []).filter((l) => l.price >= min && l.price <= max);
-  const resistance = (structure?.supportResistance?.resistance || []).filter((l) => l.price >= min && l.price <= max);
-  ctx.strokeStyle = 'rgba(52,211,153,0.4)';
-  for (const lvl of support) { const y = yFor(lvl.price); ctx.beginPath(); ctx.moveTo(5, y); ctx.lineTo(w - 5, y); ctx.stroke(); }
-  ctx.strokeStyle = 'rgba(240,89,106,0.4)';
-  for (const lvl of resistance) { const y = yFor(lvl.price); ctx.beginPath(); ctx.moveTo(5, y); ctx.lineTo(w - 5, y); ctx.stroke(); }
-  if (support.length) legendItems.push({ label: 'Support', kind: 'dashed', color: 'rgba(52,211,153,0.8)' });
-  if (resistance.length) legendItems.push({ label: 'Resistance', kind: 'dashed', color: 'rgba(240,89,106,0.8)' });
-  ctx.setLineDash([]);
-
-  // --- BOS / CHoCH: a labeled level line at the broken swing point ---------
-  const sig = structure?.signal;
-  if (sig && sig.type !== 'None' && Number.isFinite(sig.level) && sig.level >= min && sig.level <= max) {
-    const y = yFor(sig.level);
-    const color = sig.direction === 'bullish' ? '#34d399' : '#f0596a';
-    ctx.setLineDash(sig.type === 'CHoCH' ? [2, 3] : []);
-    ctx.strokeStyle = color;
-    ctx.lineWidth = 1.5;
-    ctx.beginPath(); ctx.moveTo(5, y); ctx.lineTo(w - 5, y); ctx.stroke();
-    ctx.setLineDash([]);
-    ctx.fillStyle = color;
-    ctx.font = '9px -apple-system, sans-serif';
-    ctx.textAlign = 'left';
-    ctx.fillText(sig.type, 8, y - 3);
-    legendItems.push({ label: `${sig.type} · ${sig.direction}`, kind: sig.type === 'CHoCH' ? 'dashed' : 'line', color });
+  ctx.strokeStyle = CHART.grid; ctx.lineWidth = 1; ctx.fillStyle = CHART.text; ctx.font = '11px Inter, sans-serif'; ctx.textAlign = 'left';
+  for (let k = 0; k <= 4; k += 1) {
+    const p = min + ((max - min) * k) / 4;
+    ctx.beginPath(); ctx.moveTo(pad.l, y(p)); ctx.lineTo(w - pad.r, y(p)); ctx.stroke();
+    ctx.fillText(fmtPrice(p), w - pad.r + 6, y(p) + 4);
   }
 
-  // --- trendline -------------------------------------------------------------
-  if (trendPoints) {
-    const [p0, p1] = trendPoints;
-    const x0 = chartX(indexForTime(candles, p0.time), candles.length, w);
-    const x1 = chartX(indexForTime(candles, p1.time), candles.length, w);
-    ctx.setLineDash([1, 3]);
-    ctx.strokeStyle = 'rgba(143,217,168,0.85)';
-    ctx.lineWidth = 1.5;
-    ctx.beginPath(); ctx.moveTo(x0, yFor(p0.price)); ctx.lineTo(x1, yFor(p1.price)); ctx.stroke();
-    ctx.setLineDash([]);
-    legendItems.push({ label: `Trendline (${structure.trend})`, kind: 'dotted', color: 'rgba(143,217,168,0.9)' });
+  const legend = [];
+  if (sameTf && plan.stage !== 'holding' && plan.stage !== 'blocked' && candles.length > 6) {
+    const a = x(candles.length - 6) - step / 2, b = x(candles.length - 2) + step / 2;
+    ctx.fillStyle = CHART.signalSoft;
+    ctx.fillRect(a, pad.t, b - a, plotH);
+    legend.push('<span><i class="box" style="background:rgba(201,138,16,0.25)"></i>5-candle pullback window</span>');
   }
 
-  // --- ATR band: a moving high/low envelope, not a static level --------------
-  // Purely a volatility visualization + the same stop/target math's input -
-  // it never feeds the entry trigger itself (that's still Bollinger Bands;
-  // see triggerVariants.js's detectBollingerBreakout / detectBbSqueezeBreakout).
-  // Drawn as two continuous lines the same way the EMA overlays below are,
-  // so it reads as an envelope price moves through over time.
-  const ATR_COLOR = '#b389f0';
-  if (atrBand) {
-    const drawAtrLine = (key) => {
-      let started = false;
-      ctx.beginPath();
-      atrBandSeries.forEach((b, i) => {
-        if (!b) { started = false; return; }
-        const x = chartX(i, candles.length, w);
-        const y = yFor(b[key]);
-        if (!started) { ctx.moveTo(x, y); started = true; } else { ctx.lineTo(x, y); }
-      });
-      ctx.stroke();
-    };
-    ctx.setLineDash([2, 2]);
-    ctx.strokeStyle = ATR_COLOR;
-    ctx.globalAlpha = 0.55;
-    ctx.lineWidth = 1.25;
-    drawAtrLine('high');
-    drawAtrLine('low');
-    ctx.globalAlpha = 1;
-    ctx.setLineDash([]);
-    ctx.fillStyle = ATR_COLOR;
-    ctx.font = '9px -apple-system, sans-serif';
-    ctx.textAlign = 'left';
-    ctx.fillText(`ATR high ${fmtUsd(atrBand.high)}`, 8, Math.max(10, yFor(atrBand.high) - 3));
-    ctx.fillText(`ATR low ${fmtUsd(atrBand.low)}`, 8, Math.min(h - 30, yFor(atrBand.low) + 11));
-    legendItems.push({ label: `ATR14 band (moving, close ±1 ATR)`, kind: 'dotted', color: ATR_COLOR });
-  }
-
-  // --- buy-point prediction: the armed retest level, if any ------------------
-  const BUY_POINT_COLOR = '#ffd166';
-  if (armedLevel != null) {
-    const y = yFor(armedLevel);
-    const blocked = Boolean(predicted.directionBlocked);
-    ctx.setLineDash(blocked ? [1, 4] : [5, 3]);
-    ctx.strokeStyle = BUY_POINT_COLOR;
-    ctx.globalAlpha = blocked ? 0.5 : 0.9;
-    ctx.lineWidth = 1.5;
-    ctx.beginPath(); ctx.moveTo(5, y); ctx.lineTo(w - 5, y); ctx.stroke();
-    ctx.globalAlpha = 1;
-    ctx.setLineDash([]);
-    ctx.fillStyle = BUY_POINT_COLOR;
-    ctx.font = '9px -apple-system, sans-serif';
-    ctx.textAlign = 'right';
-    const kindLabel = predicted.triggerKind === 'bb' ? 'BB retest' : 'EMA retest';
-    const waitLabel = Number.isFinite(predicted.barsWaited) && Number.isFinite(predicted.windowBars) ? ` ${predicted.barsWaited}/${predicted.windowBars}` : '';
-    ctx.fillText(`Buy trigger ~${fmtUsd(armedLevel)} (${kindLabel}${waitLabel}${blocked ? ' · direction-blocked' : ''})`, w - 6, Math.max(20, y - 3));
-    legendItems.push({ label: `Buy-point prediction${blocked ? ' (blocked)' : ''}`, kind: blocked ? 'dotted' : 'dashed', color: BUY_POINT_COLOR });
-  }
-
-  // --- candlesticks (kline) - the primary series, replaces the old close-price line ---
-  const count = candles.length;
-  const spacing = count > 1 ? (w - 10) / (count - 1) : w;
-  const bodyWidth = Math.max(1, Math.min(spacing * 0.62, 9));
-  const wickWidth = Math.max(1, Math.min(spacing * 0.18, 2));
+  const bodyW = Math.max(1, Math.min(step * 0.62, 10));
   candles.forEach((c, i) => {
-    if (![c.open, c.high, c.low, c.close].every(Number.isFinite)) return;
-    const x = chartX(i, count, w);
-    const bullish = c.close >= c.open;
-    const color = bullish ? '#34d399' : '#f0596a';
-    ctx.strokeStyle = color;
-    ctx.fillStyle = color;
-    ctx.lineWidth = wickWidth;
-    ctx.beginPath();
-    ctx.moveTo(x, yFor(c.high));
-    ctx.lineTo(x, yFor(c.low));
-    ctx.stroke();
-    const yOpen = yFor(c.open), yClose = yFor(c.close);
-    const top = Math.min(yOpen, yClose);
-    const bodyH = Math.max(1, Math.abs(yClose - yOpen));
-    ctx.fillRect(x - bodyWidth / 2, top, bodyWidth, bodyH);
+    const col = c.close >= c.open ? CHART.up : CHART.down;
+    ctx.strokeStyle = col; ctx.fillStyle = col; ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.moveTo(x(i), y(c.high)); ctx.lineTo(x(i), y(c.low)); ctx.stroke();
+    const top = y(Math.max(c.open, c.close));
+    ctx.fillRect(x(i) - bodyW / 2, top, bodyW, Math.max(1, y(Math.min(c.open, c.close)) - top));
   });
-
-  // --- EMA 9/20/50 overlay + fast/mid fresh-cross bars marked ---------------
-  // Three lines now (was two) - see CHART_EMA_TRIO above. Cross markers stay
-  // on just the fast/mid pair (9 vs 20, the standard short-term EMA cross);
-  // EMA50 draws as a third trend reference without its own cross markers, to
-  // keep the chart from getting noisy with two separate cross series.
-  const FAST_COLOR = '#f5a623', MID_COLOR = '#7c93e8', SLOW_COLOR = '#c084fc';
-  const hasEma = candles.some((c) => Number.isFinite(c[emaKeys.fast]) && Number.isFinite(c[emaKeys.mid]) && Number.isFinite(c[emaKeys.slow]));
-  if (hasEma) {
-    const drawEma = (key, color) => {
-      let started = false;
-      ctx.strokeStyle = color;
-      ctx.lineWidth = 1.25;
-      ctx.beginPath();
-      candles.forEach((c, i) => {
-        const v = c[key];
-        if (!Number.isFinite(v)) { started = false; return; }
-        const x = chartX(i, candles.length, w);
-        const y = yFor(v);
-        if (!started) { ctx.moveTo(x, y); started = true; } else { ctx.lineTo(x, y); }
-      });
-      ctx.stroke();
-    };
-    drawEma(emaKeys.slow, SLOW_COLOR);
-    drawEma(emaKeys.mid, MID_COLOR);
-    drawEma(emaKeys.fast, FAST_COLOR);
-    legendItems.push({ label: `EMA ${emaKeys.fast.replace('ema', '')}`, kind: 'line', color: FAST_COLOR });
-    legendItems.push({ label: `EMA ${emaKeys.mid.replace('ema', '')}`, kind: 'line', color: MID_COLOR });
-    legendItems.push({ label: `EMA ${emaKeys.slow.replace('ema', '')}`, kind: 'line', color: SLOW_COLOR });
-
-    const crosses = findEmaCrosses(candles, emaKeys.fast, emaKeys.mid);
-    for (const cross of crosses) {
-      const c = candles[cross.index];
-      const x = chartX(cross.index, candles.length, w);
-      const y = yFor(c[emaKeys.fast]);
-      ctx.fillStyle = cross.direction === 'bullish' ? '#34d399' : '#f0596a';
-      ctx.beginPath(); ctx.arc(x, y, 3, 0, Math.PI * 2); ctx.fill();
-    }
-    if (crosses.length) legendItems.push({ label: 'EMA 9/20 cross', kind: 'dot', color: '#8fd9a8' });
+  if (candles.length > 1) {
+    const i = candles.length - 1;
+    ctx.globalAlpha = 0.25; ctx.fillStyle = CHART.text;
+    ctx.fillRect(x(i) - step / 2, pad.t, step, plotH);
+    ctx.globalAlpha = 1;
   }
 
-  // --- price axis labels (max/min) and date axis labels (first/last candle) ---
-  ctx.fillStyle = '#98a396';
-  ctx.font = '10px -apple-system, sans-serif';
-  ctx.textAlign = 'right';
-  ctx.fillText(fmtUsd(max), w - 6, 12);
-  ctx.fillText(fmtUsd(min), w - 6, h - 28);
-  ctx.textAlign = 'left';
-  ctx.fillText(shortDate(candles[0]), 6, h - 8);
-  ctx.textAlign = 'right';
-  ctx.fillText(shortDate(candles.at(-1)), w - 6, h - 8);
+  const line = (key, color) => {
+    ctx.strokeStyle = color; ctx.lineWidth = 1.6; ctx.beginPath();
+    let started = false;
+    candles.forEach((c, i) => {
+      if (!Number.isFinite(c[key])) { started = false; return; }
+      if (!started) { ctx.moveTo(x(i), y(c[key])); started = true; } else ctx.lineTo(x(i), y(c[key]));
+    });
+    ctx.stroke();
+  };
+  line('ema50', CHART.ema50);
+  line('ema20', CHART.ema20);
+  legend.unshift(`<span><i style="border-color:${CHART.ema20}"></i>EMA20</span>`, `<span><i style="border-color:${CHART.ema50}"></i>EMA50</span>`);
 
-  if (highlightIndex != null && candles[highlightIndex]) {
-    const c = candles[highlightIndex];
-    const x = chartX(highlightIndex, candles.length, w);
-    const y = yFor(c.close);
-    ctx.strokeStyle = 'rgba(242,244,238,0.35)';
-    ctx.lineWidth = 1;
-    ctx.beginPath(); ctx.moveTo(x, 4); ctx.lineTo(x, h - 24); ctx.stroke();
-    ctx.save();
-    ctx.shadowColor = lineColor;
-    ctx.shadowBlur = 10;
-    ctx.fillStyle = '#f2f4ee';
-    ctx.beginPath(); ctx.arc(x, y, 4, 0, Math.PI * 2); ctx.fill();
-    ctx.restore();
+  for (const l of levels) {
+    ctx.strokeStyle = l.color; ctx.setLineDash(l.dash); ctx.lineWidth = 1.5;
+    ctx.beginPath(); ctx.moveTo(pad.l, y(l.price)); ctx.lineTo(w - pad.r, y(l.price)); ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.fillStyle = l.color; ctx.textAlign = 'left'; ctx.font = '600 11px Inter, sans-serif';
+    ctx.fillText(l.label, pad.l + 4, y(l.price) + (l.below ? 14 : -5));
+    legend.push(`<span><i class="${l.dash.length ? 'dash' : ''}" style="border-color:${l.color}"></i>${escapeHtml(l.label.split(' ').slice(0, -1).join(' '))}</span>`);
   }
 
-  renderChartLegend(legendItems);
+  const last = candles.at(-1);
+  ctx.fillStyle = last.close >= last.open ? CHART.up : CHART.down;
+  ctx.fillRect(w - pad.r + 2, y(last.close) - 9, pad.r - 4, 18);
+  ctx.fillStyle = '#fff'; ctx.font = '600 11px Inter, sans-serif';
+  ctx.fillText(fmtPrice(last.close), w - pad.r + 6, y(last.close) + 4);
+
+  ctx.fillStyle = CHART.text; ctx.font = '11px Inter, sans-serif';
+  ctx.textAlign = 'left'; ctx.fillText(shortDate(candles[0]), pad.l, h - 6);
+  ctx.textAlign = 'right'; ctx.fillText(shortDate(last), w - pad.r, h - 6);
+
+  if (state.chartHighlight != null && candles[state.chartHighlight]) {
+    const i = state.chartHighlight;
+    ctx.strokeStyle = 'rgba(29,28,26,0.35)'; ctx.setLineDash([3, 3]);
+    ctx.beginPath(); ctx.moveTo(x(i), pad.t); ctx.lineTo(x(i), pad.t + plotH); ctx.stroke();
+    ctx.setLineDash([]);
+  }
+  if (!sameTf && plan && plan.stage !== 'holding') legend.push(`<span class="muted">Switch to ${TF_LABEL[plan.timeframe]} to see the buy trigger</span>`);
+  $('chartLegend').innerHTML = legend.join('');
 }
 
-// DOM legend for the overlays above - built as HTML (not drawn on canvas) so
-// labels stay crisp and items simply don't appear when that overlay has
-// nothing to show right now (e.g. no support level currently in range).
-function renderChartLegend(items) {
-  const el = $('chartLegend');
-  if (!el) return;
-  el.innerHTML = '';
-  for (const item of items) {
-    const row = document.createElement('div');
-    row.className = 'chart-legend-item';
-    const swatch = document.createElement('span');
-    if (item.kind === 'dot') {
-      swatch.className = 'chart-legend-dot';
-      swatch.style.background = item.color;
-    } else {
-      swatch.className = 'chart-legend-swatch' + (item.kind === 'dashed' ? ' dashed' : item.kind === 'dotted' ? ' dotted' : '');
-      if (item.kind === 'line') swatch.style.background = item.color;
-      else swatch.style.borderColor = item.color;
-    }
-    row.appendChild(swatch);
-    const label = document.createElement('span');
-    label.textContent = item.label;
-    row.appendChild(label);
-    el.appendChild(row);
-  }
-}
-
-function shortDate(candle) {
-  if (!candle) return '';
-  const d = new Date(candle.time * 1000);
-  return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+function shortDate(c) {
+  const d = new Date(c.time * 1000);
+  return state.chartTf === '1d' ? d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) : d.toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
 }
 
 $('coinChart').addEventListener('click', (event) => {
   const candles = state.chartCandles;
   if (!candles.length) return;
-  const canvas = $('coinChart');
-  const rect = canvas.getBoundingClientRect();
-  const scaleX = canvas.width / rect.width;
-  const clickX = (event.clientX - rect.left) * scaleX;
-  let closest = 0;
-  let closestDist = Infinity;
-  candles.forEach((c, i) => {
-    const x = chartX(i, candles.length, canvas.width);
-    const dist = Math.abs(x - clickX);
-    if (dist < closestDist) { closestDist = dist; closest = i; }
-  });
-  state.chartHighlight = closest;
-  drawChart(candles, closest);
-  const c = candles[closest];
-  const d = new Date(c.time * 1000);
-  const dateStr = state.chartMode === 'swing'
-    ? d.toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' })
-    : d.toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
-  $('chartDetail').textContent = `${dateStr} · O ${fmtUsd(c.open)} H ${fmtUsd(c.high)} L ${fmtUsd(c.low)} C ${fmtUsd(c.close)}${Number.isFinite(c.atr14) ? ` · ATR ${fmtUsd(c.atr14)}` : ''}`;
+  const rect = event.currentTarget.getBoundingClientRect();
+  const plotW = rect.width - 8 - 64;
+  const i = Math.max(0, Math.min(candles.length - 1, Math.round(((event.clientX - rect.left - 8) / plotW) * (candles.length - 1))));
+  state.chartHighlight = i;
+  drawChart();
+  const c = candles[i];
+  $('chartDetail').textContent = `${shortDate(c)} · O ${fmtPrice(c.open)} H ${fmtPrice(c.high)} L ${fmtPrice(c.low)} C ${fmtPrice(c.close)}`;
 });
+let resizeTimer = null;
+window.addEventListener('resize', () => { clearTimeout(resizeTimer); resizeTimer = setTimeout(() => { if (state.view === 'coin') drawChart(); }, 120); });
 
-// Generic mini line chart for any canvas + array of raw close prices - used
-// for both the coin-detail header spark and the small per-row sparklines in
-// Market's watchlist list (real recent-closes data from /api/coins, not
-// fabricated - see the `sparkline` field robotEngine.js now sends).
-function drawMiniSpark(canvas, values) {
-  if (!canvas) return;
-  const ctx = canvas.getContext('2d');
-  const w = canvas.width, h = canvas.height;
-  ctx.clearRect(0, 0, w, h);
-  if (!values || values.length < 2) return;
-  const min = Math.min(...values), max = Math.max(...values);
-  const range = max - min || 1;
-  const up = values.at(-1) >= values[0];
-  ctx.strokeStyle = up ? '#34d399' : '#f0596a';
-  ctx.lineWidth = 2;
-  ctx.beginPath();
-  values.forEach((v, i) => {
-    const x = (i / (values.length - 1)) * (w - 4) + 2;
-    const y = h - 4 - ((v - min) / range) * (h - 8);
-    i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
-  });
-  ctx.stroke();
+// --- settings ----------------------------------------------------------------------
+async function saveSettings(patch) {
+  state.settings = await api('/api/settings', { method: 'POST', body: patch });
+  return state.settings;
 }
 
-// --- SETTINGS ---------------------------------------------------------------
-async function loadSettings() {
-  state.settings = await api('/api/settings');
-  state.config = await api('/api/config');
-  renderSettings();
+function note(id, text, cls = '') {
+  const el = $(id);
+  el.className = `form-note ${cls}`;
+  el.textContent = text;
 }
 
 function renderSettings() {
   const s = state.settings;
-  $('autoTradeToggle').checked = !!s.autoTrade.enabled;
-  $('telegramToggle').checked = !!s.telegram.enabled;
-  $('telegramStatus').textContent = s.telegram.configured ? 'Telegram is configured.' : 'Telegram bot token / chat ID not set yet.';
+  if (!s) return;
+  $('autoTradeToggle').checked = s.autoTrade.enabled;
+  const strategyEntries = Object.entries(s.strategyProfiles || {}).sort(([a], [b]) => (a === 'scalping') - (b === 'scalping'));
+  $('strategyList').innerHTML = strategyEntries.map(([key, p]) => `
+    <label class="strategy-row"><span><b>${escapeHtml(p.label)}</b><small>${key === 'scalping' ? 'Lost money in every backtest after costs. Use with care.' : `Trades ${TF_WORD[p.triggerTf]} candles, trend from ${TF_WORD[p.filterTf]} chart.`}</small></span>
+    <input type="checkbox" role="switch" data-strategy="${key}" ${s.strategies?.[key] ? 'checked' : ''} /></label>`).join('');
+  $('setRiskPerTrade').value = s.riskPerTradePct;
+  $('setMaxPositions').value = s.maxOpenPositions;
+  $('setPortfolioRisk').value = s.maxPortfolioRiskPct;
+  $('setDailyLoss').value = s.dailyLossLimitPct;
+  $('setLossStreak').value = s.maxConsecutiveLosses;
+  $('setMinScore').value = s.autoTrade.minConfidencePct;
 
-  $('confidenceThreshold').value = s.autoTrade.minConfidencePct;
-  $('confidenceThresholdValue').textContent = `${s.autoTrade.minConfidencePct}%`;
+  $('settingsWatchlist').innerHTML = s.watchlist.map((sym) => `<span class="tag">${escapeHtml(base(sym))}<button data-remove="${sym}" aria-label="Remove ${escapeHtml(sym)}">&times;</button></span>`).join('');
+  $('settingsWatchlist').querySelectorAll('[data-remove]').forEach((b) => b.addEventListener('click', async () => {
+    try { await saveSettings({ watchlist: s.watchlist.filter((x) => x !== b.dataset.remove) }); renderSettings(); note('watchlistNote', 'Removed.', 'good'); }
+    catch (e) { note('watchlistNote', e.message, 'bad'); }
+  }));
 
-  const rrList = $('rrTemplateList');
-  rrList.innerHTML = '';
-  const templates = s.riskRewardTemplates || {};
-  for (const [key, tpl] of Object.entries(templates)) {
-    const card = document.createElement('div');
-    card.className = 'rr-card' + (key === s.autoTrade.riskRewardTemplate ? ' active' : '');
-    card.innerHTML = `<div class="rr-card-title"><span>${tpl.label}</span><span>1 : ${tpl.ratio}</span></div><div class="rr-card-desc">${escapeHtml(tpl.description)}</div>`;
-    card.addEventListener('click', async () => {
-      state.settings = await api('/api/settings', { method: 'POST', body: { autoTrade: { riskRewardTemplate: key } } });
-      renderSettings();
-    });
-    rrList.appendChild(card);
-  }
-
-  const modeList = $('modeOverrideList');
-  modeList.innerHTML = '';
-  const modeOptions = [['', { label: 'Auto (pick per-coin by trend strength)' }], ...Object.entries(s.strategyModes || {})];
-  for (const [key, mode] of modeOptions) {
-    const active = (s.autoTrade.modeOverride || '') === key;
-    const card = document.createElement('div');
-    card.className = 'rr-card' + (active ? ' active' : '');
-    card.innerHTML = `<div class="rr-card-title"><span>${mode.label}</span></div>`;
-    card.addEventListener('click', async () => {
-      state.settings = await api('/api/settings', { method: 'POST', body: { autoTrade: { modeOverride: key || null } } });
-      renderSettings();
-    });
-    modeList.appendChild(card);
-  }
-
-  const list = $('settingsWatchlist');
-  list.innerHTML = '';
-  for (const symbol of s.watchlist) {
-    const row = document.createElement('div');
-    row.className = 'row-item';
-    row.innerHTML = `<div class="row-symbol">${symbol}</div><button class="btn-ghost" data-symbol="${symbol}">Remove</button>`;
-    row.querySelector('button').addEventListener('click', async (e) => {
-      e.stopPropagation();
-      const next = s.watchlist.filter((x) => x !== symbol);
-      state.settings = await api('/api/settings', { method: 'POST', body: { watchlist: next } });
-      renderSettings();
-      loadMarket();
-    });
-    list.appendChild(row);
-  }
-
-  // --- AI advisor ---
-  document.querySelectorAll('#aiModeToggle .view-toggle-btn').forEach((b) => b.classList.toggle('active', b.dataset.mode === s.ai.mode));
-  $('aiOpenaiFields').style.display = s.ai.mode === 'openai' ? 'block' : 'none';
+  $('telegramToggle').checked = s.telegram.enabled;
+  note('telegramStatus', s.telegram.configured ? 'Bot token and chat ID are saved.' : 'Not configured yet.');
+  document.querySelectorAll('#aiModeToggle button').forEach((b) => b.classList.toggle('active', b.dataset.mode === s.ai.mode));
+  $('aiOpenaiFields').classList.toggle('hidden', s.ai.mode !== 'openai');
   $('aiBaseUrl').value = s.ai.openaiBaseUrl || '';
-  const modelSelect = $('aiModel');
-  modelSelect.innerHTML = '';
-  for (const m of s.ai.availableModels || [s.ai.model]) {
-    const opt = document.createElement('option');
-    opt.value = m; opt.textContent = m;
-    if (m === s.ai.model) opt.selected = true;
-    modelSelect.appendChild(opt);
-  }
-  $('aiApiKey').value = ''; // never pre-filled - write-only, same convention as the Telegram token field
-  $('aiStatus').textContent = s.ai.mode === 'openai'
-    ? (s.ai.configured ? 'OpenAI advisor is active.' : 'OpenAI mode selected, but no API key saved yet - falling back to local summaries.')
-    : 'Using local rule-based summaries (no API key needed).';
+  $('aiModel').innerHTML = (s.ai.availableModels || []).map((m) => `<option ${m === s.ai.model ? 'selected' : ''}>${escapeHtml(m)}</option>`).join('');
+  note('aiStatus', s.ai.mode === 'openai' ? (s.ai.configured ? 'OpenAI key saved.' : 'Add an API key to use OpenAI.') : 'Local summaries: free and instant.');
 
-  // --- trading parameters ---
-  $('paramInitialBalance').value = s.initialBalanceIdr;
-  $('paramUsdIdr').value = s.usdIdrRate;
-  const cfg = state.config;
-  const liveNote = $('usdIdrLiveNote');
-  if (liveNote && cfg) {
-    liveNote.textContent = cfg.usdIdrIsLive
-      ? `Live rate from Binance (USDT/IDR): Rp ${Math.round(cfg.usdIdrRate).toLocaleString('id-ID')} - the value above is only the fallback, used if the live fetch ever fails.`
-      : `Live fetch unavailable right now - using the fallback rate above (Rp ${Math.round(cfg.usdIdrRate).toLocaleString('id-ID')}).`;
-  }
-  $('paramAllocationPct').value = s.tradeAllocationPct;
-  $('paramMaxPositions').value = s.maxOpenPositions;
-  $('paramRoundTripCost').value = s.roundTripCostPct;
-  $('paramBinanceBaseUrl').value = s.binanceBaseUrl;
+  $('setInitialBalance').value = s.initialBalanceIdr;
+  $('setUsdIdr').value = s.usdIdrRate;
+  $('setAllocation').value = s.tradeAllocationPct;
+  $('setCost').value = s.roundTripCostPct;
+  $('setSlippage').value = s.slippagePct;
+  $('setMinVolume').value = s.minTradeQuoteVolumeUsdt;
+  $('setBinanceUrl').value = s.binanceBaseUrl;
+  renderAdminTokenState();
+}
+
+function renderAdminTokenState() {
+  const el = $('adminTokenState');
+  if (el) el.textContent = readAdminToken() ? 'Admin token saved on this device.' : 'No admin token saved on this device.';
 }
 
 $('autoTradeToggle').addEventListener('change', async (e) => {
-  state.settings = await api('/api/settings', { method: 'POST', body: { autoTrade: { enabled: e.target.checked } } });
+  try { await saveSettings({ autoTrade: { enabled: e.target.checked } }); note('tradingNote', e.target.checked ? 'Auto-trading is on.' : 'Auto-trading is off. The robot only watches.', 'good'); loadCore(); }
+  catch (err) { e.target.checked = !e.target.checked; note('tradingNote', err.message, 'bad'); }
 });
-$('confidenceThreshold').addEventListener('input', (e) => {
-  $('confidenceThresholdValue').textContent = `${e.target.value}%`; // live label while dragging
-});
-$('confidenceThreshold').addEventListener('change', async (e) => {
-  state.settings = await api('/api/settings', { method: 'POST', body: { autoTrade: { minConfidencePct: Number(e.target.value) } } });
-});
-$('telegramToggle').addEventListener('change', async (e) => {
-  state.settings = await api('/api/settings', { method: 'POST', body: { telegram: { enabled: e.target.checked } } });
-});
-$('saveTelegram').addEventListener('click', async () => {
-  const botToken = $('telegramToken').value.trim();
-  const chatId = $('telegramChat').value.trim();
-  state.settings = await api('/api/settings', { method: 'POST', body: { telegram: { botToken, chatId } } });
-  renderSettings();
-});
-$('testTelegram').addEventListener('click', async () => {
+$('saveTrading').addEventListener('click', async () => {
+  const strategies = {};
+  document.querySelectorAll('[data-strategy]').forEach((el) => { strategies[el.dataset.strategy] = el.checked; });
   try {
-    await api('/api/telegram/test', { method: 'POST' });
-    $('telegramStatus').textContent = 'Test message sent - check Telegram.';
-  } catch (error) {
-    $('telegramStatus').textContent = 'Failed: ' + error.message;
-  }
+    await saveSettings({
+      strategies,
+      autoTrade: { minConfidencePct: Number($('setMinScore').value) },
+      riskPerTradePct: Number($('setRiskPerTrade').value),
+      maxOpenPositions: Number($('setMaxPositions').value),
+      maxPortfolioRiskPct: Number($('setPortfolioRisk').value),
+      dailyLossLimitPct: Number($('setDailyLoss').value),
+      maxConsecutiveLosses: Number($('setLossStreak').value)
+    });
+    renderSettings();
+    note('tradingNote', 'Saved. Takes effect on the next engine check.', 'good');
+  } catch (e) { note('tradingNote', e.message, 'bad'); }
 });
 $('addSymbolBtn').addEventListener('click', async () => {
   const raw = $('addSymbolInput').value.trim().toUpperCase();
-  if (!raw) return;
-  const symbol = raw.endsWith('USDT') ? raw : raw + 'USDT';
-  state.settings = await api('/api/settings', { method: 'POST', body: { watchlist: [...new Set([...state.settings.watchlist, symbol])] } });
-  $('addSymbolInput').value = '';
-  renderSettings();
-  loadMarket();
-});
-
-document.querySelectorAll('#aiModeToggle .view-toggle-btn').forEach((btn) => {
-  btn.addEventListener('click', async () => {
-    state.settings = await api('/api/settings', { method: 'POST', body: { ai: { mode: btn.dataset.mode } } });
+  const symbol = raw.endsWith('USDT') ? raw : `${raw}USDT`;
+  if (!/^[A-Z0-9]{1,17}USDT$/.test(symbol)) { note('watchlistNote', 'Enter a Binance USDT pair, like DOGEUSDT.', 'bad'); return; }
+  if (state.settings.watchlist.includes(symbol)) { note('watchlistNote', `${symbol} is already on the watchlist.`); return; }
+  try {
+    const next = await saveSettings({ watchlist: [...state.settings.watchlist, symbol] });
+    $('addSymbolInput').value = '';
     renderSettings();
-  });
+    note('watchlistNote', next.watchlist.includes(symbol) ? `${symbol} added. It appears after the next check.` : `${symbol} isn't allowed.`, next.watchlist.includes(symbol) ? 'good' : 'bad');
+  } catch (e) { note('watchlistNote', e.message, 'bad'); }
 });
+$('addSymbolInput').addEventListener('input', () => note('watchlistNote', ''));
+$('telegramToggle').addEventListener('change', async (e) => {
+  try { await saveSettings({ telegram: { enabled: e.target.checked } }); renderSettings(); }
+  catch (err) { e.target.checked = !e.target.checked; note('telegramStatus', err.message, 'bad'); }
+});
+$('saveTelegram').addEventListener('click', async () => {
+  const telegram = {};
+  if ($('telegramToken').value.trim()) telegram.botToken = $('telegramToken').value.trim();
+  if ($('telegramChat').value.trim()) telegram.chatId = $('telegramChat').value.trim();
+  if (!Object.keys(telegram).length) { note('telegramStatus', 'Enter a bot token or chat ID to save.', 'bad'); return; }
+  try { await saveSettings({ telegram }); $('telegramToken').value = ''; $('telegramChat').value = ''; renderSettings(); note('telegramStatus', 'Saved.', 'good'); }
+  catch (e) { note('telegramStatus', e.message, 'bad'); }
+});
+$('testTelegram').addEventListener('click', async () => {
+  try { await api('/api/telegram/test', { method: 'POST' }); note('telegramStatus', 'Test message sent.', 'good'); }
+  catch (e) { note('telegramStatus', e.message, 'bad'); }
+});
+document.querySelectorAll('#aiModeToggle button').forEach((b) => b.addEventListener('click', async () => {
+  try { await saveSettings({ ai: { mode: b.dataset.mode } }); renderSettings(); }
+  catch (e) { note('aiStatus', e.message, 'bad'); }
+}));
 $('saveAi').addEventListener('click', async () => {
-  const body = { ai: { openaiBaseUrl: $('aiBaseUrl').value.trim(), model: $('aiModel').value } };
-  const apiKey = $('aiApiKey').value.trim();
-  if (apiKey) body.ai.openaiApiKey = apiKey; // blank means "don't touch the saved key" - same rule as Telegram's token field
-  state.settings = await api('/api/settings', { method: 'POST', body });
-  renderSettings();
+  const ai = { openaiBaseUrl: $('aiBaseUrl').value.trim(), model: $('aiModel').value };
+  if ($('aiApiKey').value.trim()) ai.openaiApiKey = $('aiApiKey').value.trim();
+  try { await saveSettings({ ai }); $('aiApiKey').value = ''; renderSettings(); note('aiStatus', 'Saved.', 'good'); }
+  catch (e) { note('aiStatus', e.message, 'bad'); }
 });
-$('saveParams').addEventListener('click', async () => {
-  state.settings = await api('/api/settings', {
-    method: 'POST',
-    body: {
-      initialBalanceIdr: Number($('paramInitialBalance').value),
-      usdIdrRate: Number($('paramUsdIdr').value),
-      tradeAllocationPct: Number($('paramAllocationPct').value),
-      maxOpenPositions: Number($('paramMaxPositions').value),
-      roundTripCostPct: Number($('paramRoundTripCost').value),
-      binanceBaseUrl: $('paramBinanceBaseUrl').value.trim()
+$('saveAdvanced').addEventListener('click', async () => {
+  try {
+    await saveSettings({
+      initialBalanceIdr: Number($('setInitialBalance').value),
+      usdIdrRate: Number($('setUsdIdr').value),
+      tradeAllocationPct: Number($('setAllocation').value),
+      roundTripCostPct: Number($('setCost').value),
+      slippagePct: Number($('setSlippage').value),
+      minTradeQuoteVolumeUsdt: Number($('setMinVolume').value),
+      binanceBaseUrl: $('setBinanceUrl').value.trim()
+    });
+    renderSettings();
+    note('advancedNote', 'Saved. Takes effect on the next engine check.', 'good');
+  } catch (e) { note('advancedNote', e.message, 'bad'); }
+});
+$('forgetAdminToken').addEventListener('click', () => { saveAdminToken(''); renderAdminTokenState(); });
+
+// --- clock: countdowns and rings, once a second --------------------------------------
+function tickClock() {
+  const now = Date.now();
+  document.querySelectorAll('[data-deadline]').forEach((el) => {
+    const deadline = Number(el.dataset.deadline);
+    if (!deadline) return;
+    if (el.classList.contains('ring-fill')) {
+      const period = Number(el.dataset.period) || 1;
+      const remaining = Math.max(0, deadline - now);
+      el.style.strokeDashoffset = String(RING_CIRCUMFERENCE * Math.min(1, remaining / period));
+    } else {
+      el.textContent = fmtCountdown(deadline - now);
     }
   });
-  renderSettings();
-});
-
-// --- per-coin data freshness (replaces the old global DB pulse) ------------
-// The DB-connected indicator answered "is Postgres up" - true almost all the
-// time, and not the question someone actually has when a coin's numbers look
-// off: "is THIS coin's data still live, or did its refresh quietly stop
-// working?" fetchedAt already rides along on every /api/coins/:SYMBOL
-// response (see robotEngine.js's lightSnapshot) per timeframe, so this reads
-// straight off that instead of a separate poll.
-// TTLs mirror marketData.js's own CACHE_TTL_MS - kept here only for the
-// "does this look stale" color cue, not to duplicate the real cache logic.
-const FETCH_TTL_MS = { swing: 10 * 60_000, scalping: 2 * 60_000, dayTrade: 5 * 60_000 };
-
-function formatRelativeTime(iso) {
-  if (!iso) return 'never fetched';
-  const ms = Date.now() - new Date(iso).getTime();
-  if (ms < 0) return 'just now';
-  const s = Math.round(ms / 1000);
-  if (s < 60) return `${s}s ago`;
-  const m = Math.round(s / 60);
-  if (m < 60) return `${m}m ago`;
-  const h = Math.round(m / 60);
-  return `${h}h ago`;
-}
-
-function renderFetchInfo(modes, activeMode) {
-  const grid = $('fetchInfoGrid');
-  const note = $('fetchInfoNote');
-  grid.innerHTML = '';
-  note.textContent = "When each timeframe's candles were last pulled from Binance - the active mode (highlighted red only if it's running well past its own refresh cadence) is what your entry/exit decisions are actually running on right now.";
-  for (const mode of MODES) {
-    const m = modes?.[mode];
-    const fetchedAt = m?.fetchedAt;
-    const ageMs = fetchedAt ? Date.now() - new Date(fetchedAt).getTime() : null;
-    const stale = ageMs != null && ageMs > (FETCH_TTL_MS[mode] ?? 5 * 60_000) * 2;
-    const cell = document.createElement('div');
-    cell.className = 'indicator-cell';
-    cell.innerHTML = `<div class="label">${modeLabel(mode)}${mode === activeMode ? ' (active)' : ''}</div><div class="value${stale ? ' bearish' : ''}">${formatRelativeTime(fetchedAt)}</div>`;
-    grid.appendChild(cell);
-  }
-}
-
-function escapeHtml(str) {
-  return String(str).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
-}
-
-// --- polling ---------------------------------------------------------------
-function refreshCurrentView() {
-  // Home also pulls loadMarket()'s data (not just loadHome()'s own
-  // portfolio/notifications/backtest calls) so the Market Pulse card and
-  // the desktop ticker strip stay live while parked on the dashboard,
-  // instead of only refreshing whenever the user happens to visit Market.
-  if (state.view === 'home') { loadHome().catch(console.error); loadMarket().catch(console.error); }
-  else if (state.view === 'market') loadMarket().catch(console.error);
-  else if (state.view === 'coin' && state.coinSymbol) loadCoinDetail(state.coinSymbol).catch(console.error);
-  else if (state.view === 'settings') loadSettings().catch(console.error);
-}
-
-function describeAge(ms) {
-  const minutes = Math.round(ms / 60_000);
-  if (minutes < 1) return 'just now';
-  if (minutes < 60) return `${minutes} min ago`;
-  const hours = Math.round(minutes / 60);
-  return hours < 48 ? `${hours}h ago` : `${Math.round(hours / 24)}d ago`;
-}
-
-async function loadEngineStatus() {
-  const pill = $('engineStatus');
-  try {
-    const status = await api('/api/engine/status');
-    const label = status.ageMs == null ? 'never ran' : describeAge(status.ageMs);
-    pill.textContent = status.halt ? `Engine: paused` : `Engine: ${label}`;
-    pill.title = status.halt
-      ? `New entries paused until ${new Date(status.halt.until).toLocaleString()} - ${status.halt.reason}`
-      : `Last engine tick: ${status.lastTickAt ? new Date(status.lastTickAt).toLocaleString() : 'none yet'}`;
-    pill.classList.toggle('stale', Boolean(status.stale));
-    pill.classList.toggle('ok', !status.stale && !status.halt);
-  } catch (error) {
-    pill.textContent = 'Engine: unknown';
-    pill.classList.remove('ok');
-    pill.classList.add('stale');
-  }
 }
 
 async function bootstrap() {
-  state.config = await api('/api/config');
-  state.settings = await api('/api/settings');
-  await Promise.all([loadHome(), loadMarket(), loadEngineStatus()]);
-  setInterval(refreshCurrentView, 8000);
-  setInterval(loadEngineStatus, 30_000);
+  const [config, settings] = await Promise.all([api('/api/config'), api('/api/settings')]);
+  state.config = config;
+  state.settings = settings;
+  await Promise.all([loadCore(), loadPrices(), loadNotifications(), loadVerdict()]);
+  setInterval(loadCore, 20_000);
+  setInterval(loadPrices, 30_000);
+  setInterval(loadNotifications, 30_000);
+  setInterval(tickClock, 1000);
+  setInterval(() => { if (state.view === 'coin' && state.coinSymbol) loadChart().catch(console.error); }, 60_000);
 }
 
 bootstrap().catch((error) => {
   console.error(error);
-  document.body.insertAdjacentHTML('afterbegin', `<div style="padding:16px;color:#f0596a">Failed to load: ${escapeHtml(error.message)}</div>`);
+  document.querySelector('main').insertAdjacentHTML('afterbegin', `<div class="card" style="border-color:var(--bear);color:var(--bear)">Couldn't load the dashboard: ${escapeHtml(error.message)}</div>`);
 });

@@ -33,7 +33,7 @@ export function trendFilter(filt, j, slopeBars) {
   };
 }
 
-function placeStop(entry, rawStop, atr, cfg) {
+export function placeStop(entry, rawStop, atr, cfg) {
   const p = cfg.setup;
   const minDist = Math.max(p.minStopAtr * atr, entry * p.minStopCostMult * cfg.roundTripCostPct / 100);
   let stop = rawStop;

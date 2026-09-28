@@ -138,6 +138,15 @@ function evaluate(ctx, event, profile) {
   return evaluateSetup({ trig, i: event.i, filt, j: j < 0 ? null : j, profile, cfg, btc });
 }
 
+// What out.signals carries for a candidate. entryPrice/stopPrice are the
+// setup's plan before slippage, so outcomes.js can follow every signal.
+function signalFields(c) {
+  return {
+    symbol: c.symbol, profile: c.profile.key, setup: c.setup, score: c.score, barTime: c.barTime,
+    tf: c.event.tf, entryPrice: c.signal.entryPrice, stopPrice: c.signal.stopPrice
+  };
+}
+
 // opts: { nowMs, startMs, live, usdIdrRate, cfg, tradeSymbols, onGroup, keepAllTransactions }
 export function advance(state, portfolio, series, opts) {
   const { nowMs, live = false, usdIdrRate, cfg, onGroup } = opts;
@@ -178,7 +187,10 @@ export function advance(state, portfolio, series, opts) {
         }
         const signal = evaluation.signal;
         if (!signal) continue;
-        const base = { symbol: event.symbol, profile: profile.key, setup: signal.setup, score: signal.score, barTime: series[event.symbol][event.tf][event.i].time };
+        const base = {
+          symbol: event.symbol, profile: profile.key, setup: signal.setup, score: signal.score, barTime: series[event.symbol][event.tf][event.i].time,
+          tf: event.tf, entryPrice: signal.entryPrice, stopPrice: signal.stopPrice
+        };
         const cooldownUntil = symbolState(state, event.symbol).cooldownUntilMs[profile.key];
         let skip = null;
         if (live && !isLatest) skip = 'missed-stale';
@@ -201,7 +213,7 @@ export function advance(state, portfolio, series, opts) {
         sized = sizePosition({ portfolio, entryPrice, stopPrice: c.signal.stopPrice, usdIdrRate, cfg });
         if (!(sized.qty > 0)) skip = sized.reason;
       }
-      if (skip) { out.signals.push({ symbol: c.symbol, profile: c.profile, setup: c.setup, score: c.score, barTime: c.barTime, taken: false, skip }); continue; }
+      if (skip) { out.signals.push({ ...signalFields(c), taken: false, skip }); continue; }
       const bar = series[c.symbol][c.event.tf][c.event.i];
       const { transaction, note } = openPositionQty(portfolio, {
         symbol: c.symbol, profile: c.profile.key, setup: c.setup, quantity: sized.qty, entryPrice,
@@ -209,7 +221,7 @@ export function advance(state, portfolio, series, opts) {
         timeMs: ctx.timeFor(bar), barTime: bar.time, usdIdrRate, roundTripCostPct: cfg.roundTripCostPct,
         keepAllTransactions: ctx.keepAll
       });
-      out.signals.push({ symbol: c.symbol, profile: c.profile.key, setup: c.setup, score: c.score, barTime: c.barTime, taken: Boolean(transaction), skip: transaction ? null : note });
+      out.signals.push({ ...signalFields(c), taken: Boolean(transaction), skip: transaction ? null : note });
       if (transaction) out.transactions.push(transaction);
     }
 

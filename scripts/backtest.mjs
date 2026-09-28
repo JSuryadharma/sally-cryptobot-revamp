@@ -13,6 +13,7 @@
 //   --cost <pct>     round-trip cost % (default 0.2)
 //   --slip <pct>     slippage % per fill (default 0.05)
 //   --no-cache       refetch history instead of reusing benchmarks/.cache
+//   --exits          also compare exit-rule variants (EXIT_VARIANTS) on the test window
 //
 // Output: console summary + benchmarks/v2-<timestamp>/{report.json,report.md,trades.csv}.
 import fs from 'node:fs/promises';
@@ -40,6 +41,18 @@ export const GRID = {
   enableBreakout: [false, true]
 };
 
+// Exit rules compared by --exits. Entries are unchanged, so differences come
+// from the exits alone. partialAtR also sets where the stop moves to breakeven.
+export const EXIT_VARIANTS = [
+  { name: 'current (breakeven at +1R, ATR trail)', cfg: {} },
+  { name: 'sell half at +1R, trail the rest', cfg: { partialFraction: 0.5 } },
+  { name: 'fixed target +1.5R', cfg: { targetR: 1.5 } },
+  { name: 'fixed target +2R', cfg: { targetR: 2 } },
+  { name: 'breakeven at +1.5R', cfg: { partialAtR: 1.5 } },
+  { name: 'breakeven at +2R', cfg: { partialAtR: 2 } },
+  { name: 'half at +1R, rest at +2R target', cfg: { partialFraction: 0.5, targetR: 2 } }
+];
+
 export const CRITERIA = { minTrades: 60, minProfitFactor: 1.3, maxDrawdownPct: 12, maxSymbolProfitShare: 0.4 };
 
 function parseArgs(argv) {
@@ -56,6 +69,7 @@ function parseArgs(argv) {
     else if (flag === '--cost') { args.cost = Number(value); k += 1; }
     else if (flag === '--slip') { args.slip = Number(value); k += 1; }
     else if (flag === '--no-cache') args.cache = false;
+    else if (flag === '--exits') args.exits = true;
   }
   return args;
 }
@@ -284,6 +298,17 @@ async function main() {
   console.log(`  +1R by score: ${one.byScore.filter((b) => b.decided).map((b) => `${b.bucket}: ${b.hitRatePct}% (${b.decided})`).join(', ')}`);
   console.log(`\nCriteria: ${verdict.passed ? 'PASSED' : 'FAILED'}`);
   for (const c of verdict.checks) console.log(`  ${c.ok ? 'ok  ' : 'FAIL'} ${c.name} (${c.value})`);
+
+  if (args.exits) {
+    console.log('\nExit rules on the same entries (0.2% / 0.3% cost):');
+    report.exitVariants = EXIT_VARIANTS.map((v) => {
+      const base = simulate(series, { symbols: args.symbols, startMs: splitMs, endMs: args.end, cfg: resolveEngineCfg({ ...baseCfg, ...chosen, ...v.cfg }) }).metrics;
+      const costly = simulate(series, { symbols: args.symbols, startMs: splitMs, endMs: args.end, cfg: resolveEngineCfg({ ...baseCfg, ...chosen, ...v.cfg, roundTripCostPct: 0.3 }) }).metrics;
+      const verdictV = checkCriteria(base, costly);
+      console.log(`  ${v.name.padEnd(38)} ${fmtMetrics(base)} | 0.3%: exp ${costly.expectancyR ?? '-'}R | criteria ${verdictV.passed ? 'PASSED' : `failed ${verdictV.checks.filter((c) => !c.ok).length}`}`);
+      return { ...v, metrics: base, stressExpectancyR: costly.expectancyR, verdict: verdictV };
+    });
+  }
 
   const outDir = path.join(ROOT, 'benchmarks', `v2-${new Date().toISOString().replace(/[:.]/g, '-')}`);
   await fs.mkdir(outDir, { recursive: true });

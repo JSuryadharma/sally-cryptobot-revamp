@@ -13,7 +13,7 @@ import { runAndStoreBacktest, VERDICT_KEY } from './backtestRunner.js';
 import { readCoinsCache } from './coinsCache.js';
 import { checkConnection } from './pgClient.js';
 import { checkBearer } from './auth.js';
-import { handleTickRequest, readEngineStatus, runTick, runTickIfDue, runManualTrade } from './engine/tick.js';
+import { handleTickRequest, readEngineStatus, readPredictionAccuracy, runTick, runTickIfDue, runManualTrade } from './engine/tick.js';
 import { loadChartCandles } from './engine/candles.js';
 
 const notifications = new NotificationCenter();
@@ -80,6 +80,10 @@ async function route(req, res) {
   }
 
   // Read-only: trading happens only in the engine tick (src/engine/tick.js).
+  if (pathname === '/api/predictions/accuracy' && method === 'GET') {
+    return sendJson(res, 200, await readPredictionAccuracy());
+  }
+
   if (pathname === '/api/coins' && method === 'GET') {
     const settings = await readSettings();
     const { coins: sharedCache, updatedAt } = await readCoinsCache();

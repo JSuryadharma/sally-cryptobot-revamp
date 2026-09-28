@@ -27,7 +27,7 @@ import { enrichCandles } from '../src/indicators.js';
 import { signalRecords, updateJournal, summarizeOutcomes } from '../src/engine/outcomes.js';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const DEFAULT_SYMBOLS = ['BTCUSDT', 'ETHUSDT', 'BNBUSDT', 'SOLUSDT', 'XRPUSDT', 'ADAUSDT', 'DOGEUSDT', 'AVAXUSDT', 'TRXUSDT', 'APTUSDT', 'LTCUSDT', 'NEARUSDT', 'ATOMUSDT', 'INJUSDT', 'TONUSDT'];
+export const DEFAULT_SYMBOLS = ['BTCUSDT', 'ETHUSDT', 'BNBUSDT', 'SOLUSDT', 'XRPUSDT', 'ADAUSDT', 'DOGEUSDT', 'AVAXUSDT', 'TRXUSDT', 'APTUSDT', 'LTCUSDT', 'NEARUSDT', 'ATOMUSDT', 'INJUSDT', 'TONUSDT'];
 const DEFAULT_BASE_URL = 'https://data-api.binance.vision';
 const MONTH_MS = 30 * 86_400_000;
 const USD_IDR = 16_800;

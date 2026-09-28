@@ -9,6 +9,7 @@ const state = {
   portfolio: null,
   status: null,
   verdict: null,
+  accuracy: null,
   prices: {},
   movers: [],
   moversError: null,
@@ -210,6 +211,11 @@ async function loadVerdict() {
   renderVerdict();
 }
 
+async function loadAccuracy() {
+  state.accuracy = await api('/api/predictions/accuracy').catch(() => null);
+  renderAccuracy();
+}
+
 function renderCurrentView() {
   if (state.view === 'dashboard') renderDashboard();
   else if (state.view === 'radar') renderRadar();
@@ -261,6 +267,7 @@ function renderDashboard() {
   renderPositions();
   renderActivity();
   renderVerdict();
+  renderAccuracy();
 }
 
 function renderDecision() {
@@ -439,6 +446,33 @@ function renderVerdict() {
   badge.textContent = `${v.verdict} · ${v.totalScore}/100`;
   const s = v.benchmarkSummary || {};
   $('verdictMeta').textContent = `${s.months ?? '?'} month${s.months === 1 ? '' : 's'}: ${s.closedTrades ?? 0} trades, return ${fmtPct(s.totalReturnPct ?? 0)}, win rate ${s.winRate ?? '-'}%, max drawdown ${s.maxDrawdownPct ?? '-'}%${s.openAtEnd ? `, ${s.openAtEnd} still open` : ''}. Run ${new Date(v.generatedAtIso).toLocaleString()}.`;
+}
+
+// Each signal predicts "+1R before the stop". Scores are only useful if higher
+// scores hit more often, which the AUC line and the per-score rows show.
+function renderAccuracy() {
+  const a = state.accuracy;
+  const badge = $('accuracyBadge');
+  const one = a?.levels?.['1R'];
+  if (!one || !one.overall.decided) {
+    badge.className = 'pill';
+    badge.textContent = a?.signals ? `${a.signals} waiting` : 'None';
+    $('accuracyMeta').textContent = a?.signals
+      ? `${a.signals} signal${a.signals === 1 ? '' : 's'} recorded, none decided yet. A signal counts once it reaches +1R or its stop.`
+      : 'No signals recorded yet. Every setup the robot flags, taken or skipped, is tracked here.';
+    $('accuracyBuckets').innerHTML = '';
+    return;
+  }
+  const rate = one.overall.hitRatePct;
+  badge.className = `pill ${rate >= 50 ? 'good' : rate >= 40 ? 'warn' : 'bad'}`;
+  badge.textContent = `${rate}% hit +1R`;
+  const two = a.levels['2R']?.overall;
+  const auc = one.scoreAucPct;
+  $('accuracyMeta').textContent = `${one.overall.hits} of ${one.overall.decided} signals reached +1R before the stop${two?.decided ? `, ${two.hitRatePct}% reached +2R` : ''}. ${a.pending} still open.`
+    + (auc != null ? ` Score vs outcome: ${auc}/100 (50 means the confidence score does not predict wins).` : '');
+  $('accuracyBuckets').innerHTML = one.byScore.filter((b) => b.decided).map((b) =>
+    `<div class="activity-item"><span class="icon">${escapeHtml(b.bucket)}</span><div>${b.hitRatePct}% hit +1R<small>${b.hits} of ${b.decided} signals with score ${escapeHtml(b.bucket)}</small></div></div>`
+  ).join('');
 }
 
 document.querySelectorAll('#backtestMonthsRow button').forEach((btn) => btn.addEventListener('click', () => {
@@ -1000,10 +1034,11 @@ async function bootstrap() {
   const [config, settings] = await Promise.all([api('/api/config'), api('/api/settings')]);
   state.config = config;
   state.settings = settings;
-  await Promise.all([loadCore(), loadPrices(), loadNotifications(), loadVerdict()]);
+  await Promise.all([loadCore(), loadPrices(), loadNotifications(), loadVerdict(), loadAccuracy()]);
   setInterval(loadCore, 20_000);
   setInterval(loadPrices, 30_000);
   setInterval(loadNotifications, 30_000);
+  setInterval(loadAccuracy, 5 * 60_000);
   setInterval(tickClock, 1000);
   setInterval(() => { if (state.view === 'coin' && state.coinSymbol) loadChart().catch(console.error); }, 60_000);
 }

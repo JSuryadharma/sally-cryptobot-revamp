@@ -15,11 +15,13 @@ import { placeStop } from './setups.js';
 import { sizePosition } from './sizing.js';
 import { openPositionQty, sellPosition } from './ledger.js';
 import { predictCoin } from './prediction.js';
+import { signalRecords, updateJournal, summarizeOutcomes } from './outcomes.js';
 
 const LEASE_NAME = 'engine';
 const LEASE_TTL_MS = 120_000;
 const TICK_LOG_KEY = 'engine-ticks.json';
 export const ENGINE_STATE_KEY = 'engine-state.json';
+export const SIGNAL_JOURNAL_KEY = 'signal-journal.json';
 const TICK_LOG_MAX = 300;
 const STALE_AFTER_MS = 20 * 60_000;
 const SCHEDULE_MS = 5 * 60_000;
@@ -52,6 +54,21 @@ async function loadContext() {
   ]);
   const engineState = storedState?.version === 2 ? storedState : createEngineState();
   return { settings, cfg, portfolio, engineState, usdIdrRate };
+}
+
+// Every signal the engine flags, taken or skipped, followed until it reaches
+// +2R, its stop or its time stop - the record behind "how often is it right".
+async function readSignalJournal() {
+  return readJson(SIGNAL_JOURNAL_KEY, []);
+}
+
+export async function readPredictionAccuracy() {
+  const journal = await readSignalJournal();
+  return {
+    ...summarizeOutcomes(journal),
+    since: journal.length ? new Date(journal.at(-1).barTime * 1000).toISOString() : null,
+    recent: journal.slice(0, 20)
+  };
 }
 
 async function notifyResults(notifications, out, cfg) {
@@ -90,7 +107,8 @@ async function enginePass({ notifications = new NotificationCenter() } = {}) {
   const tradeSymbols = settings.autoTrade.enabled ? settings.watchlist.filter((s) => series[s]) : [];
   const out = advance(engineState, portfolio, series, { nowMs: startedAt, live: true, usdIdrRate, cfg, tradeSymbols });
   portfolio.updatedAt = new Date().toISOString();
-  await writeJsonMany({ [PORTFOLIO_KEY]: portfolio, [ENGINE_STATE_KEY]: engineState });
+  const journal = updateJournal(await readSignalJournal(), signalRecords(out.signals, cfg), series);
+  await writeJsonMany({ [PORTFOLIO_KEY]: portfolio, [ENGINE_STATE_KEY]: engineState, [SIGNAL_JOURNAL_KEY]: journal });
   await notifyResults(notifications, out, cfg);
 
   const coins = {};

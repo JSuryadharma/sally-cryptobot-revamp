@@ -1,4 +1,4 @@
-// Called by .github/workflows/engine-tick.yml every ~5 minutes. Uses raw
+// Called by cron-job.org every 5 minutes. Uses raw
 // writeHead/end to match server.js's sendJson style.
 import { handleTickRequest } from '../../src/engine/tick.js';
 

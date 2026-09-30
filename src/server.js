@@ -267,7 +267,7 @@ function readBody(req) {
   });
 }
 
-// Local/persistent-host scheduler. On Vercel the GitHub Actions workflow calls
+// Local/persistent-host scheduler. On Vercel an external scheduler (cron-job.org) calls
 // /api/engine/tick instead, because serverless instances don't keep timers alive.
 async function scheduleTick() {
   await runTick({ reason: 'local-loop' }).catch((error) => console.warn('[tick] failed:', error.message));

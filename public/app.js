@@ -237,7 +237,7 @@ function renderCurrentView() {
 function robotStatus() {
   const s = state.status;
   if (!s) return { cls: '', title: 'Checking the robot...', sub: '' };
-  if (s.stale) return { cls: 'bad', title: 'The engine has not checked in', sub: `Last check ${fmtAgo(s.ageMs)}. Check the GitHub Actions workflow.` };
+  if (s.stale) return { cls: 'bad', title: 'The engine has not checked in', sub: `Last check ${fmtAgo(s.ageMs)}. Check the cron-job.org job.` };
   const next = s.nextTickEta ? Date.parse(s.nextTickEta) - Date.now() : null;
   const nextText = next == null ? '' : next > 0 ? `, next in ~${Math.max(1, Math.round(next / 60000))} min` : ', next any moment';
   const sub = `Last check ${fmtAgo(s.ageMs)}${nextText}.`;

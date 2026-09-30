@@ -35,7 +35,7 @@ A 24/7 crypto paper-trading robot and dashboard for Binance USDT pairs. It reads
 
 ## How it runs
 
-The server does no trading on its own timer on Vercel. A GitHub Actions workflow (`.github/workflows/engine-tick.yml`) calls `POST /api/engine/tick` every ~5 minutes with `ENGINE_TICK_SECRET`. Each tick:
+The server does no trading on its own timer on Vercel. An external scheduler ([cron-job.org](https://cron-job.org)) calls `POST /api/engine/tick` every 5 minutes, at minutes 1, 6, 11, … 56, with the header `Authorization: Bearer <ENGINE_TICK_SECRET>`. That lands each tick 1 minute after every 5-minute candle close, including each 4h and daily close. Each tick:
 
 1. Takes a Postgres lease, so two ticks can never trade at once.
 2. Replays any candles it missed.
@@ -60,7 +60,7 @@ On Vercel, set these environment variables:
 - `ADMIN_TOKEN`: protects settings changes and manual trades. Backtests run without it. The dashboard asks for it once.
 - `ENGINE_TICK_SECRET`
 
-In the GitHub repository settings, add the `ENGINE_URL` repository variable and the `ENGINE_TICK_SECRET` repository secret. Scheduled workflows only run from the default branch.
+On cron-job.org, create a job that POSTs to `https://<your-app>/api/engine/tick` with the header `Authorization: Bearer <ENGINE_TICK_SECRET>`, on a custom schedule at minutes `1,6,11,16,21,26,31,36,41,46,51,56`.
 
 ## Backtesting
 
@@ -93,7 +93,7 @@ src/settings.js   stored settings and engine configuration
 src/tradingRobot.js  stored paper portfolio
 src/aiAdvisor.js  daily-chart summary (local, or OpenAI if configured)
 src/marketStructure.js  swing pivots and support/resistance for the chart
-api/engine/tick.js      Vercel function called by the GitHub Actions schedule
+api/engine/tick.js      Vercel function called by the cron-job.org schedule
 scripts/backtest.mjs    walk-forward backtester
 public/           dashboard (plain HTML/CSS/JS, no build step)
 test/             node --test suites

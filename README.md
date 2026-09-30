@@ -57,7 +57,7 @@ npm start               # http://localhost:3300
 
 On Vercel, set these environment variables:
 - `DATABASE_URL`
-- `ADMIN_TOKEN`: protects settings changes, manual trades and backtests. The dashboard asks for it once.
+- `ADMIN_TOKEN`: protects settings changes and manual trades. Backtests run without it. The dashboard asks for it once.
 - `ENGINE_TICK_SECRET`
 
 In the GitHub repository settings, add the `ENGINE_URL` repository variable and the `ENGINE_TICK_SECRET` repository secret. Scheduled workflows only run from the default branch.

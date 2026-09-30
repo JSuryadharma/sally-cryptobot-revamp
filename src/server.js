@@ -32,10 +32,11 @@ const server = http.createServer((req, res) => {
 const hub = new WebSocketHub(server);
 notifications.setBroadcast((message) => hub.broadcast(message));
 
+// Backtest runs are open (no admin token): they only read public market data
+// and overwrite the stored backtest verdict.
 const ADMIN_ROUTES = [
   /^\/api\/settings$/,
   /^\/api\/coins\/[A-Z0-9]+\/trade$/i,
-  /^\/api\/backtest\/run$/,
   /^\/api\/telegram\/test$/,
   /^\/api\/notifications\/read$/
 ];

@@ -9,7 +9,8 @@
     "dev": "node --env-file-if-exists=.env --watch src/server.js",
     "check": "for f in src/*.js src/engine/*.js api/engine/*.js scripts/*.mjs public/app.js; do node --check \"$f\" || exit 1; done && node -e \"import('./src/engine/tick.js').then(() => import('./src/settings.js'))\"",
     "test": "node --test test/*.test.mjs",
-    "backtest": "node scripts/backtest.mjs"
+    "backtest": "node scripts/backtest.mjs",
+    "research": "node scripts/entryResearch.mjs"
   },
   "engines": {
     "node": ">=22"

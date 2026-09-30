@@ -34,9 +34,9 @@ const state = {
 
 const STAGE_LABEL = { blocked: 'Not in play', watching: 'Watching', 'setting-up': 'Setting up', ready: 'Ready to buy', holding: 'Holding' };
 const STAGE_ORDER = { ready: 0, 'setting-up': 1, holding: 2, watching: 3, blocked: 4 };
-const TF_MS = { '15m': 900_000, '1h': 3_600_000, '4h': 14_400_000, '1d': 86_400_000 };
-const TF_LABEL = { '15m': '15m', '1h': '1H', '4h': '4H', '1d': '1D' };
-const TF_WORD = { '15m': '15-minute', '1h': '1-hour', '4h': '4-hour', '1d': 'daily' };
+const TF_MS = { '5m': 300_000, '15m': 900_000, '1h': 3_600_000, '4h': 14_400_000, '1d': 86_400_000 };
+const TF_LABEL = { '5m': '5m', '15m': '15m', '1h': '1H', '4h': '4H', '1d': '1D' };
+const TF_WORD = { '5m': '5-minute', '15m': '15-minute', '1h': '1-hour', '4h': '4-hour', '1d': 'daily' };
 const RING_CIRCUMFERENCE = 119.4;
 const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
 
@@ -306,7 +306,16 @@ function renderDecision() {
   ring.classList.toggle('signal', atNext.length > 0);
   const names = (list) => [...new Set(list.map((x) => base(x.coin.symbol)))].slice(0, 3).join(', ');
   let text;
-  if (atNext.length) {
+  if (state.settings?.earlyEntry && inPlayOf(pool).length) {
+    const soon = inPlayOf(pool);
+    const checkTf = TF_MS[state.settings.earlyTf] ? state.settings.earlyTf : '5m';
+    const nextCheck = Math.ceil(Date.now() / TF_MS[checkTf]) * TF_MS[checkTf];
+    $('decisionCountdown').dataset.deadline = String(nextCheck);
+    ring.dataset.deadline = String(nextCheck);
+    ring.dataset.period = String(TF_MS[checkTf]);
+    ring.classList.add('signal');
+    text = `Buy early is on: checked every ${TF_WORD[checkTf]} candle, next at <b>${escapeHtml(fmtClock(nextCheck))}</b>. ${escapeHtml(names(soon))} could fire as soon as price breaks the trigger.`;
+  } else if (atNext.length) {
     text = `The ${TF_WORD[next.timeframe]} candle closes at <b>${escapeHtml(fmtClock(next.decisionAt))}</b>. ${escapeHtml(names(atNext))} could fire then.`;
   } else if (laterPlay) {
     const later = inPlayOf(pool.filter((x) => x.h.decisionAt === laterPlay.h.decisionAt));
@@ -947,6 +956,7 @@ function renderSettings() {
   $('strategyList').innerHTML = strategyEntries.map(([key, p]) => `
     <label class="strategy-row"><span><b>${escapeHtml(p.label)}</b><small>${key === 'scalping' ? 'Lost money in every backtest after costs. Use with care.' : `Trades ${TF_WORD[p.triggerTf]} candles, trend from ${TF_WORD[p.filterTf]} chart.`}</small></span>
     <input type="checkbox" role="switch" data-strategy="${key}" ${s.strategies?.[key] ? 'checked' : ''} /></label>`).join('');
+  $('earlyEntryToggle').checked = Boolean(s.earlyEntry);
   $('setRiskPerTrade').value = s.riskPerTradePct;
   $('setMaxPositions').value = s.maxOpenPositions;
   $('setPortfolioRisk').value = s.maxPortfolioRiskPct;
@@ -993,6 +1003,7 @@ $('saveTrading').addEventListener('click', async () => {
   try {
     await saveSettings({
       strategies,
+      earlyEntry: $('earlyEntryToggle').checked,
       autoTrade: { minConfidencePct: Number($('setMinScore').value) },
       riskPerTradePct: Number($('setRiskPerTrade').value),
       maxOpenPositions: Number($('setMaxPositions').value),

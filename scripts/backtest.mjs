@@ -14,6 +14,7 @@
 //   --slip <pct>     slippage % per fill (default 0.05)
 //   --no-cache       refetch history instead of reusing benchmarks/.cache
 //   --exits          also compare exit-rule variants (EXIT_VARIANTS) on the test window
+//   --early          also compare early entry (5m and 15m checks) with close-only entry
 //
 // Output: console summary + benchmarks/v2-<timestamp>/{report.json,report.md,trades.csv}.
 import fs from 'node:fs/promises';
@@ -71,6 +72,7 @@ function parseArgs(argv) {
     else if (flag === '--slip') { args.slip = Number(value); k += 1; }
     else if (flag === '--no-cache') args.cache = false;
     else if (flag === '--exits') args.exits = true;
+    else if (flag === '--early') args.early = true;
   }
   return args;
 }
@@ -315,6 +317,19 @@ async function main() {
       const verdictV = checkCriteria(base, costly);
       console.log(`  ${v.name.padEnd(38)} ${fmtMetrics(base)} | 0.3%: exp ${costly.expectancyR ?? '-'}R | criteria ${verdictV.passed ? 'PASSED' : `failed ${verdictV.checks.filter((c) => !c.ok).length}`}`);
       return { ...v, metrics: base, stressExpectancyR: costly.expectancyR, verdict: verdictV };
+    });
+  }
+
+  if (args.early) {
+    console.log('\nEntry timing on the test window (0.2% / 0.3% cost):');
+    const timings = [{ earlyEntry: false }, { earlyEntry: true, earlyTf: '15m' }, { earlyEntry: true, earlyTf: '5m' }];
+    report.entryTiming = timings.map((timing) => {
+      const { earlyEntry } = timing;
+      const name = earlyEntry ? `early (${timing.earlyTf} checks)` : 'candle close only';
+      const base = simulate(series, { symbols: args.symbols, startMs: splitMs, endMs: args.end, cfg: resolveEngineCfg({ ...baseCfg, ...chosen, ...timing }) }).metrics;
+      const costly = simulate(series, { symbols: args.symbols, startMs: splitMs, endMs: args.end, cfg: resolveEngineCfg({ ...baseCfg, ...chosen, ...timing, roundTripCostPct: 0.3 }) }).metrics;
+      console.log(`  ${name.padEnd(20)} ${fmtMetrics(base)} | 0.3%: exp ${costly.expectancyR ?? '-'}R, return ${costly.totalReturnPct}%`);
+      return { name, ...timing, metrics: base, stressExpectancyR: costly.expectancyR };
     });
   }
 

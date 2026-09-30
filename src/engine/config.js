@@ -1,5 +1,5 @@
-export const TF_MS = { '15m': 15 * 60_000, '1h': 60 * 60_000, '4h': 4 * 60 * 60_000, '1d': 24 * 60 * 60_000 };
-export const ENGINE_TIMEFRAMES = ['15m', '1h', '4h', '1d'];
+export const TF_MS = { '5m': 5 * 60_000, '15m': 15 * 60_000, '1h': 60 * 60_000, '4h': 4 * 60 * 60_000, '1d': 24 * 60 * 60_000 };
+export const ENGINE_TIMEFRAMES = ['5m', '15m', '1h', '4h', '1d'];
 export const BTC_SYMBOL = 'BTCUSDT';
 
 // Trend-following profiles with wide ATR trails: the 2024-2026 backtests found
@@ -90,6 +90,10 @@ export const DEFAULT_ENGINE_CFG = {
   // Signals on one bar close are mostly the same market move (the majors rise
   // and fall together), so only the best-scoring one is opened per bar close.
   maxNewEntriesPerBar: 1,
+  // Re-check setups on every closed earlyTf candle instead of only at the
+  // trigger candle's close (see core.js).
+  earlyEntry: false,
+  earlyTf: '5m',
   enableBreakout: false,
   btcGate: true,
   timeStopMult: 1,

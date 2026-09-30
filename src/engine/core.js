@@ -11,6 +11,15 @@ import { onBar } from './positionManager.js';
 import { sizePosition, bookEquityIdr } from './sizing.js';
 import { openPositionQty, sellPosition, normalizePosition } from './ledger.js';
 import { createRiskState, updateRisk, recordTradeResult, entryBlock } from './riskGuard.js';
+import { enrichCandles } from '../indicators.js';
+
+// Early entry: between trigger-candle closes, every closed cfg.earlyTf candle
+// (5m by default) re-checks the setup against the trigger candle formed so
+// far, so a pullback reclaim is bought within minutes instead of at the 4h (or
+// daily) close.
+// Closed trigger candles fed to the indicators with the forming one. 250 bars
+// is plenty for EMA50/ATR14/ADX14 to converge.
+const EARLY_WINDOW = 250;
 
 export function createEngineState() {
   return { version: 2, symbols: {}, risk: createRiskState() };
@@ -40,6 +49,25 @@ function symbolState(state, symbol) {
   return s;
 }
 
+function earlyProfile(profile, cfg) {
+  return Boolean(cfg.earlyEntry) && Boolean(TF_MS[cfg.earlyTf]) && TF_MS[cfg.earlyTf] < TF_MS[profile.triggerTf];
+}
+
+// The trigger-timeframe candle formed so far, from the closed early candles
+// since it opened up to and including sub[k].
+function formingCandle(sub, k, tf) {
+  const openMs = Math.floor((sub[k].time * 1000) / TF_MS[tf]) * TF_MS[tf];
+  let m = k;
+  while (m > 0 && sub[m - 1].time * 1000 >= openMs) m -= 1;
+  const bar = { time: openMs / 1000, date: new Date(openMs).toISOString().slice(0, 10), open: sub[m].open, high: -Infinity, low: Infinity, close: sub[k].close, volume: 0 };
+  for (let n = m; n <= k; n += 1) {
+    bar.high = Math.max(bar.high, sub[n].high);
+    bar.low = Math.min(bar.low, sub[n].low);
+    bar.volume += sub[n].volume || 0;
+  }
+  return bar;
+}
+
 function enabledProfiles(cfg) {
   return Object.values(profilesFor(cfg)).filter((p) => cfg.profiles?.[p.key]);
 }
@@ -51,7 +79,12 @@ function buildEvents(state, portfolio, series, { nowMs, startMs, live, cfg, trad
     if (!tfsBySymbol.has(symbol)) tfsBySymbol.set(symbol, new Set());
     tfsBySymbol.get(symbol).add(tf);
   };
-  for (const symbol of tradeSymbols) for (const p of enabledProfiles(cfg)) add(symbol, p.triggerTf);
+  for (const symbol of tradeSymbols) {
+    for (const p of enabledProfiles(cfg)) {
+      add(symbol, p.triggerTf);
+      if (earlyProfile(p, cfg)) add(symbol, cfg.earlyTf);
+    }
+  }
   for (const position of Object.values(portfolio.positions)) {
     const profile = profilesFor(cfg)[normalizePosition(position).profile];
     if (profile) add(position.symbol, profile.triggerTf);
@@ -118,10 +151,63 @@ function manage(ctx, event) {
   const profile = profilesFor(cfg)[position.profile];
   if (!profile || profile.triggerTf !== event.tf) return;
   portfolio.positions[event.symbol] = position;
-  const bar = series[event.symbol][event.tf][event.i];
+  let bar = series[event.symbol][event.tf][event.i];
+  if (position.filledAtMs && bar.time * 1000 < position.filledAtMs) bar = afterFill(series[event.symbol][ctx.cfg.earlyTf], TF_MS[ctx.cfg.earlyTf], bar, position.filledAtMs, event.closeMs) || bar;
   const { fills, updates } = onBar(position, bar, profile, cfg);
   if (updates) Object.assign(position, updates);
   if (fills.length) applyFills(ctx, event.symbol, fills, bar);
+}
+
+// The part of an early position's entry candle after the fill, so a low
+// reached before the buy can't stop it out.
+function afterFill(sub, subMs, bar, fromMs, toMs) {
+  if (!sub) return null;
+  const parts = sub.filter((b) => b.time * 1000 >= fromMs && b.time * 1000 + subMs <= toMs);
+  if (!parts.length) return null;
+  return {
+    ...bar,
+    open: parts[0].open,
+    high: Math.max(...parts.map((b) => b.high)),
+    low: Math.min(...parts.map((b) => b.low))
+  };
+}
+
+// Same pullback test evaluatePullback() runs for a trigger candle at ci + 1,
+// from the closed candles alone.
+function pullbackSeen(trig, ci, cfg) {
+  const p = cfg.setup;
+  let touched = false;
+  let minRsi = Infinity;
+  for (let k = ci + 1 - p.pullbackLookback; k <= ci; k += 1) {
+    const b = trig[k];
+    if (!b || !Number.isFinite(b.low) || !Number.isFinite(b.ema20) || !Number.isFinite(b.atr14) || !Number.isFinite(b.rsi14) || b.atr14 <= 0) continue;
+    if ((b.low - b.ema20) / b.atr14 <= p.pullbackTouchAtr) touched = true;
+    minRsi = Math.min(minRsi, b.rsi14);
+  }
+  return touched && minRsi >= p.rsiDipMin && minRsi <= p.rsiDipMax;
+}
+
+// Setup check on the forming trigger candle at an early-candle close. Returns the
+// evaluation with the forming candle's time, or null when there is nothing to check.
+function evaluateEarly(ctx, event, profile) {
+  const { series, cfg } = ctx;
+  const trigAll = series[event.symbol][profile.triggerTf];
+  const sub = series[event.symbol][cfg.earlyTf];
+  if (!trigAll || event.closeMs % TF_MS[profile.triggerTf] === 0) return null; // the candle's own close is checked normally
+  const ci = lastClosedIndex(trigAll, profile.triggerTf, event.closeMs);
+  if (ci < 1) return null;
+  const forming = formingCandle(sub, event.i, profile.triggerTf);
+  if (!(forming.close > trigAll[ci].high)) return null; // cheap pre-checks first: no reclaim yet,
+  if (!pullbackSeen(trigAll, ci, cfg)) return null; // or no pullback to buy
+  const trig = enrichCandles(trigAll.slice(Math.max(0, ci - EARLY_WINDOW + 1), ci + 1).concat(forming));
+  const filt = series[event.symbol][profile.filterTf];
+  const j = lastClosedIndex(filt, profile.filterTf, event.closeMs);
+  let btc = null;
+  if (cfg.btcGate && series[BTC_SYMBOL]?.[profile.filterTf]) {
+    const btcFilt = series[BTC_SYMBOL][profile.filterTf];
+    btc = { filt: btcFilt, j: lastClosedIndex(btcFilt, profile.filterTf, event.closeMs) };
+  }
+  return { ...evaluateSetup({ trig, i: trig.length - 1, filt, j: j < 0 ? null : j, profile, cfg, btc }), barTime: forming.time };
 }
 
 function evaluate(ctx, event, profile) {
@@ -143,7 +229,7 @@ function evaluate(ctx, event, profile) {
 function signalFields(c) {
   return {
     symbol: c.symbol, profile: c.profile.key, setup: c.setup, score: c.score, barTime: c.barTime,
-    tf: c.event.tf, entryPrice: c.signal.entryPrice, stopPrice: c.signal.stopPrice
+    tf: c.tf, entryPrice: c.signal.entryPrice, stopPrice: c.signal.stopPrice
   };
 }
 
@@ -179,27 +265,37 @@ export function advance(state, portfolio, series, opts) {
       if (!tradeSymbols.has(event.symbol) || portfolio.positions[event.symbol]) continue;
       const isLatest = event.i === series[event.symbol][event.tf].length - 1;
       for (const profile of enabledProfiles(cfg)) {
-        if (profile.triggerTf !== event.tf) continue;
-        const evaluation = evaluate(ctx, event, profile);
+        const early = profile.triggerTf !== event.tf;
+        if (early && !(event.tf === cfg.earlyTf && earlyProfile(profile, cfg))) continue;
+        const evaluation = early ? evaluateEarly(ctx, event, profile) : evaluate(ctx, event, profile);
         if (!evaluation) continue;
-        if (live && isLatest) {
-          (out.latestEvaluations[event.symbol] ||= {})[profile.key] = { ...evaluation, closeMs, barTime: series[event.symbol][event.tf][event.i].time };
+        const barTime = early ? evaluation.barTime : series[event.symbol][event.tf][event.i].time;
+        if (live && isLatest && !early) {
+          (out.latestEvaluations[event.symbol] ||= {})[profile.key] = { ...evaluation, closeMs, barTime };
         }
         const signal = evaluation.signal;
         if (!signal) continue;
+        // One decision per trigger candle: once a forming candle has signalled
+        // early, its later 15m checks and its own close stay quiet.
+        const sState = symbolState(state, event.symbol);
+        sState.earlyBarTime ||= {};
+        if (sState.earlyBarTime[profile.key] === barTime) continue;
+        if (early) sState.earlyBarTime[profile.key] = barTime;
         const base = {
-          symbol: event.symbol, profile: profile.key, setup: signal.setup, score: signal.score, barTime: series[event.symbol][event.tf][event.i].time,
-          tf: event.tf, entryPrice: signal.entryPrice, stopPrice: signal.stopPrice
+          symbol: event.symbol, profile: profile.key, setup: signal.setup, score: signal.score, barTime,
+          tf: profile.triggerTf, entryPrice: signal.entryPrice, stopPrice: signal.stopPrice
         };
-        const cooldownUntil = symbolState(state, event.symbol).cooldownUntilMs[profile.key];
+        const cooldownUntil = sState.cooldownUntilMs[profile.key];
+        // An early fill is priced at that candle's close, so it goes stale after two of them.
+        const maxDelayMs = early ? 2 * TF_MS[event.tf] : cfg.maxEntryDelayBarFrac * TF_MS[event.tf];
         let skip = null;
         if (live && !isLatest) skip = 'missed-stale';
-        else if (live && nowMs - closeMs > cfg.maxEntryDelayBarFrac * TF_MS[event.tf]) skip = 'missed-late: tick ran too long after the bar closed';
+        else if (live && nowMs - closeMs > maxDelayMs) skip = 'missed-late: tick ran too long after the bar closed';
         else if (signal.score < cfg.minConfidencePct) skip = `score ${signal.score} below ${cfg.minConfidencePct}`;
         else if (blocked) skip = `entries paused: ${blocked}`;
         else if (cooldownUntil && closeMs < cooldownUntil) skip = 'cooldown after stop-out';
         if (skip) { out.signals.push({ ...base, taken: false, skip }); continue; }
-        candidates.push({ ...base, signal, event, profile });
+        candidates.push({ ...base, signal, event, profile, early });
       }
     }
 
@@ -220,12 +316,17 @@ export function advance(state, portfolio, series, opts) {
       const bar = series[c.symbol][c.event.tf][c.event.i];
       const { transaction, note } = openPositionQty(portfolio, {
         symbol: c.symbol, profile: c.profile.key, setup: c.setup, quantity: sized.qty, entryPrice,
-        stopPrice: c.signal.stopPrice, riskIdr: sized.riskIdr, score: c.score, reason: c.signal.reason,
-        timeMs: ctx.timeFor(bar), barTime: bar.time, usdIdrRate, roundTripCostPct: cfg.roundTripCostPct,
+        stopPrice: c.signal.stopPrice, riskIdr: sized.riskIdr, score: c.score,
+        reason: c.early ? `${c.signal.reason} Bought early on a ${cfg.earlyTf} check, before the ${c.profile.triggerTf} close.` : c.signal.reason,
+        timeMs: ctx.timeFor(bar), barTime: c.barTime, usdIdrRate, roundTripCostPct: cfg.roundTripCostPct,
         keepAllTransactions: ctx.keepAll
       });
       out.signals.push({ ...signalFields(c), taken: Boolean(transaction), skip: transaction ? null : note });
-      if (transaction) { out.transactions.push(transaction); opened += 1; }
+      if (transaction) {
+        if (c.early) portfolio.positions[c.symbol].filledAtMs = closeMs;
+        out.transactions.push(transaction);
+        opened += 1;
+      }
     }
 
     for (const event of group) {

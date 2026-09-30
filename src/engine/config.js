@@ -90,6 +90,9 @@ export const DEFAULT_ENGINE_CFG = {
   // Signals on one bar close are mostly the same market move (the majors rise
   // and fall together), so only the best-scoring one is opened per bar close.
   maxNewEntriesPerBar: 1,
+  // Re-check setups on every closed 15m candle instead of only at the trigger
+  // candle's close (see core.js).
+  earlyEntry: false,
   enableBreakout: false,
   btcGate: true,
   timeStopMult: 1,

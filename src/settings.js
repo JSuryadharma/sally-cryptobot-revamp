@@ -18,6 +18,9 @@ function defaultSettings() {
       minConfidencePct: 0
     },
     strategies: { swing: true, trend: true, scalping: false },
+    // Buy on the 15m candle that breaks the trigger instead of waiting for the
+    // 4h/daily close. Off until it has proved itself in the backtest.
+    earlyEntry: DEFAULT_ENGINE_CFG.earlyEntry,
     riskPerTradePct: DEFAULT_ENGINE_CFG.riskPerTradePct,
     maxPortfolioRiskPct: DEFAULT_ENGINE_CFG.maxPortfolioRiskPct,
     dailyLossLimitPct: DEFAULT_ENGINE_CFG.dailyLossLimitPct,
@@ -110,6 +113,7 @@ function normalize(raw, watchlistFallback) {
     strategies: Object.fromEntries(Object.keys(PROFILES).map((key) => [
       key, typeof raw.strategies?.[key] === 'boolean' ? raw.strategies[key] : base.strategies[key]
     ])),
+    earlyEntry: typeof raw.earlyEntry === 'boolean' ? raw.earlyEntry : base.earlyEntry,
     riskPerTradePct: boundedNumber(raw.riskPerTradePct, base.riskPerTradePct, 0.1, 5),
     maxPortfolioRiskPct: boundedNumber(raw.maxPortfolioRiskPct, base.maxPortfolioRiskPct, 0.5, 20),
     dailyLossLimitPct: boundedNumber(raw.dailyLossLimitPct, base.dailyLossLimitPct, 0.5, 20),
@@ -204,6 +208,7 @@ export function publicSettings(settings) {
     topMoversCount: settings.topMoversCount,
     minQuoteVolumeUsdt: settings.minQuoteVolumeUsdt,
     strategies: settings.strategies,
+    earlyEntry: settings.earlyEntry,
     riskPerTradePct: settings.riskPerTradePct,
     maxPortfolioRiskPct: settings.maxPortfolioRiskPct,
     dailyLossLimitPct: settings.dailyLossLimitPct,
@@ -230,6 +235,7 @@ export function engineCfgFromSettings(settings) {
     maxConsecutiveLosses: settings.maxConsecutiveLosses,
     drawdownHaltPct: settings.drawdownHaltPct,
     timeZone: settings.timeZone,
+    earlyEntry: settings.earlyEntry,
     profiles: { ...settings.strategies }
   };
 }

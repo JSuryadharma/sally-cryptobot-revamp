@@ -306,7 +306,15 @@ function renderDecision() {
   ring.classList.toggle('signal', atNext.length > 0);
   const names = (list) => [...new Set(list.map((x) => base(x.coin.symbol)))].slice(0, 3).join(', ');
   let text;
-  if (atNext.length) {
+  if (state.settings?.earlyEntry && inPlayOf(pool).length) {
+    const soon = inPlayOf(pool);
+    const next15 = Math.ceil(Date.now() / TF_MS['15m']) * TF_MS['15m'];
+    $('decisionCountdown').dataset.deadline = String(next15);
+    ring.dataset.deadline = String(next15);
+    ring.dataset.period = String(TF_MS['15m']);
+    ring.classList.add('signal');
+    text = `Buy early is on: checked every 15 minutes, next at <b>${escapeHtml(fmtClock(next15))}</b>. ${escapeHtml(names(soon))} could fire as soon as price breaks the trigger.`;
+  } else if (atNext.length) {
     text = `The ${TF_WORD[next.timeframe]} candle closes at <b>${escapeHtml(fmtClock(next.decisionAt))}</b>. ${escapeHtml(names(atNext))} could fire then.`;
   } else if (laterPlay) {
     const later = inPlayOf(pool.filter((x) => x.h.decisionAt === laterPlay.h.decisionAt));
@@ -947,6 +955,7 @@ function renderSettings() {
   $('strategyList').innerHTML = strategyEntries.map(([key, p]) => `
     <label class="strategy-row"><span><b>${escapeHtml(p.label)}</b><small>${key === 'scalping' ? 'Lost money in every backtest after costs. Use with care.' : `Trades ${TF_WORD[p.triggerTf]} candles, trend from ${TF_WORD[p.filterTf]} chart.`}</small></span>
     <input type="checkbox" role="switch" data-strategy="${key}" ${s.strategies?.[key] ? 'checked' : ''} /></label>`).join('');
+  $('earlyEntryToggle').checked = Boolean(s.earlyEntry);
   $('setRiskPerTrade').value = s.riskPerTradePct;
   $('setMaxPositions').value = s.maxOpenPositions;
   $('setPortfolioRisk').value = s.maxPortfolioRiskPct;
@@ -993,6 +1002,7 @@ $('saveTrading').addEventListener('click', async () => {
   try {
     await saveSettings({
       strategies,
+      earlyEntry: $('earlyEntryToggle').checked,
       autoTrade: { minConfidencePct: Number($('setMinScore').value) },
       riskPerTradePct: Number($('setRiskPerTrade').value),
       maxOpenPositions: Number($('setMaxPositions').value),

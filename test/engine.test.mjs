@@ -206,3 +206,32 @@ test('core live mode: a tick long after the bar close records the entry as misse
   }
   assert.ok(sawSignal, 'expected at least one late signal');
 });
+
+const earlyCfg = resolveEngineCfg({ minTradeQuoteVolumeUsdt: 0, earlyEntry: true });
+
+test('core early entry: buys between trigger closes and conserves money', () => {
+  const pf = createPortfolio(10_000_000);
+  const out = advance(createEngineState(), pf, full, { nowMs: end, startMs: tradeStart, usdIdrRate: RATE, cfg: earlyCfg, tradeSymbols: symbols, keepAllTransactions: true });
+  const buys = out.transactions.filter((t) => t.type === 'BUY');
+  const early = buys.filter((t) => t.reason.includes('Bought early'));
+  assert.ok(early.length > 0, 'no early entries');
+  for (const t of early) assert.ok(Date.parse(t.createdAt) % TF_MS[PROFILES[t.profile].triggerTf] !== 0, 'early fill lands between closes');
+  const realized = out.transactions.filter((t) => t.type === 'SELL').reduce((s, t) => s + t.realizedProfitIdr, 0);
+  assert.ok(Math.abs(bookEquityIdr(pf) - (10_000_000 + realized)) < 5);
+  const keys = out.signals.map((s) => `${s.symbol}|${s.profile}|${s.barTime}`);
+  assert.equal(new Set(keys).size, keys.length, 'one decision per trigger candle');
+});
+
+test('core early entry: advancing in small steps equals one pass', () => {
+  const one = advance(createEngineState(), createPortfolio(10_000_000), full, { nowMs: end, startMs: tradeStart, usdIdrRate: RATE, cfg: earlyCfg, tradeSymbols: symbols, keepAllTransactions: true });
+  const stepPf = createPortfolio(10_000_000);
+  const stepState = createEngineState();
+  const stepTx = [];
+  for (let now = tradeStart + 5 * 3_600_000; ; now += 5 * 3_600_000) {
+    const at = Math.min(now, end);
+    stepTx.push(...advance(stepState, stepPf, cutSeries(full, at), { nowMs: at, startMs: tradeStart, usdIdrRate: RATE, cfg: earlyCfg, tradeSymbols: symbols, keepAllTransactions: true }).transactions);
+    if (at === end) break;
+  }
+  assert.deepEqual(strip(stepTx), strip(one.transactions));
+});
+

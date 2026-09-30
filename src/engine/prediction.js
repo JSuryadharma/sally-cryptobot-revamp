@@ -11,7 +11,7 @@ import { normalizePosition } from './ledger.js';
 export const STAGE_RANK = { blocked: 0, watching: 1, 'setting-up': 2, ready: 3, holding: 4 };
 const GATE_KEYS = ['htfTrend', 'btcGate', 'tradeable'];
 const CONDITION_KEYS = ['htfTrend', 'btcGate', 'tradeable', 'tfTrend', 'pullback', 'reclaim', 'noChase'];
-const TF_NAME = { '15m': '15-minute', '1h': '1-hour', '4h': '4-hour', '1d': 'daily' };
+const TF_NAME = { '5m': '5-minute', '15m': '15-minute', '1h': '1-hour', '4h': '4-hour', '1d': 'daily' };
 
 function roundPrice(v) { return Number.isFinite(v) && v !== 0 ? Number(v.toPrecision(8)) : v; }
 function round2(v) { return Math.round(v * 100) / 100; }

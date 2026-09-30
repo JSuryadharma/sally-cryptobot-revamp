@@ -2,7 +2,7 @@ import { fetchKlines } from '../binanceData.js';
 import { enrichCandles } from '../indicators.js';
 import { TF_MS, ENGINE_TIMEFRAMES } from './config.js';
 
-const LIVE_LIMITS = { '15m': 700, '1h': 400, '4h': 400, '1d': 400 };
+const LIVE_LIMITS = { '5m': 300, '15m': 700, '1h': 400, '4h': 400, '1d': 400 };
 const FETCH_CONCURRENCY = 8;
 
 async function mapLimit(items, limit, fn) {
@@ -41,7 +41,7 @@ export async function loadLiveSeries(symbols, { baseUrl, nowMs = Date.now() } = 
   return { series, live, errors };
 }
 
-const CHART_TTL_MS = { '15m': 60_000, '1h': 3 * 60_000, '4h': 10 * 60_000, '1d': 15 * 60_000 };
+const CHART_TTL_MS = { '5m': 30_000, '15m': 60_000, '1h': 3 * 60_000, '4h': 10 * 60_000, '1d': 15 * 60_000 };
 const chartCache = new Map();
 
 // Chart data for the coin page, including the still-forming candle so the

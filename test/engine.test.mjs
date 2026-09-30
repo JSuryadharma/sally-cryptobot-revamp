@@ -207,7 +207,8 @@ test('core live mode: a tick long after the bar close records the entry as misse
   assert.ok(sawSignal, 'expected at least one late signal');
 });
 
-const earlyCfg = resolveEngineCfg({ minTradeQuoteVolumeUsdt: 0, earlyEntry: true });
+// The synthetic series has no 5m candles, so these run the early check on 15m.
+const earlyCfg = resolveEngineCfg({ minTradeQuoteVolumeUsdt: 0, earlyEntry: true, earlyTf: '15m' });
 
 test('core early entry: buys between trigger closes and conserves money', () => {
   const pf = createPortfolio(10_000_000);

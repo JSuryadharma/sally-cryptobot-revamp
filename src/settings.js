@@ -209,6 +209,7 @@ export function publicSettings(settings) {
     minQuoteVolumeUsdt: settings.minQuoteVolumeUsdt,
     strategies: settings.strategies,
     earlyEntry: settings.earlyEntry,
+    earlyTf: DEFAULT_ENGINE_CFG.earlyTf,
     riskPerTradePct: settings.riskPerTradePct,
     maxPortfolioRiskPct: settings.maxPortfolioRiskPct,
     dailyLossLimitPct: settings.dailyLossLimitPct,

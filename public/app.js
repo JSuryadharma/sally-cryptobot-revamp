@@ -10,6 +10,7 @@ const state = {
   status: null,
   verdict: null,
   accuracy: null,
+  paper: null,
   prices: {},
   movers: [],
   moversError: null,
@@ -212,8 +213,12 @@ async function loadVerdict() {
 }
 
 async function loadAccuracy() {
-  state.accuracy = await api('/api/predictions/accuracy').catch(() => null);
+  [state.accuracy, state.paper] = await Promise.all([
+    api('/api/predictions/accuracy').catch(() => null),
+    api('/api/paper/breakout').catch(() => null)
+  ]);
   renderAccuracy();
+  renderPaper();
 }
 
 function renderCurrentView() {
@@ -268,6 +273,7 @@ function renderDashboard() {
   renderActivity();
   renderVerdict();
   renderAccuracy();
+  renderPaper();
 }
 
 function renderDecision() {
@@ -472,6 +478,30 @@ function renderAccuracy() {
     + (auc != null ? ` Score vs outcome: ${auc}/100 (50 means the confidence score does not predict wins).` : '');
   $('accuracyBuckets').innerHTML = one.byScore.filter((b) => b.decided).map((b) =>
     `<div class="activity-item"><span class="icon">${escapeHtml(b.bucket)}</span><div>${b.hitRatePct}% hit +1R<small>${b.hits} of ${b.decided} signals with score ${escapeHtml(b.bucket)}</small></div></div>`
+  ).join('');
+}
+
+// Paper-only daily breakout entry, recorded next to the live robot. Results
+// are what each signal would have made with a 2x ATR stop and a fixed target.
+function renderPaper() {
+  const p = state.paper;
+  const badge = $('paperBadge');
+  const rules = p?.rules || [];
+  const closed = rules.reduce((s, r) => s + r.closed, 0);
+  const signals = rules.reduce((s, r) => s + r.signals, 0);
+  if (!closed) {
+    badge.className = 'pill';
+    badge.textContent = signals ? `${signals} open` : 'Watching';
+    $('paperMeta').textContent = 'Paper only, no trades placed. Records a signal when a coin closes above its 20- or 55-day high while BTC is above its 200-day average.'
+      + (signals ? ` ${signals} signal${signals === 1 ? '' : 's'} still open.` : ' None yet.');
+  } else {
+    const totalR = Math.round(rules.reduce((s, r) => s + r.totalR, 0) * 100) / 100;
+    badge.className = `pill ${totalR > 0 ? 'good' : totalR < 0 ? 'bad' : 'warn'}`;
+    badge.textContent = `${totalR > 0 ? '+' : ''}${totalR}R`;
+    $('paperMeta').textContent = `Paper only, no trades placed. ${closed} closed, ${signals - closed} open, after ${p.costPct}% costs.`;
+  }
+  $('paperRules').innerHTML = rules.map((r) =>
+    `<div class="activity-item"><span class="icon">+${r.targetR}R</span><div>${escapeHtml(r.label)}<small>${r.closed ? `${r.closed} closed, ${r.winPct}% wins, avg ${r.avgR}R per trade` : 'no closed trades yet'}${r.open ? `, ${r.open} open` : ''}</small></div></div>`
   ).join('');
 }
 

@@ -25,6 +25,7 @@ import { createPortfolio, markToMarket } from '../src/engine/ledger.js';
 import { fetchKlinesRange, WARMUP_BARS } from '../src/engine/candles.js';
 import { enrichCandles } from '../src/indicators.js';
 import { signalRecords, updateJournal, summarizeOutcomes } from '../src/engine/outcomes.js';
+import { updatePaperJournal, summarizePaper, paperCostPct } from '../src/engine/paperBreakout.js';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 export const DEFAULT_SYMBOLS = ['BTCUSDT', 'ETHUSDT', 'BNBUSDT', 'SOLUSDT', 'XRPUSDT', 'ADAUSDT', 'DOGEUSDT', 'AVAXUSDT', 'TRXUSDT', 'APTUSDT', 'LTCUSDT', 'NEARUSDT', 'ATOMUSDT', 'INJUSDT', 'TONUSDT'];
@@ -150,6 +151,9 @@ export function simulate(series, { symbols, startMs, endMs, cfg }) {
   metrics.expectancyRInclOpen = allR.length ? Math.round((allR.reduce((s, v) => s + v, 0) / allR.length) * 100) / 100 : null;
   // Prediction accuracy: every signal, taken or skipped, followed to +1R/+2R or its stop.
   metrics.predictions = summarizeOutcomes(updateJournal([], signalRecords(out.signals, cfg), series, { maxRecords: Infinity }));
+  // Paper-only daily breakout entry, replayed over the same window with the live tick's code.
+  const paperJournal = updatePaperJournal([], series, symbols, { window: { startMs, endMs }, maxRecords: Infinity });
+  metrics.paperBreakout = summarizePaper(paperJournal, { costPct: paperCostPct(cfg) });
   return { metrics, transactions: out.transactions, equityCurve, riskEvents: out.riskEvents };
 }
 
@@ -296,6 +300,10 @@ async function main() {
     console.log(`  +${level} before stop: ${l.overall.hitRatePct ?? '-'}% of ${l.overall.decided} (taken ${l.taken.hitRatePct ?? '-'}%, skipped ${l.skipped.hitRatePct ?? '-'}%), score AUC ${l.scoreAucPct ?? '-'}`);
   }
   console.log(`  +1R by score: ${one.byScore.filter((b) => b.decided).map((b) => `${b.bucket}: ${b.hitRatePct}% (${b.decided})`).join(', ')}`);
+  console.log(`\nPaper test, daily breakouts when BTC > 200-day average (${test.metrics.paperBreakout.costPct}% cost charged in R):`);
+  for (const r of test.metrics.paperBreakout.rules) {
+    console.log(`  ${r.label}, +${r.targetR}R target: ${r.closed} closed, win ${r.winPct ?? '-'}%, avg ${r.avgR ?? '-'}R, total ${r.totalR}R, ${r.open} open`);
+  }
   console.log(`\nCriteria: ${verdict.passed ? 'PASSED' : 'FAILED'}`);
   for (const c of verdict.checks) console.log(`  ${c.ok ? 'ok  ' : 'FAIL'} ${c.name} (${c.value})`);
 

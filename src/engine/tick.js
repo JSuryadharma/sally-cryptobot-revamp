@@ -16,12 +16,14 @@ import { sizePosition } from './sizing.js';
 import { openPositionQty, sellPosition } from './ledger.js';
 import { predictCoin } from './prediction.js';
 import { signalRecords, updateJournal, summarizeOutcomes } from './outcomes.js';
+import { updatePaperJournal, summarizePaper, paperCostPct } from './paperBreakout.js';
 
 const LEASE_NAME = 'engine';
 const LEASE_TTL_MS = 120_000;
 const TICK_LOG_KEY = 'engine-ticks.json';
 export const ENGINE_STATE_KEY = 'engine-state.json';
 export const SIGNAL_JOURNAL_KEY = 'signal-journal.json';
+export const PAPER_JOURNAL_KEY = 'paper-breakout-journal.json';
 const TICK_LOG_MAX = 300;
 const STALE_AFTER_MS = 20 * 60_000;
 const SCHEDULE_MS = 5 * 60_000;
@@ -71,6 +73,14 @@ export async function readPredictionAccuracy() {
   };
 }
 
+// Paper test of the daily breakout entry (paperBreakout.js). Recorded next to
+// the live engine on every pass; it never trades.
+export async function readPaperBreakout() {
+  const [journal, settings] = await Promise.all([readJson(PAPER_JOURNAL_KEY, []), readSettings()]);
+  const cfg = resolveEngineCfg(engineCfgFromSettings(settings));
+  return { ...summarizePaper(journal, { costPct: paperCostPct(cfg) }), recent: journal.slice(0, 20) };
+}
+
 async function notifyResults(notifications, out, cfg) {
   const labels = profilesFor(cfg);
   for (const tx of out.transactions) {
@@ -108,7 +118,8 @@ async function enginePass({ notifications = new NotificationCenter() } = {}) {
   const out = advance(engineState, portfolio, series, { nowMs: startedAt, live: true, usdIdrRate, cfg, tradeSymbols });
   portfolio.updatedAt = new Date().toISOString();
   const journal = updateJournal(await readSignalJournal(), signalRecords(out.signals, cfg), series);
-  await writeJsonMany({ [PORTFOLIO_KEY]: portfolio, [ENGINE_STATE_KEY]: engineState, [SIGNAL_JOURNAL_KEY]: journal });
+  const paperJournal = updatePaperJournal(await readJson(PAPER_JOURNAL_KEY, []), series, settings.watchlist);
+  await writeJsonMany({ [PORTFOLIO_KEY]: portfolio, [ENGINE_STATE_KEY]: engineState, [SIGNAL_JOURNAL_KEY]: journal, [PAPER_JOURNAL_KEY]: paperJournal });
   await notifyResults(notifications, out, cfg);
 
   const coins = {};

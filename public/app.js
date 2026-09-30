@@ -315,13 +315,21 @@ function renderDecision() {
     ring.dataset.period = String(TF_MS[checkTf]);
     ring.classList.add('signal');
     text = `Buy early is on: checked every ${TF_WORD[checkTf]} candle, next at <b>${escapeHtml(fmtClock(nextCheck))}</b>. ${escapeHtml(names(soon))} could fire as soon as price breaks the trigger.`;
-  } else if (atNext.length) {
-    text = `The ${TF_WORD[next.timeframe]} candle closes at <b>${escapeHtml(fmtClock(next.decisionAt))}</b>. ${escapeHtml(names(atNext))} could fire then.`;
-  } else if (laterPlay) {
-    const later = inPlayOf(pool.filter((x) => x.h.decisionAt === laterPlay.h.decisionAt));
-    text = `Next ${TF_WORD[next.timeframe]} check at ${escapeHtml(fmtClock(next.decisionAt))}, no coin set up for it. ${escapeHtml(names(later))} could fire at the ${TF_WORD[laterPlay.h.timeframe]} close, ${escapeHtml(fmtClock(laterPlay.h.decisionAt))}.`;
+  } else if (state.settings?.earlyEntry) {
+    // Buy early reacts to price, but only for coins whose setup (trend plus a
+    // pullback) already stands on closed candles, and new setups only form at
+    // a candle close. With none set up, that close is the next chance.
+    text = `Buy early is on, but no coin has a setup ready to buy yet. New setups can only form when a candle closes: the next ${TF_WORD[next.timeframe]} close is at <b>${escapeHtml(fmtClock(next.decisionAt))}</b>.`;
   } else {
-    text = `No coin is set up yet. The next ${TF_WORD[next.timeframe]} check is at ${escapeHtml(fmtClock(next.decisionAt))}.`;
+    const off = ' Buy early is off in Settings, so buys wait for the candle close.';
+    if (atNext.length) {
+      text = `The ${TF_WORD[next.timeframe]} candle closes at <b>${escapeHtml(fmtClock(next.decisionAt))}</b>. ${escapeHtml(names(atNext))} could fire then.${off}`;
+    } else if (laterPlay) {
+      const later = inPlayOf(pool.filter((x) => x.h.decisionAt === laterPlay.h.decisionAt));
+      text = `Next ${TF_WORD[next.timeframe]} check at ${escapeHtml(fmtClock(next.decisionAt))}, no coin set up for it. ${escapeHtml(names(later))} could fire at the ${TF_WORD[laterPlay.h.timeframe]} close, ${escapeHtml(fmtClock(laterPlay.h.decisionAt))}.${off}`;
+    } else {
+      text = `No coin is set up yet. The next ${TF_WORD[next.timeframe]} check is at ${escapeHtml(fmtClock(next.decisionAt))}.${off}`;
+    }
   }
   $('decisionText').innerHTML = text;
 }

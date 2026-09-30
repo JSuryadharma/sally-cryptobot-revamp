@@ -17,7 +17,10 @@ function round2(v) { return Math.round(v * 100) / 100; }
 // Follows one signal over bars[fromIndex..]. bars[fromIndex] is the first
 // candle after the signal candle. Within one candle the stop is checked first,
 // matching positionManager's pessimistic ordering.
-// Returns { status: 'pending'|'stopped'|'target'|'expired', mfeR, barsTracked }.
+// Returns { status: 'pending'|'stopped'|'target'|'expired', mfeR, barsTracked },
+// plus exitR (where a trade would have closed, before costs) when stopped or
+// expired: the stop, or the open if the bar gapped below it; the close at the
+// time stop.
 export function trackOutcome(bars, fromIndex, { entry, stop, maxBars, prior = null }) {
   const risk = entry - stop;
   if (!(risk > 0)) return { status: 'invalid', mfeR: 0, barsTracked: 0 };
@@ -26,10 +29,10 @@ export function trackOutcome(bars, fromIndex, { entry, stop, maxBars, prior = nu
   for (let k = fromIndex; k < bars.length; k += 1) {
     const bar = bars[k];
     barsTracked += 1;
-    if (bar.low <= stop) return { status: 'stopped', mfeR: round2(mfeR), barsTracked };
+    if (bar.low <= stop) return { status: 'stopped', mfeR: round2(mfeR), barsTracked, exitR: round2((Math.min(bar.open, stop) - entry) / risk) };
     mfeR = Math.max(mfeR, (bar.high - entry) / risk);
     if (mfeR >= MAX_TRACK_R) return { status: 'target', mfeR: round2(mfeR), barsTracked };
-    if (barsTracked >= maxBars) return { status: 'expired', mfeR: round2(mfeR), barsTracked };
+    if (barsTracked >= maxBars) return { status: 'expired', mfeR: round2(mfeR), barsTracked, exitR: round2((bar.close - entry) / risk) };
   }
   return { status: 'pending', mfeR: round2(mfeR), barsTracked };
 }
@@ -40,7 +43,7 @@ export function maxBarsFor(profileKey, cfg) {
 }
 
 // Index of the bar with open time `time`, or -1.
-function indexOfTime(bars, time) {
+export function indexOfTime(bars, time) {
   let lo = 0;
   let hi = bars.length - 1;
   while (lo <= hi) {

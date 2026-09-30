@@ -181,3 +181,28 @@ test('core live mode: stops replay after a gap but stale entries are skipped', (
   }
   assert.ok(out.signals.every((s) => s.taken || s.skip));
 });
+
+test('core: at most maxNewEntriesPerBar positions open on one bar close', () => {
+  const pf = createPortfolio(10_000_000);
+  const out = advance(createEngineState(), pf, full, { nowMs: end, startMs: tradeStart, usdIdrRate: RATE, cfg, tradeSymbols: symbols, keepAllTransactions: true });
+  const perBar = new Map();
+  for (const s of out.signals.filter((x) => x.taken)) {
+    const key = s.barTime * 1000 + TF_MS[s.tf];
+    perBar.set(key, (perBar.get(key) || 0) + 1);
+  }
+  assert.ok(perBar.size > 0);
+  for (const n of perBar.values()) assert.ok(n <= cfg.maxNewEntriesPerBar);
+});
+
+test('core live mode: a tick long after the bar close records the entry as missed', () => {
+  const pf = createPortfolio(10_000_000);
+  const state = createEngineState();
+  const lateCfg = resolveEngineCfg({ minTradeQuoteVolumeUsdt: 0, maxEntryDelayBarFrac: 0 });
+  let sawSignal = false;
+  for (let now = tradeStart + 10 * 86_400_000; now < end; now += TF_MS['4h']) {
+    const out = advance(state, pf, cutSeries(full, now + 60_000), { nowMs: now + 60_000, live: true, usdIdrRate: RATE, cfg: lateCfg, tradeSymbols: symbols });
+    assert.equal(out.transactions.filter((t) => t.type === 'BUY').length, 0);
+    if (out.signals.some((s) => s.skip?.startsWith('missed-late'))) sawSignal = true;
+  }
+  assert.ok(sawSignal, 'expected at least one late signal');
+});

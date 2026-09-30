@@ -1,5 +1,10 @@
 'use strict';
 
+// iOS Safari ignores user-scalable=no, so pinch zoom is blocked here too.
+for (const type of ['gesturestart', 'gesturechange', 'gestureend']) {
+  document.addEventListener(type, (event) => event.preventDefault(), { passive: false });
+}
+
 const state = {
   view: 'dashboard',
   config: null,

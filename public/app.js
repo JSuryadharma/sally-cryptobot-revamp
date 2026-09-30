@@ -282,9 +282,13 @@ function renderDashboard() {
 }
 
 function renderDecision() {
-  const candidates = state.coins.map((c) => ({ coin: c, h: headline(c) })).filter((x) => x.h && x.h.decisionAt && x.h.stage !== 'holding');
-  const inPlay = candidates.filter((x) => ['ready', 'setting-up'].includes(x.h.stage));
-  const pool = inPlay.length ? inPlay : candidates;
+  // Every enabled strategy of every coin not held, not just each coin's
+  // headline, so a 4h check with coins set up isn't hidden behind a daily one.
+  const all = state.coins.flatMap((coin) => (headline(coin)?.stage === 'holding' ? [] : Object.values(coin.prediction?.byProfile || {}))
+    .filter((h) => h.decisionAt).map((h) => ({ coin, h })));
+  const upcoming = all.filter((x) => x.h.decisionAt > Date.now());
+  const pool = upcoming.length ? upcoming : all;
+  const inPlayOf = (list) => list.filter((x) => ['ready', 'setting-up'].includes(x.h.stage));
   const ring = $('decisionRing');
   if (!pool.length) {
     $('decisionCountdown').textContent = '-';
@@ -294,16 +298,23 @@ function renderDecision() {
   }
   pool.sort((a, b) => a.h.decisionAt - b.h.decisionAt);
   const next = pool[0].h;
-  const sameTime = pool.filter((x) => x.h.decisionAt === next.decisionAt);
+  const atNext = inPlayOf(pool.filter((x) => x.h.decisionAt === next.decisionAt));
+  const laterPlay = inPlayOf(pool)[0] || null;
   $('decisionCountdown').dataset.deadline = String(next.decisionAt);
   ring.dataset.deadline = String(next.decisionAt);
   ring.dataset.period = String(TF_MS[next.timeframe]);
-  ring.classList.toggle('signal', inPlay.length > 0);
-  const names = sameTime.slice(0, 3).map((x) => base(x.coin.symbol)).join(', ');
-  $('decisionText').innerHTML = inPlay.length
-    ? `The ${TF_WORD[next.timeframe]} candle closes at <b>${escapeHtml(fmtClock(next.decisionAt))}</b>. ${escapeHtml(names)} could fire then.`
-    : `No coin is set up yet. The next ${TF_WORD[next.timeframe]} check is at ${escapeHtml(fmtClock(next.decisionAt))}.`;
-  tickClock();
+  ring.classList.toggle('signal', atNext.length > 0);
+  const names = (list) => [...new Set(list.map((x) => base(x.coin.symbol)))].slice(0, 3).join(', ');
+  let text;
+  if (atNext.length) {
+    text = `The ${TF_WORD[next.timeframe]} candle closes at <b>${escapeHtml(fmtClock(next.decisionAt))}</b>. ${escapeHtml(names(atNext))} could fire then.`;
+  } else if (laterPlay) {
+    const later = inPlayOf(pool.filter((x) => x.h.decisionAt === laterPlay.h.decisionAt));
+    text = `Next ${TF_WORD[next.timeframe]} check at ${escapeHtml(fmtClock(next.decisionAt))}, no coin set up for it. ${escapeHtml(names(later))} could fire at the ${TF_WORD[laterPlay.h.timeframe]} close, ${escapeHtml(fmtClock(laterPlay.h.decisionAt))}.`;
+  } else {
+    text = `No coin is set up yet. The next ${TF_WORD[next.timeframe]} check is at ${escapeHtml(fmtClock(next.decisionAt))}.`;
+  }
+  $('decisionText').innerHTML = text;
 }
 
 function renderEquity() {

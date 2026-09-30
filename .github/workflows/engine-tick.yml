@@ -5,7 +5,9 @@ name: engine-tick
 # start them several minutes late; the engine tolerates late or skipped ticks.
 on:
   schedule:
-    - cron: '2-59/5 * * * *' # every 5 minutes, starting at 2 minutes past the hour
+    # 1 minute after every 5m close (:01, :06, ...), so each 4h and daily close
+    # (always on the hour, UTC) is checked at hh:01 when GitHub runs on time.
+    - cron: '1-59/5 * * * *'
   workflow_dispatch:
 
 concurrency:

@@ -194,6 +194,7 @@ export function advance(state, portfolio, series, opts) {
         const cooldownUntil = symbolState(state, event.symbol).cooldownUntilMs[profile.key];
         let skip = null;
         if (live && !isLatest) skip = 'missed-stale';
+        else if (live && nowMs - closeMs > cfg.maxEntryDelayBarFrac * TF_MS[event.tf]) skip = 'missed-late: tick ran too long after the bar closed';
         else if (signal.score < cfg.minConfidencePct) skip = `score ${signal.score} below ${cfg.minConfidencePct}`;
         else if (blocked) skip = `entries paused: ${blocked}`;
         else if (cooldownUntil && closeMs < cooldownUntil) skip = 'cooldown after stop-out';
@@ -203,9 +204,11 @@ export function advance(state, portfolio, series, opts) {
     }
 
     candidates.sort((a, b) => b.score - a.score);
+    let opened = 0;
     for (const c of candidates) {
       let skip = null;
       if (portfolio.positions[c.symbol]) skip = 'already holding';
+      else if (opened >= cfg.maxNewEntriesPerBar) skip = `max ${cfg.maxNewEntriesPerBar} new entry per bar close`;
       else if (Object.keys(portfolio.positions).length >= cfg.maxOpenPositions) skip = `max ${cfg.maxOpenPositions} open positions`;
       const entryPrice = c.signal.entryPrice * (1 + cfg.slippagePct / 100);
       let sized = null;
@@ -222,7 +225,7 @@ export function advance(state, portfolio, series, opts) {
         keepAllTransactions: ctx.keepAll
       });
       out.signals.push({ ...signalFields(c), taken: Boolean(transaction), skip: transaction ? null : note });
-      if (transaction) out.transactions.push(transaction);
+      if (transaction) { out.transactions.push(transaction); opened += 1; }
     }
 
     for (const event of group) {

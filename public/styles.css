@@ -27,6 +27,9 @@
 
 * { box-sizing: border-box; }
 html, body { margin: 0; }
+/* Phone app feel: no double-tap zoom, and no zoom-on-focus in iOS Safari
+   (it zooms any field whose text is under 16px). */
+html { touch-action: manipulation; -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
 body { background: var(--bg); color: var(--text); font: 15px/1.5 var(--font); -webkit-font-smoothing: antialiased; }
 button, input, select { font: inherit; color: inherit; }
 button { cursor: pointer; }
@@ -281,6 +284,7 @@ input[type="checkbox"][role="switch"]:checked::after { transform: translateX(18p
 .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 14px; }
 .form-grid.one { grid-template-columns: 1fr; }
 .form-grid label, .form-grid.one label { display: flex; flex-direction: column; justify-content: space-between; gap: 6px; font-size: 13px; color: var(--muted); }
+input:not([type="checkbox"]), select, textarea { font-size: 16px; }
 input:not([type="checkbox"]), select { width: 100%; background: var(--surface); border: 1px solid var(--border-strong); border-radius: var(--radius-sm); padding: 9px 12px; color: var(--text); outline: 0; transition: border-color 0.15s, box-shadow 0.15s; }
 input:not([type="checkbox"]):focus, select:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
 .search input:not([type="checkbox"]), .search input:not([type="checkbox"]):focus { border: 0; box-shadow: none; background: none; padding: 10px 0; }

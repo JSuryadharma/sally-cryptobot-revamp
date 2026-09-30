@@ -82,6 +82,14 @@ export const DEFAULT_ENGINE_CFG = {
   targetR: null,
   trendExit: false,
   maxCatchUpBars: 96,
+  // Live only: an entry is taken only while the tick runs within this share of
+  // a trigger bar after its close (1h on 4h bars), because the paper fill uses
+  // that bar's close. Later ticks record the signal as skipped instead of
+  // buying at a stale price.
+  maxEntryDelayBarFrac: 0.25,
+  // Signals on one bar close are mostly the same market move (the majors rise
+  // and fall together), so only the best-scoring one is opened per bar close.
+  maxNewEntriesPerBar: 1,
   enableBreakout: false,
   btcGate: true,
   timeStopMult: 1,

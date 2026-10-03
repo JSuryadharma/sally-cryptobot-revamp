@@ -267,7 +267,7 @@ test('core early entry: advancing in small steps equals one pass', () => {
 
 
 // Exit checks on every 15m candle for the 4h/daily profiles (no 5m candles here).
-const exitCfg = resolveEngineCfg({ minTradeQuoteVolumeUsdt: 0, exitTf: '15m', targetR: 1.5 });
+const exitCfg = resolveEngineCfg({ profiles: { swing: true, trend: true, breakout: false }, minTradeQuoteVolumeUsdt: 0, exitTf: '15m', targetR: 1.5 });
 
 test('core exit candles: stops and targets fill between trigger closes and money is conserved', () => {
   const pf = createPortfolio(10_000_000);

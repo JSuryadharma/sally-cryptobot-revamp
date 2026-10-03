@@ -99,4 +99,6 @@ test('holding: exit plan shows stop distance and the breakeven arm price', () =>
   assert.equal(exit.stopKind, 'initial');
   assert.equal(exit.rNow, 0.5);
   assert.ok(exit.timeStopAt > 0);
+  assert.equal(exit.checkTf, '5m');
+  assert.equal(exit.nextCheckAt % (5 * 60_000), 0);
 });

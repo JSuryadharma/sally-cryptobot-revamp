@@ -5,7 +5,7 @@
 // all symbols, in time order. For each bar time it first manages open
 // positions (stops, partials, trails, exits), then updates the risk brakes,
 // then evaluates entries and opens the best-scoring ones that fit.
-import { profilesFor, TF_MS, BTC_SYMBOL } from './config.js';
+import { profilesFor, exitTfFor, TF_MS, BTC_SYMBOL } from './config.js';
 import { evaluateSetup } from './setups.js';
 import { onBar, onExitBar } from './positionManager.js';
 import { sizePosition, bookEquityIdr } from './sizing.js';
@@ -66,12 +66,6 @@ function formingCandle(sub, k, tf) {
     bar.volume += sub[n].volume || 0;
   }
   return bar;
-}
-
-// Open positions are managed on every closed cfg.exitTf candle (5m by default)
-// when it is shorter than the profile's trigger timeframe.
-function exitTfFor(profile, cfg) {
-  return cfg.exitTf && TF_MS[cfg.exitTf] && TF_MS[cfg.exitTf] < TF_MS[profile.triggerTf] ? cfg.exitTf : null;
 }
 
 function enabledProfiles(cfg) {

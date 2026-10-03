@@ -15,6 +15,7 @@
 //   --no-cache       refetch history instead of reusing benchmarks/.cache
 //   --exits          also compare exit-rule variants (EXIT_VARIANTS) on the test window
 //   --early          also compare early entry (5m and 15m checks) with close-only entry
+//   --buy-early      run everything with "Buy early" (5m checks) switched on
 //
 // Output: console summary + benchmarks/v2-<timestamp>/{report.json,report.md,trades.csv}.
 import fs from 'node:fs/promises';
@@ -46,13 +47,19 @@ export const GRID = {
 // Exit rules compared by --exits. Entries are unchanged, so differences come
 // from the exits alone. partialAtR also sets where the stop moves to breakeven.
 export const EXIT_VARIANTS = [
-  { name: 'current (breakeven at +1R, ATR trail)', cfg: {} },
-  { name: 'sell half at +1R, trail the rest', cfg: { partialFraction: 0.5 } },
-  { name: 'fixed target +1.5R', cfg: { targetR: 1.5 } },
-  { name: 'fixed target +2R', cfg: { targetR: 2 } },
-  { name: 'breakeven at +1.5R', cfg: { partialAtR: 1.5 } },
-  { name: 'breakeven at +2R', cfg: { partialAtR: 2 } },
-  { name: 'half at +1R, rest at +2R target', cfg: { partialFraction: 0.5, targetR: 2 } }
+  { name: 'old: checks at 4h/daily close only', cfg: { exitTf: null } },
+  { name: 'old + fixed target +1.5R', cfg: { exitTf: null, targetR: 1.5 } },
+  { name: '5m checks (breakeven at +1R, ATR trail)', cfg: { exitTf: '5m' } },
+  { name: '5m + fixed target +1R', cfg: { exitTf: '5m', targetR: 1 } },
+  { name: '5m + fixed target +1.5R', cfg: { exitTf: '5m', targetR: 1.5 } },
+  { name: '5m + fixed target +2R', cfg: { exitTf: '5m', targetR: 2 } },
+  { name: '5m + fixed target +3R', cfg: { exitTf: '5m', targetR: 3 } },
+  { name: '5m + half at +1R, trail the rest', cfg: { exitTf: '5m', partialFraction: 0.5 } },
+  { name: '5m + half at +1R, rest at +2R', cfg: { exitTf: '5m', partialFraction: 0.5, targetR: 2 } },
+  { name: '5m + tight trail (half ATR mult)', cfg: { exitTf: '5m', trailMult: 0.5 } },
+  { name: '5m + +1.5R target, no time stop', cfg: { exitTf: '5m', targetR: 1.5, timeStopMult: 100 } },
+  { name: '5m + +2R target, no time stop', cfg: { exitTf: '5m', targetR: 2, timeStopMult: 100 } },
+  { name: '5m + breakeven at +0.75R, +1.5R target', cfg: { exitTf: '5m', partialAtR: 0.75, targetR: 1.5 } }
 ];
 
 export const CRITERIA = { minTrades: 60, minProfitFactor: 1.3, maxDrawdownPct: 12, maxSymbolProfitShare: 0.4 };
@@ -73,6 +80,7 @@ function parseArgs(argv) {
     else if (flag === '--no-cache') args.cache = false;
     else if (flag === '--exits') args.exits = true;
     else if (flag === '--early') args.early = true;
+    else if (flag === '--buy-early') args.buyEarly = true;
   }
   return args;
 }
@@ -262,7 +270,7 @@ async function main() {
   const args = parseArgs(process.argv.slice(2));
   const startMs = args.end - args.months * MONTH_MS;
   const splitMs = args.train > 0 ? startMs + args.train * MONTH_MS : startMs;
-  const baseCfg = { roundTripCostPct: args.cost, slippagePct: args.slip };
+  const baseCfg = { roundTripCostPct: args.cost, slippagePct: args.slip, ...(args.buyEarly ? { earlyEntry: true } : {}) };
   console.log(`Loading ${args.symbols.length} symbols, ${args.months} months (${new Date(startMs).toISOString().slice(0, 10)} -> ${new Date(args.end).toISOString().slice(0, 10)})...`);
   const series = await loadSeries({ symbols: args.symbols, startMs, endMs: args.end, useCache: args.cache, log: (m) => console.log(m) });
 
@@ -315,7 +323,8 @@ async function main() {
       const base = simulate(series, { symbols: args.symbols, startMs: splitMs, endMs: args.end, cfg: resolveEngineCfg({ ...baseCfg, ...chosen, ...v.cfg }) }).metrics;
       const costly = simulate(series, { symbols: args.symbols, startMs: splitMs, endMs: args.end, cfg: resolveEngineCfg({ ...baseCfg, ...chosen, ...v.cfg, roundTripCostPct: 0.3 }) }).metrics;
       const verdictV = checkCriteria(base, costly);
-      console.log(`  ${v.name.padEnd(38)} ${fmtMetrics(base)} | 0.3%: exp ${costly.expectancyR ?? '-'}R | criteria ${verdictV.passed ? 'PASSED' : `failed ${verdictV.checks.filter((c) => !c.ok).length}`}`);
+      console.log(`  ${v.name.padEnd(42)} ${fmtMetrics(base)}, hold ${base.avgHoldHours}h | 0.3%: exp ${costly.expectancyR ?? '-'}R | criteria ${verdictV.passed ? 'PASSED' : `failed ${verdictV.checks.filter((c) => !c.ok).length}`}`);
+      console.log(`  ${''.padEnd(42)} exits ${JSON.stringify(base.exitKinds)}`);
       return { ...v, metrics: base, stressExpectancyR: costly.expectancyR, verdict: verdictV };
     });
   }

@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { resolveEngineCfg, PROFILES, TF_MS } from '../src/engine/config.js';
 import { sizePosition, bookEquityIdr } from '../src/engine/sizing.js';
-import { onBar } from '../src/engine/positionManager.js';
+import { onBar, onExitBar } from '../src/engine/positionManager.js';
 import { createPortfolio, openPositionQty, sellPosition } from '../src/engine/ledger.js';
 import { advance, createEngineState } from '../src/engine/core.js';
 import { updateRisk, recordTradeResult, createRiskState, entryBlock } from '../src/engine/riskGuard.js';
@@ -86,6 +86,35 @@ test('onBar: trailing stop never moves down', () => {
   const p = position({ partialTaken: true, stopPrice: 101, highWaterMark: 104 });
   const { updates } = onBar(p, bar({ open: 102, high: 103, low: 101.5, close: 102, atr14: 2 }), scalp, cfg);
   assert.equal(updates.stopPrice, 101);
+});
+
+test('onExitBar: a 5m candle hits the target without waiting for the trigger close', () => {
+  const { fills } = onExitBar(position(), bar({ high: 103.1 }), scalp, { ...cfg, targetR: 1.5 }, 1);
+  assert.equal(fills.at(-1).exitKind, 'target');
+  assert.equal(fills.at(-1).price, 103);
+});
+
+test('onExitBar: reaching 1R moves the stop to breakeven for the next candle, not this one', () => {
+  const { fills, updates } = onExitBar(position(), bar({ high: 102.1, low: 99 }), scalp, cfg, 1);
+  assert.equal(fills.length, 0);
+  assert.ok(updates.stopPrice >= 100 * (1 + cfg.roundTripCostPct / 100) - 1e-9);
+  const next = onExitBar({ ...position(), ...updates }, bar({ open: 100.5, low: 100.1 }), scalp, cfg, 1);
+  assert.equal(next.fills[0].exitKind, 'stop');
+  assert.equal(next.updates, null);
+});
+
+test('onExitBar: leaves bars held and the time stop to the trigger close', () => {
+  const { fills, updates } = onExitBar(position({ barsHeld: 999 }), bar({}), scalp, cfg, 1);
+  assert.equal(fills.length, 0);
+  assert.equal(updates.barsHeld, undefined);
+});
+
+test('onBar without price exits: counts the bar and runs the time stop but ignores the range', () => {
+  const p = position({ barsHeld: 15, mfeR: 0.2 });
+  const { fills, updates } = onBar(p, bar({ low: 90, high: 120 }), scalp, cfg, { priceExits: false });
+  assert.equal(updates.barsHeld, 16);
+  assert.equal(fills.length, 1);
+  assert.equal(fills[0].exitKind, 'time');
 });
 
 test('onBar: time stop fires only without +0.5R progress', () => {
@@ -236,3 +265,31 @@ test('core early entry: advancing in small steps equals one pass', () => {
   assert.deepEqual(strip(stepTx), strip(one.transactions));
 });
 
+
+// Exit checks on every 15m candle for the 4h/daily profiles (no 5m candles here).
+const exitCfg = resolveEngineCfg({ minTradeQuoteVolumeUsdt: 0, exitTf: '15m', targetR: 1.5 });
+
+test('core exit candles: stops and targets fill between trigger closes and money is conserved', () => {
+  const pf = createPortfolio(10_000_000);
+  const out = advance(createEngineState(), pf, full, { nowMs: end, startMs: tradeStart, usdIdrRate: RATE, cfg: exitCfg, tradeSymbols: symbols, keepAllTransactions: true });
+  const sells = out.transactions.filter((t) => t.type === 'SELL' && ['stop', 'target'].includes(t.exitKind));
+  assert.ok(sells.length > 0, 'no stop or target exits');
+  assert.ok(sells.some((t) => Date.parse(t.createdAt) % TF_MS[PROFILES[t.profile].triggerTf] !== 0), 'expected exits between trigger closes');
+  const buyTimes = new Map(out.transactions.filter((t) => t.type === 'BUY').map((t) => [t.tradeId, Date.parse(t.createdAt)]));
+  for (const t of sells) if (buyTimes.has(t.tradeId)) assert.ok(Date.parse(t.createdAt) > buyTimes.get(t.tradeId), 'exit after entry');
+  const realized = out.transactions.filter((t) => t.type === 'SELL').reduce((s, t) => s + t.realizedProfitIdr, 0);
+  assert.ok(Math.abs(bookEquityIdr(pf) - (10_000_000 + realized)) < 5);
+});
+
+test('core exit candles: advancing in small steps equals one pass', () => {
+  const one = advance(createEngineState(), createPortfolio(10_000_000), full, { nowMs: end, startMs: tradeStart, usdIdrRate: RATE, cfg: exitCfg, tradeSymbols: symbols, keepAllTransactions: true });
+  const stepPf = createPortfolio(10_000_000);
+  const stepState = createEngineState();
+  const stepTx = [];
+  for (let now = tradeStart + 5 * 3_600_000; ; now += 5 * 3_600_000) {
+    const at = Math.min(now, end);
+    stepTx.push(...advance(stepState, stepPf, cutSeries(full, at), { nowMs: at, startMs: tradeStart, usdIdrRate: RATE, cfg: exitCfg, tradeSymbols: symbols, keepAllTransactions: true }).transactions);
+    if (at === end) break;
+  }
+  assert.deepEqual(strip(stepTx), strip(one.transactions));
+});

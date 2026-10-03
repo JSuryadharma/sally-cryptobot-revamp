@@ -7,7 +7,7 @@
 // then evaluates entries and opens the best-scoring ones that fit.
 import { profilesFor, TF_MS, BTC_SYMBOL } from './config.js';
 import { evaluateSetup } from './setups.js';
-import { onBar } from './positionManager.js';
+import { onBar, onExitBar } from './positionManager.js';
 import { sizePosition, bookEquityIdr } from './sizing.js';
 import { openPositionQty, sellPosition, normalizePosition } from './ledger.js';
 import { createRiskState, updateRisk, recordTradeResult, entryBlock } from './riskGuard.js';
@@ -68,6 +68,12 @@ function formingCandle(sub, k, tf) {
   return bar;
 }
 
+// Open positions are managed on every closed cfg.exitTf candle (5m by default)
+// when it is shorter than the profile's trigger timeframe.
+function exitTfFor(profile, cfg) {
+  return cfg.exitTf && TF_MS[cfg.exitTf] && TF_MS[cfg.exitTf] < TF_MS[profile.triggerTf] ? cfg.exitTf : null;
+}
+
 function enabledProfiles(cfg) {
   return Object.values(profilesFor(cfg)).filter((p) => cfg.profiles?.[p.key]);
 }
@@ -83,11 +89,14 @@ function buildEvents(state, portfolio, series, { nowMs, startMs, live, cfg, trad
     for (const p of enabledProfiles(cfg)) {
       add(symbol, p.triggerTf);
       if (earlyProfile(p, cfg)) add(symbol, cfg.earlyTf);
+      // A position opened during this pass needs its exit candles too.
+      if (exitTfFor(p, cfg)) add(symbol, cfg.exitTf);
     }
   }
   for (const position of Object.values(portfolio.positions)) {
     const profile = profilesFor(cfg)[normalizePosition(position).profile];
     if (profile) add(position.symbol, profile.triggerTf);
+    if (profile && exitTfFor(profile, cfg)) add(position.symbol, cfg.exitTf);
   }
 
   const events = [];
@@ -106,7 +115,8 @@ function buildEvents(state, portfolio, series, { nowMs, startMs, live, cfg, trad
         start = bars.findIndex((b) => b.time > lastSeen);
         if (start < 0) continue;
       }
-      const managesHere = holding && profilesFor(cfg)[holding.profile]?.triggerTf === tf;
+      const heldProfile = holding && profilesFor(cfg)[holding.profile];
+      const managesHere = Boolean(heldProfile) && (heldProfile.triggerTf === tf || exitTfFor(heldProfile, cfg) === tf);
       if (live && !managesHere && bars.length - start > cfg.maxCatchUpBars) start = bars.length - 1;
       for (let i = start; i < bars.length; i += 1) {
         const closeMs = closeMsOf(bars[i], tf);
@@ -149,11 +159,26 @@ function manage(ctx, event) {
   if (!raw) return;
   const position = normalizePosition(raw);
   const profile = profilesFor(cfg)[position.profile];
-  if (!profile || profile.triggerTf !== event.tf) return;
+  if (!profile) return;
+  const exitTf = exitTfFor(profile, cfg);
+  if (event.tf === exitTf) {
+    if (position.filledAtMs && event.closeMs <= position.filledAtMs) return;
+    const bar = series[event.symbol][event.tf][event.i];
+    const trig = series[event.symbol][profile.triggerTf];
+    const ti = trig ? lastClosedIndex(trig, profile.triggerTf, event.closeMs) : -1;
+    portfolio.positions[event.symbol] = position;
+    const { fills, updates } = onExitBar(position, bar, profile, cfg, ti >= 0 ? trig[ti].atr14 : null);
+    if (updates) Object.assign(position, updates);
+    if (fills.length) applyFills(ctx, event.symbol, fills, bar);
+    return;
+  }
+  if (profile.triggerTf !== event.tf) return;
   portfolio.positions[event.symbol] = position;
   let bar = series[event.symbol][event.tf][event.i];
   if (position.filledAtMs && bar.time * 1000 < position.filledAtMs) bar = afterFill(series[event.symbol][ctx.cfg.earlyTf], TF_MS[ctx.cfg.earlyTf], bar, position.filledAtMs, event.closeMs) || bar;
-  const { fills, updates } = onBar(position, bar, profile, cfg);
+  // With exit candles on, the stop and target were already checked on them; the
+  // trigger close only counts the bar, moves the trail and runs the time stop.
+  const { fills, updates } = onBar(position, bar, profile, cfg, { priceExits: !exitTf || !series[event.symbol][exitTf] });
   if (updates) Object.assign(position, updates);
   if (fills.length) applyFills(ctx, event.symbol, fills, bar);
 }
@@ -254,7 +279,10 @@ export function advance(state, portfolio, series, opts) {
     const group = events.slice(g, end);
     ctx.currentMs = closeMs;
 
-    for (const event of group) manage(ctx, event);
+    // Exit candles first: at a trigger close the 5m candle ending at the same
+    // moment belongs to the price path before the close's own bookkeeping.
+    const exitFirst = [...group].sort((a, b) => TF_MS[a.tf] - TF_MS[b.tf]);
+    for (const event of exitFirst) manage(ctx, event);
 
     const riskEvent = updateRisk(state.risk, bookEquityIdr(portfolio), closeMs, cfg);
     if (riskEvent) out.riskEvents.push(riskEvent);

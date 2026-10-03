@@ -94,6 +94,10 @@ export const DEFAULT_ENGINE_CFG = {
   // trigger candle's close (see core.js).
   earlyEntry: false,
   earlyTf: '5m',
+  // Open positions are checked on every closed exitTf candle: the stop and
+  // target against its high/low, and breakeven/trail moves as soon as price
+  // gets there. null = only at the 4h/daily close, as before.
+  exitTf: '5m',
   enableBreakout: false,
   btcGate: true,
   timeStopMult: 1,

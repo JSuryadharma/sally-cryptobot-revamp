@@ -169,7 +169,13 @@ function livePrice(coin) {
 }
 function liveChange(coin) { return state.prices[coin.symbol]?.changePct ?? coin.latest?.changePct ?? 0; }
 function headline(coin) { return coin?.prediction?.headline || null; }
-const PROFILE_SHORT = { swing: 'Swing', trend: 'Trend', scalping: 'Scalp' };
+const STRATEGY_NOTES = {
+  breakout: 'Buys a daily close above the 20-day high while Bitcoin is above its 200-day average. Sells at +1R or after 30 days. The only strategy that made money on the research test period.',
+  swing: 'Pullback on 4h candles. Lost money on the 2025-26 research test period.',
+  trend: 'Pullback on daily candles. Lost money on the 2025-26 research test period.',
+  scalping: 'Lost money in every backtest after costs. Use with care.'
+};
+const PROFILE_SHORT = { swing: 'Swing', trend: 'Trend', scalping: 'Scalp', breakout: 'Breakout' };
 function shortProfile(h) { return h?.profile ? `${PROFILE_SHORT[h.profile] || h.profile} · ${TF_LABEL[h.timeframe] || ''}` : ''; }
 function stageOf(coin) { return headline(coin)?.stage || 'blocked'; }
 
@@ -365,6 +371,9 @@ function triggerLine(coin, h) {
   if (h.stage === 'setting-up') {
     return `Buys if the ${TF_LABEL[h.timeframe]} candle closes above <b>${fmtPrice(h.trigger.price)}</b> <span class="muted" data-dist="${coin.symbol}" data-trigger="${h.trigger.price}">${distanceText(h.trigger.price, livePrice(coin))}</span>`;
   }
+  if (h.stage === 'watching' && h.entry === 'breakout') {
+    return `Waiting for a ${TF_WORD[h.timeframe]} close above <b>${fmtPrice(h.trigger.price)}</b> <span class="muted" data-dist="${coin.symbol}" data-trigger="${h.trigger.price}">${distanceText(h.trigger.price, livePrice(coin))}</span>`;
+  }
   if (h.stage === 'watching') {
     return h.conditions.find((c) => c.key === 'tfTrend')?.ok
       ? 'Uptrend intact, waiting for a pullback to the EMA20'
@@ -428,7 +437,8 @@ function renderFiring() {
 
 function exitBarHtml(exit) {
   const stop = exit.stopPrice, entry = exit.entryPrice, price = exit.livePrice;
-  const points = [stop, entry, price, exit.breakevenArmPrice].filter(Number.isFinite);
+  const target = exit.targetPrice;
+  const points = [stop, entry, price, exit.breakevenArmPrice, target].filter(Number.isFinite);
   const lo = Math.min(...points), hi = Math.max(...points);
   const pad = (hi - lo) * 0.12 || entry * 0.01;
   const pos = (v) => `${(((v - (lo - pad)) / (hi - lo + 2 * pad)) * 100).toFixed(1)}%`;
@@ -436,9 +446,10 @@ function exitBarHtml(exit) {
       <span class="marker stop" style="left:${pos(stop)}" title="Stop ${fmtPrice(stop)}"></span>
       <span class="marker entry" style="left:${pos(entry)}" title="Entry ${fmtPrice(entry)}"></span>
       ${Number.isFinite(exit.breakevenArmPrice) ? `<span class="marker be" style="left:${pos(exit.breakevenArmPrice)}" title="Breakeven arms at ${fmtPrice(exit.breakevenArmPrice)}"></span>` : ''}
+      ${Number.isFinite(target) ? `<span class="marker be" style="left:${pos(target)}" title="Take profit at ${fmtPrice(target)}"></span>` : ''}
       <span class="marker price" style="left:${pos(price)}" title="Now ${fmtPrice(price)}"></span>
     </div>
-    <div class="exit-labels"><span class="down">Stop ${fmtPrice(stop)}</span><span>${Number.isFinite(exit.breakevenArmPrice) ? `Breakeven at ${fmtPrice(exit.breakevenArmPrice)}` : exit.stopKind === 'trailing' ? 'Trailing stop active' : 'Stop at breakeven'}</span></div>`;
+    <div class="exit-labels"><span class="down">Stop ${fmtPrice(stop)}</span><span>${Number.isFinite(target) ? `Take profit at ${fmtPrice(target)}` : Number.isFinite(exit.breakevenArmPrice) ? `Breakeven at ${fmtPrice(exit.breakevenArmPrice)}` : exit.stopKind === 'trailing' ? 'Trailing stop active' : 'Stop at breakeven'}</span></div>`;
 }
 
 // When the stop (and target) are next checked, and the time stop if one is pending.
@@ -692,7 +703,12 @@ function renderCoin() {
 
 function stepperHtml(plan) {
   const ok = (k) => plan.conditions.find((c) => c.key === k)?.ok || plan.conditions.find((c) => c.key === k)?.na;
-  const steps = [
+  const steps = plan.entry === 'breakout' ? [
+    { label: 'BTC trend', done: ['btcRegime', 'tradeable'].every(ok) },
+    { label: 'Near the high', done: plan.stage === 'setting-up' || plan.stage === 'ready' },
+    { label: 'Breakout', done: ok('breakout') },
+    { label: 'Buy', done: false }
+  ] : [
     { label: 'Trend', done: ['htfTrend', 'btcGate', 'tradeable', 'tfTrend'].every(ok) },
     { label: 'Pullback', done: ok('pullback') },
     { label: 'Reclaim', done: ok('reclaim') && ok('noChase') },
@@ -715,7 +731,7 @@ function renderEntryPlan(coin, plan) {
   const highlight = plan.stage === 'setting-up' || plan.stage === 'ready'
     ? `<div><div class="muted">${plan.stage === 'ready' ? 'Buys at the candle close if it holds' : 'Buy trigger: close above'}</div><div class="big-number">${fmtPrice(plan.stage === 'ready' ? (plan.plan?.entryPrice ?? plan.trigger.livePrice) : plan.trigger.price)}</div>
        <div class="muted" data-dist="${coin.symbol}" data-trigger="${plan.trigger.price}">${distanceText(plan.trigger.price, livePrice(coin))}</div></div>`
-    : `<div><div class="muted">Next check</div><div class="big-number">${escapeHtml(plan.decisionLabel)}</div><div class="muted">${plan.stage === 'watching' ? 'Waiting for a pullback to the EMA20.' : 'Not in play until the trend turns up.'}</div></div>`;
+    : `<div><div class="muted">Next check</div><div class="big-number">${escapeHtml(plan.decisionLabel)}</div><div class="muted">${plan.stage !== 'watching' ? 'Not in play until the trend turns up.' : plan.entry === 'breakout' ? `Waiting for a close above ${fmtPrice(plan.trigger.price)}.` : 'Waiting for a pullback to the EMA20.'}</div></div>`;
   $('planHighlight').innerHTML = `
     <svg class="ring" viewBox="0 0 44 44" aria-hidden="true"><circle class="ring-track" cx="22" cy="22" r="19"/><circle class="ring-fill ${plan.stage === 'ready' ? 'bull' : 'signal'}" data-deadline="${plan.decisionAt}" data-period="${period}" cx="22" cy="22" r="19"/></svg>
     ${highlight}
@@ -736,7 +752,9 @@ function renderEntryPlan(coin, plan) {
 function renderExitPlan(coin, exit) {
   const pos = state.portfolio?.positions?.[coin.symbol];
   $('planSentence').textContent = coin.prediction.sentence;
-  $('planStepper').innerHTML = '<li class="done">Trend</li><li class="done">Pullback</li><li class="done">Reclaim</li><li class="done">Bought</li>';
+  $('planStepper').innerHTML = exit.profile === 'breakout'
+    ? '<li class="done">BTC trend</li><li class="done">Near the high</li><li class="done">Breakout</li><li class="done">Bought</li>'
+    : '<li class="done">Trend</li><li class="done">Pullback</li><li class="done">Reclaim</li><li class="done">Bought</li>';
   const pnl = pos?.unrealizedProfitIdr ?? 0;
   $('planHighlight').innerHTML = `
     <div><div class="muted">Open result</div><div class="big-number ${pnl >= 0 ? 'up' : 'down'}">${pnl >= 0 ? '+' : ''}${fmtIdr(pnl)}</div><div class="muted">${exit.rNow != null ? `${exit.rNow >= 0 ? '+' : ''}${exit.rNow}R` : ''}</div></div>
@@ -973,7 +991,7 @@ function renderSettings() {
   $('autoTradeToggle').checked = s.autoTrade.enabled;
   const strategyEntries = Object.entries(s.strategyProfiles || {}).sort(([a], [b]) => (a === 'scalping') - (b === 'scalping'));
   $('strategyList').innerHTML = strategyEntries.map(([key, p]) => `
-    <label class="strategy-row"><span><b>${escapeHtml(p.label)}</b><small>${key === 'scalping' ? 'Lost money in every backtest after costs. Use with care.' : `Trades ${TF_WORD[p.triggerTf]} candles, trend from ${TF_WORD[p.filterTf]} chart.`}</small></span>
+    <label class="strategy-row"><span><b>${escapeHtml(p.label)}</b><small>${STRATEGY_NOTES[key] || `Trades ${TF_WORD[p.triggerTf]} candles, trend from ${TF_WORD[p.filterTf]} chart.`}</small></span>
     <input type="checkbox" role="switch" data-strategy="${key}" ${s.strategies?.[key] ? 'checked' : ''} /></label>`).join('');
   $('earlyEntryToggle').checked = Boolean(s.earlyEntry);
   $('setRiskPerTrade').value = s.riskPerTradePct;

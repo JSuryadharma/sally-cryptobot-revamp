@@ -1,4 +1,4 @@
-import { profileTimeStopBars, profileTrailAtr } from './config.js';
+import { profileTimeStopBars, profileTrailAtr, profileTargetR, profileTimeStopMinR } from './config.js';
 
 // Manages one open position across one closed trigger-timeframe bar. Pure:
 // returns the fills and the updated management fields without mutating input.
@@ -87,7 +87,8 @@ function priceStep(position, bar, cfg, fills) {
     updates.stopPrice = Math.max(updates.stopPrice, position.entryPrice * (1 + cfg.roundTripCostPct / 100));
   }
 
-  const targetPrice = cfg.targetR ? position.entryPrice + cfg.targetR * riskPerUnit : null;
+  const targetR = profileTargetR(profile, cfg);
+  const targetPrice = targetR ? position.entryPrice + targetR * riskPerUnit : null;
   if (targetPrice && riskPerUnit > 0 && bar.high >= targetPrice) {
     const price = Math.max(targetPrice, bar.open);
     fills.push({ fraction: 1, price, exitKind: 'target', reason: `Target +${cfg.targetR}R hit at ${price.toPrecision(8)}.` });

@@ -200,7 +200,9 @@ export async function runManualTrade(symbol, action) {
       const entry = price * (1 + cfg.slippagePct / 100);
       let low = live[symbol][profile.triggerTf].low;
       for (const c of closed.slice(-cfg.setup.pullbackLookback)) low = Math.min(low, c.low);
-      const placed = placeStop(entry, low - cfg.setup.stopBufferAtr * last.atr14, last.atr14, cfg);
+      const placed = profile.entry === 'breakout'
+        ? { stop: Number((entry - profile.stopAtr * last.atr14).toPrecision(8)) }
+        : placeStop(entry, low - cfg.setup.stopBufferAtr * last.atr14, last.atr14, cfg);
       const stop = placed.stop ?? Number((entry - cfg.setup.maxStopAtr * last.atr14).toPrecision(8));
       const sized = sizePosition({ portfolio, entryPrice: entry, stopPrice: stop, usdIdrRate, cfg });
       if (!(sized.qty > 0)) return { status: 400, body: { error: `Can't size this trade: ${sized.reason}.` } };

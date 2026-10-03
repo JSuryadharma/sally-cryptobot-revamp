@@ -50,7 +50,7 @@ function symbolState(state, symbol) {
 }
 
 function earlyProfile(profile, cfg) {
-  return Boolean(cfg.earlyEntry) && Boolean(TF_MS[cfg.earlyTf]) && TF_MS[cfg.earlyTf] < TF_MS[profile.triggerTf];
+  return Boolean(cfg.earlyEntry) && profile.earlyEntry !== false && Boolean(TF_MS[cfg.earlyTf]) && TF_MS[cfg.earlyTf] < TF_MS[profile.triggerTf];
 }
 
 // The trigger-timeframe candle formed so far, from the closed early candles
@@ -138,9 +138,9 @@ function applyFills(ctx, symbol, fills, bar) {
     if (closed) {
       const riskEvent = recordTradeResult(state.risk, tradeRealizedIdr, ctx.currentMs, cfg);
       if (riskEvent) out.riskEvents.push(riskEvent);
-      if (fill.exitKind === 'stop' && tradeRealizedIdr <= 0) {
-        const profile = profilesFor(cfg)[transaction.profile];
-        if (profile) symbolState(state, symbol).cooldownUntilMs[profile.key] = ctx.currentMs + profile.cooldownBars * TF_MS[profile.triggerTf];
+      const profile = profilesFor(cfg)[transaction.profile];
+      if (profile && ((fill.exitKind === 'stop' && tradeRealizedIdr <= 0) || profile.cooldownAfterAnyExit)) {
+        symbolState(state, symbol).cooldownUntilMs[profile.key] = ctx.currentMs + profile.cooldownBars * TF_MS[profile.triggerTf];
       }
       break;
     }
@@ -236,7 +236,8 @@ function evaluate(ctx, event, profile) {
   if (!filt) return null;
   const j = lastClosedIndex(filt, profile.filterTf, event.closeMs);
   let btc = null;
-  if (cfg.btcGate && series[BTC_SYMBOL]?.[profile.filterTf]) {
+  // The breakout's BTC regime check is part of the rule, not the optional gate.
+  if ((cfg.btcGate || profile.entry === 'breakout') && series[BTC_SYMBOL]?.[profile.filterTf]) {
     const btcFilt = series[BTC_SYMBOL][profile.filterTf];
     btc = { filt: btcFilt, j: lastClosedIndex(btcFilt, profile.filterTf, event.closeMs) };
   }
@@ -315,7 +316,7 @@ export function advance(state, portfolio, series, opts) {
         else if (live && nowMs - closeMs > maxDelayMs) skip = 'missed-late: tick ran too long after the bar closed';
         else if (signal.score < cfg.minConfidencePct) skip = `score ${signal.score} below ${cfg.minConfidencePct}`;
         else if (blocked) skip = `entries paused: ${blocked}`;
-        else if (cooldownUntil && closeMs < cooldownUntil) skip = 'cooldown after stop-out';
+        else if (cooldownUntil && closeMs < cooldownUntil) skip = profile.cooldownAfterAnyExit ? 'cooldown: the last trade closed on this candle' : 'cooldown after stop-out';
         if (skip) { out.signals.push({ ...base, taken: false, skip }); continue; }
         candidates.push({ ...base, signal, event, profile, early });
       }

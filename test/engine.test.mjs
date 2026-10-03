@@ -9,7 +9,7 @@ import { updateRisk, recordTradeResult, createRiskState, entryBlock } from '../s
 import { syntheticSeries, cutSeries } from './helpers.mjs';
 
 const RATE = 16_000;
-const cfg = resolveEngineCfg({ minTradeQuoteVolumeUsdt: 0 });
+const cfg = resolveEngineCfg({ profiles: { swing: true, trend: true, breakout: false }, minTradeQuoteVolumeUsdt: 0 });
 const scalp = PROFILES.scalping;
 
 function position(overrides = {}) {
@@ -226,7 +226,7 @@ test('core: at most maxNewEntriesPerBar positions open on one bar close', () => 
 test('core live mode: a tick long after the bar close records the entry as missed', () => {
   const pf = createPortfolio(10_000_000);
   const state = createEngineState();
-  const lateCfg = resolveEngineCfg({ minTradeQuoteVolumeUsdt: 0, maxEntryDelayBarFrac: 0 });
+  const lateCfg = resolveEngineCfg({ profiles: { swing: true, trend: true, breakout: false }, minTradeQuoteVolumeUsdt: 0, maxEntryDelayBarFrac: 0 });
   let sawSignal = false;
   for (let now = tradeStart + 10 * 86_400_000; now < end; now += TF_MS['4h']) {
     const out = advance(state, pf, cutSeries(full, now + 60_000), { nowMs: now + 60_000, live: true, usdIdrRate: RATE, cfg: lateCfg, tradeSymbols: symbols });
@@ -237,7 +237,7 @@ test('core live mode: a tick long after the bar close records the entry as misse
 });
 
 // The synthetic series has no 5m candles, so these run the early check on 15m.
-const earlyCfg = resolveEngineCfg({ minTradeQuoteVolumeUsdt: 0, earlyEntry: true, earlyTf: '15m' });
+const earlyCfg = resolveEngineCfg({ profiles: { swing: true, trend: true, breakout: false }, minTradeQuoteVolumeUsdt: 0, earlyEntry: true, earlyTf: '15m' });
 
 test('core early entry: buys between trigger closes and conserves money', () => {
   const pf = createPortfolio(10_000_000);

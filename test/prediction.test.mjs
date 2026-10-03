@@ -7,7 +7,7 @@ import { createRiskState } from '../src/engine/riskGuard.js';
 
 const RATE = 16_000;
 const START = Date.UTC(2026, 0, 1) / 1000;
-const cfg = resolveEngineCfg({ profiles: { swing: true, trend: false, scalping: false }, btcGate: false, minTradeQuoteVolumeUsdt: 0 });
+const cfg = resolveEngineCfg({ profiles: { swing: true, trend: false, scalping: false, breakout: false }, btcGate: false, minTradeQuoteVolumeUsdt: 0 });
 
 // Hand-built "enriched" candles: indicator fields are set directly so each
 // scenario is exact and readable.
@@ -101,4 +101,43 @@ test('holding: exit plan shows stop distance and the breakeven arm price', () =>
   assert.ok(exit.timeStopAt > 0);
   assert.equal(exit.checkTf, '5m');
   assert.equal(exit.nextCheckAt % (5 * 60_000), 0);
+});
+
+// Breakout profile: 25 flat daily candles with highs at 101, BTC 210 days
+// rising (above its 200-day average) or falling.
+function breakoutScenario({ formingClose, btcUp = true }) {
+  const closed = Array.from({ length: 25 }, (_, k) => candle(k, '1d', { high: 101, close: 100.5, atr14: 2 }));
+  const btc = Array.from({ length: 210 }, (_, k) => candle(k - 185, '1d', { close: btcUp ? 100 + k : 400 - k }));
+  const live = candle(25, '1d', { open: 100.5, high: Math.max(101, formingClose), low: 100, close: formingClose, atr14: 2 });
+  return {
+    series: { COINUSDT: { '1d': closed }, BTCUSDT: { '1d': btc } },
+    live: { COINUSDT: { '1d': live } }
+  };
+}
+
+function predictBreakout(s) {
+  const bcfg = resolveEngineCfg({ minTradeQuoteVolumeUsdt: 0 });
+  return predictCoin({
+    symbol: 'COINUSDT', ...s, cfg: bcfg, portfolio: createPortfolio(10_000_000), risk: createRiskState(), symbolState: null,
+    autoTradeOn: true, usdIdrRate: RATE, nowMs: (START + 25.5 * 86_400) * 1000
+  }).headline;
+}
+
+test('breakout: watching below the 20-day high, setting up within 1 ATR, ready above it', () => {
+  const far = predictBreakout(breakoutScenario({ formingClose: 97 }));
+  assert.equal(far.profile, 'breakout');
+  assert.deepEqual(far.conditions.map((c) => c.key), ['btcRegime', 'tradeable', 'breakout']);
+  assert.equal(far.stage, 'watching');
+  assert.equal(far.trigger.price, 101);
+  assert.match(describePrediction(far, 'COINUSDT'), /daily close above 101/);
+  assert.equal(predictBreakout(breakoutScenario({ formingClose: 99.5 })).stage, 'setting-up');
+  const ready = predictBreakout(breakoutScenario({ formingClose: 102 }));
+  assert.equal(ready.stage, 'ready');
+  assert.equal(ready.plan.stopPrice, 98, 'stop 2x ATR below the close');
+});
+
+test('breakout: blocked while BTC is below its 200-day average', () => {
+  const blocked = predictBreakout(breakoutScenario({ formingClose: 102, btcUp: false }));
+  assert.equal(blocked.stage, 'blocked');
+  assert.match(describePrediction(blocked, 'COINUSDT'), /200-day average/);
 });

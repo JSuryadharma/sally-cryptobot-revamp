@@ -1,3 +1,5 @@
+import { btcAbove200d } from './paperBreakout.js';
+
 // Long-only entry setups. Pure: works on enriched candle arrays plus an index,
 // so the backtester can scan history without slicing arrays per bar.
 
@@ -153,9 +155,53 @@ function evaluateBreakout(ctx, checklist) {
   };
 }
 
+// The breakout profile: buy the daily close above the prior N-day high while
+// BTC's daily close is above its 200-day average. Same rule as the research
+// and the paper test (paperBreakout.js), plus the engine's liquidity check.
+function evaluateDailyBreakout(ctx) {
+  const { trig, i, profile, cfg } = ctx;
+  const checklist = [];
+  const c = trig[i];
+  const n = profile.breakoutLookback;
+  if (!c || i < n || !finite(c.close, c.high, c.low, c.atr14) || !(c.atr14 > 0)) {
+    check(checklist, 'data', 'indicators ready', false, 'not enough closed candles yet');
+    return { signal: null, checklist, armedLevel: null };
+  }
+
+  const btcDaily = ctx.btc?.filt;
+  const btcOk = check(checklist, 'btcRegime', 'BTC above its 200-day average', btcAbove200d(btcDaily, c.time),
+    btcDaily?.length ? `BTC ${roundPrice(btcDaily[Math.min(ctx.btc.j ?? btcDaily.length - 1, btcDaily.length - 1)]?.close)}` : 'no BTC data');
+
+  const volUsdt = quoteVolume24h(trig, i, profile.barsPer24h);
+  const tradeable = check(checklist, 'tradeable', `liquid (24h vol >= $${Math.round(cfg.minTradeQuoteVolumeUsdt / 1e6)}M)`,
+    volUsdt >= cfg.minTradeQuoteVolumeUsdt, `24h vol ~$${(volUsdt / 1e6).toFixed(1)}M`);
+
+  let priorHigh = -Infinity;
+  for (let k = i - n; k < i; k += 1) priorHigh = Math.max(priorHigh, trig[k].high);
+  const level = roundPrice(priorHigh);
+  const brokeOut = check(checklist, 'breakout', `closes above the prior ${n}-day high`, c.close > priorHigh,
+    `close ${roundPrice(c.close)} vs ${n}-day high ${level}`);
+
+  const gatesOk = btcOk && tradeable;
+  let signal = null;
+  if (gatesOk && brokeOut) {
+    const stop = roundPrice(c.close - profile.stopAtr * c.atr14);
+    if (stop > 0) {
+      signal = {
+        setup: 'breakout', entryPrice: c.close, stopPrice: stop,
+        // Same 0-100 scale as the pullback score; it ranks same-day signals only.
+        score: Math.round(clamp01((c.close - priorHigh) / c.atr14) * 50 + clamp01(((c.close - c.low) / Math.max(c.high - c.low, 1e-12))) * 50),
+        reason: `Daily close ${roundPrice(c.close)} above the prior ${n}-day high ${level}, BTC above its 200-day average.`
+      };
+    }
+  }
+  return { signal, checklist, armedLevel: gatesOk ? level : null, directionBlocked: !btcOk };
+}
+
 // ctx: { trig, i, filt, j, profile, cfg, btc?: { filt, j } }
 // Returns { signal|null, checklist, armedLevel }.
 export function evaluateSetup(ctx) {
+  if (ctx.profile.entry === 'breakout') return evaluateDailyBreakout(ctx);
   const { trig, i, filt, j, profile, cfg } = ctx;
   const p = cfg.setup;
   const checklist = [];

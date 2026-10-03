@@ -17,7 +17,7 @@ function defaultSettings() {
       // the backtests found the score ranks setups but is not a useful gate.
       minConfidencePct: 0
     },
-    strategies: { swing: true, trend: true, scalping: false },
+    strategies: { ...DEFAULT_ENGINE_CFG.profiles },
     // Buy on the 15m candle that breaks the trigger instead of waiting for the
     // 4h/daily close. Off until it has proved itself in the backtest.
     earlyEntry: DEFAULT_ENGINE_CFG.earlyEntry,
@@ -97,7 +97,7 @@ function isHttpUrl(value) {
 // built-in defaults if something in the patch turns out invalid - so a bad
 // or unlucky write degrades to "keep what you had," never a silent reset to
 // BTC/ETH/BNB/SOL/XRP.
-function normalize(raw, watchlistFallback) {
+export function normalize(raw, watchlistFallback) {
   const base = defaultSettings();
   return {
     watchlist: boundedList(raw.watchlist, watchlistFallback || base.watchlist),
@@ -110,9 +110,12 @@ function normalize(raw, watchlistFallback) {
         : base.autoTrade.minConfidencePct,
       scoreVersion: 2
     },
+    // Settings saved before the breakout switch (no strategiesVersion 2) move
+    // to the new defaults once: breakout on, the losing pullback profiles off.
     strategies: Object.fromEntries(Object.keys(PROFILES).map((key) => [
-      key, typeof raw.strategies?.[key] === 'boolean' ? raw.strategies[key] : base.strategies[key]
+      key, raw.strategiesVersion === 2 && typeof raw.strategies?.[key] === 'boolean' ? raw.strategies[key] : base.strategies[key]
     ])),
+    strategiesVersion: 2,
     earlyEntry: typeof raw.earlyEntry === 'boolean' ? raw.earlyEntry : base.earlyEntry,
     riskPerTradePct: boundedNumber(raw.riskPerTradePct, base.riskPerTradePct, 0.1, 5),
     maxPortfolioRiskPct: boundedNumber(raw.maxPortfolioRiskPct, base.maxPortfolioRiskPct, 0.5, 20),

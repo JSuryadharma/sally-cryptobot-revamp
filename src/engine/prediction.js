@@ -2,15 +2,20 @@
 // evaluateSetup() the engine trades on. The still-forming candle is judged as
 // if it closed right now, which is exactly the check the engine will run when
 // that candle actually closes.
-import { profilesFor, TF_MS, BTC_SYMBOL } from './config.js';
+import { profilesFor, profileTargetR, profileTimeStopMinR, TF_MS, BTC_SYMBOL } from './config.js';
 import { evaluateSetup, placeStop } from './setups.js';
 import { sizePosition } from './sizing.js';
 import { entryBlock } from './riskGuard.js';
 import { normalizePosition } from './ledger.js';
 
 export const STAGE_RANK = { blocked: 0, watching: 1, 'setting-up': 2, ready: 3, holding: 4 };
-const GATE_KEYS = ['htfTrend', 'btcGate', 'tradeable'];
-const CONDITION_KEYS = ['htfTrend', 'btcGate', 'tradeable', 'tfTrend', 'pullback', 'reclaim', 'noChase'];
+// Checklist per entry type: market gates first, then the setup itself.
+const SPECS = {
+  pullback: { gates: ['htfTrend', 'btcGate', 'tradeable'], conditions: ['htfTrend', 'btcGate', 'tradeable', 'tfTrend', 'pullback', 'reclaim', 'noChase'] },
+  breakout: { gates: ['btcRegime', 'tradeable'], conditions: ['btcRegime', 'tradeable', 'breakout'] }
+};
+const GATE_KEYS = [...new Set(Object.values(SPECS).flatMap((spec) => spec.gates))];
+const specFor = (profile) => SPECS[profile.entry] || SPECS.pullback;
 const TF_NAME = { '5m': '5-minute', '15m': '15-minute', '1h': '1-hour', '4h': '4-hour', '1d': 'daily' };
 
 function roundPrice(v) { return Number.isFinite(v) && v !== 0 ? Number(v.toPrecision(8)) : v; }
@@ -26,7 +31,12 @@ function conditionText(key, profile) {
     tfTrend: { label: `${trig[0].toUpperCase()}${trig.slice(1)} chart is in an uptrend`, fail: `the ${trig} chart is not in an uptrend` },
     pullback: { label: 'Price pulled back to the EMA20 in the last 5 candles', fail: 'no recent pullback to the EMA20' },
     reclaim: { label: `This ${trig} candle closes above the previous high`, fail: 'the candle has not closed above the previous high' },
-    noChase: { label: 'Not overextended (close near the EMA20)', fail: 'price is stretched too far above the EMA20' }
+    noChase: { label: 'Not overextended (close near the EMA20)', fail: 'price is stretched too far above the EMA20' },
+    btcRegime: { label: 'Bitcoin is above its 200-day average', fail: 'Bitcoin is below its 200-day average' },
+    breakout: {
+      label: `This ${trig} candle closes above the prior ${profile.breakoutLookback}-day high`,
+      fail: `price has not closed above the ${profile.breakoutLookback}-day high`
+    }
   }[key];
 }
 
@@ -64,9 +74,11 @@ function profilePrediction({ symbol, profile, series, live, cfg, portfolio, risk
   // daily candle's 24h volume for most of the day.
   const closedEvaluation = evaluateSetup({ ...ctx, trig: closed, i: closed.length - 1 });
 
+  const spec = specFor(profile);
+  const isBreakout = profile.entry === 'breakout';
   const byKey = Object.fromEntries(evaluation.checklist.map((c) => [c.key, c]));
-  for (const c of closedEvaluation.checklist) if (GATE_KEYS.includes(c.key)) byKey[c.key] = c;
-  const conditions = CONDITION_KEYS.map((key) => {
+  for (const c of closedEvaluation.checklist) if (spec.gates.includes(c.key)) byKey[c.key] = c;
+  const conditions = spec.conditions.map((key) => {
     const text = conditionText(key, profile);
     if (key === 'btcGate' && !cfg.btcGate) return { key, label: text.label, ok: true, na: true, detail: 'not used' };
     const item = byKey[key];
@@ -76,25 +88,34 @@ function profilePrediction({ symbol, profile, series, live, cfg, portfolio, risk
   const met = counted.filter((c) => c.ok).length;
   const ok = (key) => conditions.find((c) => c.key === key)?.ok;
 
-  let stage;
-  if (!GATE_KEYS.every(ok)) stage = 'blocked';
-  else if (ok('tfTrend') && ok('pullback')) stage = ok('reclaim') && ok('noChase') ? 'ready' : 'setting-up';
-  else stage = 'watching';
-
   const prev = closed.at(-1);
   const price = forming.close;
   const atr = forming.atr14;
-  const triggerPrice = roundPrice(prev.high);
-  const chaseCeiling = Number.isFinite(forming.ema20) && Number.isFinite(atr) ? roundPrice(forming.ema20 + cfg.setup.chaseMaxAtr * atr) : null;
+  let triggerPrice = roundPrice(prev.high);
+  if (isBreakout) {
+    let high = -Infinity;
+    for (let k = Math.max(0, i - profile.breakoutLookback); k < i; k += 1) high = Math.max(high, trig[k].high);
+    triggerPrice = roundPrice(high);
+  }
+  const chaseCeiling = !isBreakout && Number.isFinite(forming.ema20) && Number.isFinite(atr) ? roundPrice(forming.ema20 + cfg.setup.chaseMaxAtr * atr) : null;
+
+  let stage;
+  if (!spec.gates.every(ok)) stage = 'blocked';
+  else if (isBreakout) {
+    // Setting up once price is within one ATR of the breakout level.
+    stage = ok('breakout') ? 'ready' : Number.isFinite(atr) && price >= triggerPrice - atr ? 'setting-up' : 'watching';
+  } else if (ok('tfTrend') && ok('pullback')) stage = ok('reclaim') && ok('noChase') ? 'ready' : 'setting-up';
+  else stage = 'watching';
   const decisionAt = forming.time * 1000 + TF_MS[profile.triggerTf];
 
-  const touch = lastTouchIndex(trig, i - 1, cfg);
+  const touch = isBreakout ? null : lastTouchIndex(trig, i - 1, cfg);
   const pullbackValidFor = ok('pullback') && touch != null ? Math.max(0, touch + cfg.setup.pullbackLookback - (i - 1)) : 0;
 
   let plan = null;
   if (stage === 'setting-up' || stage === 'ready') {
     const entry = evaluation.signal ? evaluation.signal.entryPrice : Math.max(triggerPrice, price);
     let stop = evaluation.signal?.stopPrice ?? null;
+    if (stop == null && isBreakout && Number.isFinite(atr) && atr > 0) stop = roundPrice(entry - profile.stopAtr * atr);
     if (stop == null && Number.isFinite(atr) && atr > 0) {
       let swingLow = forming.low;
       for (let k = i - cfg.setup.pullbackLookback; k < i; k += 1) if (trig[k]) swingLow = Math.min(swingLow, trig[k].low);
@@ -119,12 +140,13 @@ function profilePrediction({ symbol, profile, series, live, cfg, portfolio, risk
   if (pause) blockers.push(`New entries are paused: ${pause}.`);
   if (Object.keys(portfolio.positions || {}).length >= cfg.maxOpenPositions) blockers.push(`All ${cfg.maxOpenPositions} position slots are in use.`);
   const cooldownUntil = symbolState?.cooldownUntilMs?.[profile.key];
-  if (cooldownUntil && nowMs < cooldownUntil) blockers.push(`Cooling down after a stop-out until ${formatTime(cooldownUntil, cfg.timeZone)}.`);
+  if (cooldownUntil && nowMs < cooldownUntil) blockers.push(`Cooling down after ${profile.cooldownAfterAnyExit ? 'the last trade' : 'a stop-out'} until ${formatTime(cooldownUntil, cfg.timeZone)}.`);
   if (plan?.sizingNote) blockers.push(`Can't size a position: ${plan.sizingNote}.`);
 
   return {
     profile: profile.key,
     profileLabel: profile.label,
+    entry: profile.entry || 'pullback',
     timeframe: profile.triggerTf,
     stage,
     conditions,
@@ -157,7 +179,8 @@ function exitPrediction({ position: raw, series, live, cfg, nowMs }) {
   const tfMs = TF_MS[profile.triggerTf];
   const stopKind = position.stopPrice > position.entryPrice * (1 + cfg.roundTripCostPct / 100) ? 'trailing'
     : position.stopPrice >= position.entryPrice ? 'breakeven' : 'initial';
-  const timeStopActive = (position.mfeR ?? 0) < cfg.timeStopMinR && Number.isFinite(position.openedBarTime);
+  const timeStopActive = (position.mfeR ?? 0) < profileTimeStopMinR(profile, cfg) && Number.isFinite(position.openedBarTime);
+  const targetR = profileTargetR(profile, cfg);
   const timeStopBars = Math.round(profile.timeStopBars * (cfg.timeStopMult ?? 1));
   return {
     profile: profile.key,
@@ -170,7 +193,8 @@ function exitPrediction({ position: raw, series, live, cfg, nowMs }) {
     stopKind,
     distanceToStopPct: round2(((price - position.stopPrice) / price) * 100),
     rNow: riskPerUnit > 0 ? round2((price - position.entryPrice) / riskPerUnit) : null,
-    breakevenArmPrice: position.partialTaken || !(riskPerUnit > 0) ? null : roundPrice(position.entryPrice + cfg.partialAtR * riskPerUnit),
+    breakevenArmPrice: profile.breakeven === false || position.partialTaken || !(riskPerUnit > 0) ? null : roundPrice(position.entryPrice + cfg.partialAtR * riskPerUnit),
+    targetPrice: targetR && riskPerUnit > 0 ? roundPrice(position.entryPrice + targetR * riskPerUnit) : null,
     timeStopAt: timeStopActive ? position.openedBarTime * 1000 + tfMs * (1 + timeStopBars) : null,
     nextCheckAt: forming ? forming.time * 1000 + tfMs : null,
     nextCheckLabel: forming ? formatTime(forming.time * 1000 + tfMs, cfg.timeZone) : null
@@ -207,6 +231,9 @@ export function describePrediction(prediction, symbol) {
   if (prediction.stage === 'blocked') {
     const failing = prediction.conditions.filter((c) => GATE_KEYS.includes(c.key) && !c.ok && !c.na).map((c) => c.failText);
     return `Not in play: ${failing.slice(0, 2).join(' and ') || 'market conditions are not met'}.`;
+  }
+  if (prediction.stage === 'watching' && prediction.entry === 'breakout') {
+    return `Watching: buys on a ${tf} close above ${prediction.trigger.price} (${prediction.trigger.distancePct}% away).`;
   }
   if (prediction.stage === 'watching') {
     const tfTrendOk = prediction.conditions.find((c) => c.key === 'tfTrend')?.ok;

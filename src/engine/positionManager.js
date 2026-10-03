@@ -1,4 +1,4 @@
-import { profileTimeStopBars, profileTrailAtr } from './config.js';
+import { profileTimeStopBars, profileTrailAtr, profileTargetR, profileTimeStopMinR } from './config.js';
 
 // Manages one open position across one closed trigger-timeframe bar. Pure:
 // returns the fills and the updated management fields without mutating input.
@@ -36,7 +36,7 @@ export function onBar(position, bar, profile, cfg) {
   // when partialFraction is 0 and nothing is sold there.
   const partialPrice = position.entryPrice + cfg.partialAtR * riskPerUnit;
   let nextStop = stop;
-  if (!position.partialTaken && riskPerUnit > 0 && bar.high >= partialPrice) {
+  if (profile.breakeven !== false && !position.partialTaken && riskPerUnit > 0 && bar.high >= partialPrice) {
     if (cfg.partialFraction > 0) {
       fills.push({ fraction: cfg.partialFraction, price: partialPrice, exitKind: 'partial', reason: `Took ${Math.round(cfg.partialFraction * 100)}% at +${cfg.partialAtR}R (${partialPrice.toPrecision(8)}); stop moved to breakeven.` });
     }
@@ -44,21 +44,26 @@ export function onBar(position, bar, profile, cfg) {
     nextStop = Math.max(nextStop, position.entryPrice * (1 + cfg.roundTripCostPct / 100));
   }
 
-  const targetPrice = cfg.targetR ? position.entryPrice + cfg.targetR * riskPerUnit : null;
+  const targetR = profileTargetR(profile, cfg);
+  const targetPrice = targetR ? position.entryPrice + targetR * riskPerUnit : null;
   if (targetPrice && riskPerUnit > 0 && bar.high >= targetPrice) {
-    fills.push({ fraction: 1, price: targetPrice, exitKind: 'target', reason: `Target +${cfg.targetR}R hit at ${targetPrice.toPrecision(8)}.` });
+    // A bar that opened above the target fills at its open.
+    const price = Math.max(targetPrice, bar.open);
+    fills.push({ fraction: 1, price, exitKind: 'target', reason: `Target +${targetR}R hit at ${price.toPrecision(8)}.` });
     return { fills, updates };
   }
 
-  if (updates.partialTaken && Number.isFinite(bar.atr14) && bar.atr14 > 0) {
-    nextStop = Math.max(nextStop, updates.highWaterMark - profileTrailAtr(profile, cfg) * bar.atr14);
+  const trailAtr = profileTrailAtr(profile, cfg);
+  if (updates.partialTaken && trailAtr && Number.isFinite(bar.atr14) && bar.atr14 > 0) {
+    nextStop = Math.max(nextStop, updates.highWaterMark - trailAtr * bar.atr14);
   }
   updates.stopPrice = Number(nextStop.toPrecision(8));
 
   if (cfg.trendExit !== false && Number.isFinite(bar.ema50) && bar.close < bar.ema50) {
     fills.push({ fraction: 1, price: bar.close * (1 - slip), exitKind: 'trend', reason: `Trend break: ${profile.triggerTf} close ${bar.close} below EMA50 ${bar.ema50.toPrecision(8)}.` });
-  } else if (updates.barsHeld >= profileTimeStopBars(profile, cfg) && updates.mfeR < cfg.timeStopMinR) {
-    fills.push({ fraction: 1, price: bar.close * (1 - slip), exitKind: 'time', reason: `Time stop: ${updates.barsHeld} bars without reaching +${cfg.timeStopMinR}R.` });
+  } else if (updates.barsHeld >= profileTimeStopBars(profile, cfg) && updates.mfeR < profileTimeStopMinR(profile, cfg)) {
+    const minR = profileTimeStopMinR(profile, cfg);
+    fills.push({ fraction: 1, price: bar.close * (1 - slip), exitKind: 'time', reason: Number.isFinite(minR) ? `Time stop: ${updates.barsHeld} bars without reaching +${minR}R.` : `Time stop: held ${updates.barsHeld} bars without reaching the target.` });
   }
   return { fills, updates };
 }

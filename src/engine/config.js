@@ -36,6 +36,32 @@ export const PROFILES = {
     trailAtrMult: 3.75,
     cooldownBars: 2,
     barsPer24h: 1
+  },
+  // The only entry that made money both on the data it was tuned on and on a
+  // later test period (scripts/entryResearch.mjs, 36 months, 2026-09-28), and
+  // in the paper test since (paperBreakout.js). Traded exactly as researched:
+  // buy the daily close above the prior 20-day high while BTC is above its
+  // 200-day average, 2x ATR stop, sell at +1R, otherwise exit after 30 days.
+  // No breakeven move or trail, and no early entry: the edge was measured on
+  // closes.
+  breakout: {
+    key: 'breakout',
+    label: 'Breakout (daily, BTC above its 200-day average)',
+    entry: 'breakout',
+    triggerTf: '1d',
+    filterTf: '1d',
+    breakoutLookback: 20,
+    stopAtr: 2,
+    targetR: 1,
+    timeStopBars: 30,
+    timeStopMinR: Infinity,
+    trailAtrMult: null,
+    breakeven: false,
+    earlyEntry: false,
+    // No re-entry on the candle that closed the last trade, as in the research.
+    cooldownAfterAnyExit: true,
+    cooldownBars: 1,
+    barsPer24h: 1
   }
 };
 
@@ -99,7 +125,9 @@ export const DEFAULT_ENGINE_CFG = {
   timeStopMult: 1,
   trailMult: 1,
   timeZone: 'Asia/Jakarta',
-  profiles: { scalping: false, swing: true, trend: true },
+  // The 4h/daily pullback (swing, trend) lost money on the test period of the
+  // entry research, so breakout is the only strategy on by default.
+  profiles: { scalping: false, swing: false, trend: false, breakout: true },
   setup: SETUP_PARAMS
 };
 
@@ -132,7 +160,16 @@ export function profileTimeStopBars(profile, cfg) {
 }
 
 export function profileTrailAtr(profile, cfg) {
-  return profile.trailAtrMult * (cfg.trailMult ?? 1);
+  return profile.trailAtrMult ? profile.trailAtrMult * (cfg.trailMult ?? 1) : null;
+}
+
+// Exit settings a profile can pin regardless of the engine-wide config.
+export function profileTargetR(profile, cfg) {
+  return profile.targetR ?? cfg.targetR;
+}
+
+export function profileTimeStopMinR(profile, cfg) {
+  return profile.timeStopMinR ?? cfg.timeStopMinR;
 }
 
 // Shape the dashboard's "Indicators" card already renders (strategyParams).
@@ -140,6 +177,19 @@ export function describeProfile(profileKey, cfg = DEFAULT_ENGINE_CFG) {
   const profile = PROFILES[profileKey];
   if (!profile) return null;
   const hours = (profileTimeStopBars(profile, cfg) * TF_MS[profile.triggerTf]) / 3_600_000;
+  if (profile.entry === 'breakout') {
+    return {
+      mode: profileKey,
+      label: profile.label,
+      emaCrossLabel: `close above the prior ${profile.breakoutLookback}-day high, BTC above its 200-day average`,
+      rsiLabel: null,
+      rsiRangeLabel: null,
+      slAtrMult: profile.stopAtr,
+      tpAtrMult: null,
+      maxHoldBars: profileTimeStopBars(profile, cfg),
+      holdLabel: `sell at +${profile.targetR}R, otherwise after ${profileTimeStopBars(profile, cfg)} days`
+    };
+  }
   return {
     mode: profileKey,
     label: profile.label,

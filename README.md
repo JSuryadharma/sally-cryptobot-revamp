@@ -7,10 +7,10 @@ A 24/7 crypto paper-trading robot and dashboard for Binance USDT pairs. It reads
 ## What the robot does
 
 - **Strategies** (Settings > Auto-trading):
-  - **Swing:** trades 4-hour candles when the daily trend is up.
-  - **Trend:** trades daily candles.
+  - **Breakout** (on by default): daily candles. Buys when a coin closes above its prior 20-day high while Bitcoin's daily close is above its 200-day average. The stop is 2x ATR below the entry. It sells at +1R, otherwise after 30 days. There is no breakeven move and no trail, so it trades exactly as researched. It was the only entry that made money both on the data it was tuned on and on the later test period of `npm run research -- --months 36`. The evidence is still thin (30-54 test trades), which is why it runs on paper.
+  - **Swing / Trend** (off by default): 4-hour or daily trend pullbacks. They lost money on the research test period (−0.18R to −0.51R per trade). Settings saved before the switch move to the new defaults once.
   - **Scalping** (15-minute candles) is available but off by default. It lost money in every backtest once trading costs were included.
-- **Entry: trend pullback.** Every condition has to hold on a closed candle:
+- **Pullback entry (Swing / Trend).** Every condition has to hold on a closed candle:
   1. The higher-timeframe trend is up, and Bitcoin is above its daily EMA50.
   2. The coin has enough volume and movement.
   3. The trading timeframe is in an uptrend.
@@ -21,7 +21,7 @@ A 24/7 crypto paper-trading robot and dashboard for Binance USDT pairs. It reads
   - Each trade risks 0.75% of equity at its stop-loss (configurable), with position size capped at 30% of equity.
   - Total open risk is capped, and new entries pause after a daily loss, a losing streak, or a drawdown.
   - Exits are never paused.
-- **Exits:**
+- **Pullback exits:**
   - Stop-loss below the pullback low.
   - Breakeven once the trade is +1R, then a wide ATR trailing stop so winners can run.
   - A time stop for trades that go nowhere.

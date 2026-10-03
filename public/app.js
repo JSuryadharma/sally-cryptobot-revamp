@@ -459,7 +459,7 @@ function exitCheckText(exit) {
   const when = checkTf === exit.timeframe
     ? `Stop checked when the ${TF_WORD[exit.timeframe]} candle closes, in ${countdown}`
     : `Stop${Number.isFinite(exit.targetPrice) ? ' and target' : ''} checked every ${TF_WORD[checkTf]} candle, next in ${countdown}`;
-  return `${when}${exit.timeStopAt ? `. Exits by ${escapeHtml(fmtClock(exit.timeStopAt))} unless it reaches +0.5R.` : '.'}`;
+  return `${when}${exit.timeStopAt ? `. Exits by ${escapeHtml(fmtClock(exit.timeStopAt))} ${exit.targetPrice ? 'if it has not hit the target' : 'unless it reaches +0.5R'}.` : '.'}`;
 }
 
 function renderPositions() {
@@ -764,8 +764,8 @@ function renderExitPlan(coin, exit) {
   $('planTrade').innerHTML = `
     <div class="kv"><span>Entry</span><b>${fmtPrice(exit.entryPrice)}</b></div>
     <div class="kv"><span>Stop (${escapeHtml(exit.stopKind)})</span><b>${fmtPrice(exit.stopPrice)}</b> <span>${exit.distanceToStopPct}% away</span></div>
-    ${Number.isFinite(exit.targetPrice) ? `<div class="kv"><span>Take profit</span><b>${fmtPrice(exit.targetPrice)}</b></div>` : ''}
-    <div class="kv"><span>Breakeven arms at</span><b>${exit.breakevenArmPrice ? fmtPrice(exit.breakevenArmPrice) : 'Already armed'}</b></div>
+    ${exit.targetPrice ? `<div class="kv"><span>Take profit at</span><b>${fmtPrice(exit.targetPrice)}</b></div>` : ''}
+    ${exit.breakevenArmPrice || !exit.targetPrice ? `<div class="kv"><span>Breakeven arms at</span><b>${exit.breakevenArmPrice ? fmtPrice(exit.breakevenArmPrice) : 'Already armed'}</b></div>` : ''}
     <div class="kv"><span>Time stop</span><b>${exit.timeStopAt ? escapeHtml(fmtClock(exit.timeStopAt)) : 'Not active'}</b></div>`;
 }
 

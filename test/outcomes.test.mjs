@@ -7,7 +7,7 @@ import { trackOutcome, updateJournal, signalRecords, summarizeOutcomes, scoreAuc
 import { syntheticSeries, cutSeries } from './helpers.mjs';
 
 const RATE = 16_000;
-const cfg = resolveEngineCfg({ minTradeQuoteVolumeUsdt: 0 });
+const cfg = resolveEngineCfg({ profiles: { swing: true, trend: true, breakout: false }, minTradeQuoteVolumeUsdt: 0 });
 const b = (time, low, high) => ({ time, open: (low + high) / 2, high, low, close: (low + high) / 2 });
 const plan = { entry: 100, stop: 98, maxBars: 10 };
 

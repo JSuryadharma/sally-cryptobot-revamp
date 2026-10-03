@@ -452,6 +452,16 @@ function exitBarHtml(exit) {
     <div class="exit-labels"><span class="down">Stop ${fmtPrice(stop)}</span><span>${Number.isFinite(target) ? `Take profit at ${fmtPrice(target)}` : Number.isFinite(exit.breakevenArmPrice) ? `Breakeven at ${fmtPrice(exit.breakevenArmPrice)}` : exit.stopKind === 'trailing' ? 'Trailing stop active' : 'Stop at breakeven'}</span></div>`;
 }
 
+// When the stop (and target) are next checked, and the time stop if one is pending.
+function exitCheckText(exit) {
+  const checkTf = exit.checkTf || exit.timeframe;
+  const countdown = `<span data-deadline="${exit.nextCheckAt}">${fmtCountdown(exit.nextCheckAt - Date.now())}</span>`;
+  const when = checkTf === exit.timeframe
+    ? `Stop checked when the ${TF_WORD[exit.timeframe]} candle closes, in ${countdown}`
+    : `Stop${Number.isFinite(exit.targetPrice) ? ' and target' : ''} checked every ${TF_WORD[checkTf]} candle, next in ${countdown}`;
+  return `${when}${exit.timeStopAt ? `. Exits by ${escapeHtml(fmtClock(exit.timeStopAt))} unless it reaches +0.5R.` : '.'}`;
+}
+
 function renderPositions() {
   const list = $('positionsList');
   const positions = Object.values(state.portfolio?.positions || {});
@@ -466,7 +476,7 @@ function renderPositions() {
         <div class="row-right"><b class="${pnl >= 0 ? 'up' : 'down'}">${pnl >= 0 ? '+' : ''}${fmtIdrShort(pnl)}</b><span class="muted small">${exit?.rNow != null ? `${exit.rNow >= 0 ? '+' : ''}${exit.rNow}R` : fmtPct(pos.unrealizedProfitPct ?? 0)}</span></div>
       </div>
       ${exit ? exitBarHtml(exit) : ''}
-      ${exit?.nextCheckAt ? `<div class="muted small">Stop checked when the ${TF_WORD[exit.timeframe]} candle closes, in <span data-deadline="${exit.nextCheckAt}">${fmtCountdown(exit.nextCheckAt - Date.now())}</span>${exit.timeStopAt ? `. Exits by ${escapeHtml(fmtClock(exit.timeStopAt))} ${exit.targetPrice ? 'if it has not hit the target' : 'unless it reaches +0.5R'}.` : '.'}</div>` : ''}
+      ${exit?.nextCheckAt ? `<div class="muted small">${exitCheckText(exit)}</div>` : ''}
     </div>`;
   }).join('');
   bindOpeners(list);
@@ -754,8 +764,8 @@ function renderExitPlan(coin, exit) {
   $('planTrade').innerHTML = `
     <div class="kv"><span>Entry</span><b>${fmtPrice(exit.entryPrice)}</b></div>
     <div class="kv"><span>Stop (${escapeHtml(exit.stopKind)})</span><b>${fmtPrice(exit.stopPrice)}</b> <span>${exit.distanceToStopPct}% away</span></div>
-    ${exit.targetPrice ? `<div class="kv"><span>Take profit at</span><b>${fmtPrice(exit.targetPrice)}</b></div>` : ''}
-    ${exit.breakevenArmPrice || !exit.targetPrice ? `<div class="kv"><span>Breakeven arms at</span><b>${exit.breakevenArmPrice ? fmtPrice(exit.breakevenArmPrice) : 'Already armed'}</b></div>` : ''}
+    ${Number.isFinite(exit.targetPrice) ? `<div class="kv"><span>Take profit</span><b>${fmtPrice(exit.targetPrice)}</b></div>` : ''}
+    <div class="kv"><span>Breakeven arms at</span><b>${exit.breakevenArmPrice ? fmtPrice(exit.breakevenArmPrice) : 'Already armed'}</b></div>
     <div class="kv"><span>Time stop</span><b>${exit.timeStopAt ? escapeHtml(fmtClock(exit.timeStopAt)) : 'Not active'}</b></div>`;
 }
 

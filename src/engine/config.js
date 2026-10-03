@@ -120,6 +120,10 @@ export const DEFAULT_ENGINE_CFG = {
   // trigger candle's close (see core.js).
   earlyEntry: false,
   earlyTf: '5m',
+  // Open positions are checked on every closed exitTf candle: the stop and
+  // target against its high/low, and breakeven/trail moves as soon as price
+  // gets there. null = only at the 4h/daily close, as before.
+  exitTf: '5m',
   enableBreakout: false,
   btcGate: true,
   timeStopMult: 1,
@@ -157,6 +161,12 @@ export function profilesFor(cfg) {
 
 export function profileTimeStopBars(profile, cfg) {
   return Math.round(profile.timeStopBars * (cfg.timeStopMult ?? 1));
+}
+
+// Open positions are managed on every closed cfg.exitTf candle (5m by default)
+// when it is shorter than the profile's trigger timeframe; null = trigger close only.
+export function exitTfFor(profile, cfg) {
+  return cfg.exitTf && TF_MS[cfg.exitTf] && TF_MS[cfg.exitTf] < TF_MS[profile.triggerTf] ? cfg.exitTf : null;
 }
 
 export function profileTrailAtr(profile, cfg) {

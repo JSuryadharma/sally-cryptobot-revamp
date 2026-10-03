@@ -2,7 +2,7 @@
 // evaluateSetup() the engine trades on. The still-forming candle is judged as
 // if it closed right now, which is exactly the check the engine will run when
 // that candle actually closes.
-import { profilesFor, profileTargetR, profileTimeStopMinR, TF_MS, BTC_SYMBOL } from './config.js';
+import { profilesFor, exitTfFor, TF_MS, BTC_SYMBOL } from './config.js';
 import { evaluateSetup, placeStop } from './setups.js';
 import { sizePosition } from './sizing.js';
 import { entryBlock } from './riskGuard.js';
@@ -182,6 +182,10 @@ function exitPrediction({ position: raw, series, live, cfg, nowMs }) {
   const timeStopActive = (position.mfeR ?? 0) < profileTimeStopMinR(profile, cfg) && Number.isFinite(position.openedBarTime);
   const targetR = profileTargetR(profile, cfg);
   const timeStopBars = Math.round(profile.timeStopBars * (cfg.timeStopMult ?? 1));
+  const checkTf = exitTfFor(profile, cfg) || profile.triggerTf;
+  const nextCheckAt = checkTf === profile.triggerTf
+    ? (forming ? forming.time * 1000 + tfMs : null)
+    : Math.floor(nowMs / TF_MS[checkTf]) * TF_MS[checkTf] + TF_MS[checkTf];
   return {
     profile: profile.key,
     profileLabel: profile.label,
@@ -193,11 +197,13 @@ function exitPrediction({ position: raw, series, live, cfg, nowMs }) {
     stopKind,
     distanceToStopPct: round2(((price - position.stopPrice) / price) * 100),
     rNow: riskPerUnit > 0 ? round2((price - position.entryPrice) / riskPerUnit) : null,
-    breakevenArmPrice: profile.breakeven === false || position.partialTaken || !(riskPerUnit > 0) ? null : roundPrice(position.entryPrice + cfg.partialAtR * riskPerUnit),
-    targetPrice: targetR && riskPerUnit > 0 ? roundPrice(position.entryPrice + targetR * riskPerUnit) : null,
+    breakevenArmPrice: position.partialTaken || !(riskPerUnit > 0) ? null : roundPrice(position.entryPrice + cfg.partialAtR * riskPerUnit),
+    targetPrice: cfg.targetR && riskPerUnit > 0 ? roundPrice(position.entryPrice + cfg.targetR * riskPerUnit) : null,
     timeStopAt: timeStopActive ? position.openedBarTime * 1000 + tfMs * (1 + timeStopBars) : null,
-    nextCheckAt: forming ? forming.time * 1000 + tfMs : null,
-    nextCheckLabel: forming ? formatTime(forming.time * 1000 + tfMs, cfg.timeZone) : null
+    // The stop and target are checked on every exit candle (5m) when exit checks are on.
+    checkTf,
+    nextCheckAt,
+    nextCheckLabel: nextCheckAt ? formatTime(nextCheckAt, cfg.timeZone) : null
   };
 }
 

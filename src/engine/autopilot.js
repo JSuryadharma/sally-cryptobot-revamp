@@ -10,28 +10,32 @@
 // the watchlist, followed as if traded, whether or not the engine bought it.
 // For each candidate the autopilot looks at its last WINDOW closed paper
 // trades after costs:
-// - fewer than MIN_CLOSED: "learning", eligible, ranked after proven ones;
+// - fewer than MIN_CLOSED: "learning", tradeable;
 // - average at or below BENCH_BELOW_R: "benched", not traded;
-// - otherwise "ok", ranked by its average.
-// It trades the best eligible candidate. A challenger has to beat the current
-// choice by SWITCH_MARGIN_R, so it doesn't flip on every closed trade. When
-// every candidate is benched it pauses new entries, keeps the default profile
-// on so signals are still recorded, and resumes once the paper results recover.
-// BTC under its 200-day average blocks the breakout entries on its own; the
-// autopilot only reports it.
+// - otherwise "ok".
+// It trades the first candidate in CANDIDATES order that is not benched: the
+// 55-day breakout, with the 20-day as the fallback. It does not chase whichever
+// rule did better lately: in the 24-month backtest (2024-10 to 2026-10, 15
+// coins) switching to the recent leader returned +2.5% against +13.3% for the
+// 55-day breakout alone, because each switch came after the leader's good run.
+// When every candidate is benched it pauses new entries, keeps the first
+// profile on so signals are still recorded, and resumes once the paper results
+// recover. BTC under its 200-day average blocks the breakout entries on its
+// own; the autopilot only reports it.
 import { btcAbove200d } from './paperBreakout.js';
 import { PROFILES } from './config.js';
 
 export const AUTOPILOT_PARAMS = {
   window: 20,
   minClosed: 12,
-  benchBelowR: -0.15,
-  switchMarginR: 0.1
+  benchBelowR: -0.15
 };
 
+// In priority order. Research: the entry research test period (2025-07 to
+// 2026-09). Backtest: backtest.mjs --auto, 24 months to 2026-10-05, 0.2% cost.
 export const CANDIDATES = [
-  { profile: 'breakout', rule: 'breakout20', research: '+0.21R a trade over 54 trades on the research test period' },
-  { profile: 'breakout55', rule: 'breakout55', research: '+0.37R a trade over 31 trades on the research test period' }
+  { profile: 'breakout55', rule: 'breakout55', research: '+0.37R a trade over 31 trades on the research test period, +0.32R over 53 in the 24-month backtest' },
+  { profile: 'breakout', rule: 'breakout20', research: '+0.21R a trade over 54 trades on the research test period, +0.11R over 84 in the 24-month backtest' }
 ];
 
 export const RETIRED = {
@@ -78,35 +82,20 @@ function candidateStats(candidate, known, params) {
 
 const describe = (c) => `${c.lookback}-day breakout`;
 
-// results: paperResults() output, any order. previous: the last decision, if any.
-export function decideStrategy({ results, btcDaily, nowMs, previous = null, params = AUTOPILOT_PARAMS }) {
+// results: paperResults() output, any order.
+export function decideStrategy({ results, btcDaily, nowMs, params = AUTOPILOT_PARAMS }) {
   const known = results.filter((x) => x.closedAtMs <= nowMs).sort((a, b) => b.closedAtMs - a.closedAtMs);
   const candidates = CANDIDATES.map((c) => candidateStats(c, known, params));
-  const eligible = candidates.filter((c) => c.status !== 'benched');
-  const proven = eligible.filter((c) => c.status === 'ok' && c.avgR > 0).sort((a, b) => b.avgR - a.avgR);
-
-  let chosen = proven[0] || eligible[0] || null;
+  const chosen = candidates.find((c) => c.status !== 'benched') || null;
   let why;
   if (!chosen) {
     why = `every breakout is losing in the paper test (last ${params.window} closed trades at or below ${params.benchBelowR}R)`;
-  } else if (proven[0] === chosen) {
-    why = `best paper result: ${chosen.avgR >= 0 ? '+' : ''}${chosen.avgR}R a trade over its last ${chosen.closed} closed trades`;
+  } else if (chosen !== candidates[0]) {
+    why = `the ${describe(candidates[0])} is benched (last ${params.window} paper trades average ${candidates[0].avgR}R), so the fallback trades`;
   } else if (chosen.status === 'learning') {
-    why = `not enough paper trades yet (${chosen.closed} of ${params.minClosed}) to rank, so it runs the rule with the larger research sample`;
+    why = `the strongest rule in the backtests; ${chosen.closed} of ${params.minClosed} paper trades closed so far`;
   } else {
-    why = `no breakout is ahead in the paper test, so it keeps the rule with the larger research sample`;
-  }
-
-  // Hysteresis: keep the current choice unless the challenger is clearly ahead.
-  const current = previous?.chosen && eligible.find((c) => c.profile === previous.chosen);
-  if (chosen && current && current !== chosen && !previous.paused) {
-    const challengerAhead = chosen.status === 'ok' && (current.status === 'learning'
-      ? chosen.avgR > 0
-      : chosen.avgR - current.avgR >= params.switchMarginR);
-    if (!challengerAhead) {
-      why = `kept: the ${describe(chosen)} is not ahead of it by ${params.switchMarginR}R a trade or more`;
-      chosen = current;
-    }
+    why = `the strongest rule in the backtests, ${chosen.avgR >= 0 ? '+' : ''}${chosen.avgR}R a trade over its last ${chosen.closed} paper trades`;
   }
 
   const paused = !chosen;

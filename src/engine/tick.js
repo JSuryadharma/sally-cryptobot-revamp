@@ -77,8 +77,7 @@ async function updateAutopilot({ settings, series, previous, nowMs, costPct }) {
   const decision = decideStrategy({
     results: paperResults(paperJournal, series, { costPct }),
     btcDaily: series[BTC_SYMBOL]?.['1d'],
-    nowMs,
-    previous
+    nowMs
   });
   const changed = decisionChanged(previous, decision);
   const changes = previous?.changes || [];

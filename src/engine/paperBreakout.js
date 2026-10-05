@@ -51,7 +51,7 @@ export function breakoutPlan(daily, i, rule, btcDaily) {
 // Index of the daily bar where the paper trade closed: the first bar that
 // reached the target (the journal keeps following to +2R, a paper trade stops
 // there), otherwise the stop or time stop. Infinity while still open.
-function paperExitIndex(record, daily) {
+export function paperExitIndex(record, daily) {
   const start = indexOfTime(daily, record.barTime);
   if (start < 0) return -1;
   if (record.mfeR >= record.targetR) {
@@ -143,6 +143,26 @@ export function summarizePaper(journal, { costPct }) {
       };
     })
   };
+}
+
+// Every closed paper trade as { rule, symbol, barTime, r, closedAtMs }, newest
+// close first. closedAtMs is the close of the daily candle that ended the trade,
+// so a replay can use only the results known at a given time. A coin that left
+// the watchlist has no candles here; its close is estimated from barsTracked.
+export function paperResults(journal, series, { costPct }) {
+  const dayMs = TF_MS[PAPER_TF];
+  const out = [];
+  for (const record of journal) {
+    const r = paperR(record, costPct);
+    if (r == null) continue;
+    const daily = series[record.symbol]?.[PAPER_TF];
+    const exit = daily?.length ? paperExitIndex(record, daily) : -1;
+    const closedAtMs = exit >= 0 && Number.isFinite(exit) && daily[exit]
+      ? daily[exit].time * 1000 + dayMs
+      : record.barTime * 1000 + (record.barsTracked + 1) * dayMs;
+    out.push({ rule: record.profile, symbol: record.symbol, barTime: record.barTime, r, closedAtMs });
+  }
+  return out.sort((a, b) => b.closedAtMs - a.closedAtMs);
 }
 
 export function paperCostPct(cfg) {

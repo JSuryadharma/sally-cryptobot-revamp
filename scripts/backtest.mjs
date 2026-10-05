@@ -16,6 +16,9 @@
 //   --exits          also compare exit-rule variants (EXIT_VARIANTS) on the test window
 //   --early          also compare early entry (5m and 15m checks) with close-only entry
 //   --buy-early      run everything with "Buy early" (5m checks) switched on
+//   --auto           also compare the autopilot (src/engine/autopilot.js),
+//                    replayed day by day from the paper results known each day,
+//                    with each breakout run on its own
 //
 // Output: console summary + benchmarks/v2-<timestamp>/{report.json,report.md,trades.csv}.
 import fs from 'node:fs/promises';
@@ -27,7 +30,8 @@ import { createPortfolio, markToMarket } from '../src/engine/ledger.js';
 import { fetchKlinesRange, WARMUP_BARS } from '../src/engine/candles.js';
 import { enrichCandles } from '../src/indicators.js';
 import { signalRecords, updateJournal, summarizeOutcomes } from '../src/engine/outcomes.js';
-import { updatePaperJournal, summarizePaper, paperCostPct } from '../src/engine/paperBreakout.js';
+import { updatePaperJournal, summarizePaper, paperCostPct, paperResults } from '../src/engine/paperBreakout.js';
+import { decideStrategy } from '../src/engine/autopilot.js';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 export const DEFAULT_SYMBOLS = ['BTCUSDT', 'ETHUSDT', 'BNBUSDT', 'SOLUSDT', 'XRPUSDT', 'ADAUSDT', 'DOGEUSDT', 'AVAXUSDT', 'TRXUSDT', 'APTUSDT', 'LTCUSDT', 'NEARUSDT', 'ATOMUSDT', 'INJUSDT', 'TONUSDT'];
@@ -85,6 +89,7 @@ function parseArgs(argv) {
     else if (flag === '--exits') args.exits = true;
     else if (flag === '--early') args.early = true;
     else if (flag === '--buy-early') args.buyEarly = true;
+    else if (flag === '--auto') args.auto = true;
   }
   return args;
 }
@@ -128,8 +133,39 @@ function lastCloseAt(bars, ms) {
   return found;
 }
 
+// The autopilot live: one decision per daily close from the paper trades
+// closed by then, then the engine runs to that close with the chosen strategy.
+// The paper test is replayed over all loaded history, so the first decision
+// has about as much evidence as the live backfill (WARMUP_BARS days).
+function advanceWithAutopilot(state, portfolio, series, { startMs, endMs, cfg, symbols, onGroup }) {
+  const day = TF_MS['1d'];
+  const journal = updatePaperJournal([], series, symbols, { window: { startMs: 0, endMs }, maxRecords: Infinity });
+  const results = paperResults(journal, series, { costPct: paperCostPct(cfg) });
+  const btcDaily = series[BTC_SYMBOL]['1d'];
+  const out = { transactions: [], signals: [], riskEvents: [] };
+  const decisions = [];
+  let previous = null;
+  for (let nowMs = Math.ceil(startMs / day) * day; ; nowMs = Math.min(nowMs + day, endMs)) {
+    const decision = decideStrategy({ results, btcDaily, nowMs, previous });
+    if (!previous || previous.chosen !== decision.chosen || previous.paused !== decision.paused) {
+      decisions.push({ date: new Date(nowMs).toISOString().slice(0, 10), chosen: decision.chosen, paused: decision.paused, why: decision.why });
+    }
+    previous = decision;
+    const dayCfg = resolveEngineCfg({ ...cfg, profiles: decision.profiles, autopilotPause: decision.paused ? decision.pauseReason : null });
+    const step = advance(state, portfolio, series, {
+      nowMs, startMs, usdIdrRate: USD_IDR, cfg: dayCfg, tradeSymbols: symbols, onGroup, keepAllTransactions: true
+    });
+    out.transactions.push(...step.transactions);
+    out.signals.push(...step.signals);
+    out.riskEvents.push(...step.riskEvents);
+    if (nowMs >= endMs) break;
+  }
+  return { ...out, decisions };
+}
+
 // Runs one simulation over [startMs, endMs) and returns metrics plus trades.
-export function simulate(series, { symbols, startMs, endMs, cfg }) {
+// autopilot: let autopilot.js pick the strategy each day instead of cfg.profiles.
+export function simulate(series, { symbols, startMs, endMs, cfg, autopilot = false }) {
   const state = createEngineState();
   const portfolio = createPortfolio(INITIAL_IDR);
   const equityCurve = [];
@@ -142,9 +178,11 @@ export function simulate(series, { symbols, startMs, endMs, cfg }) {
     for (const symbol of Object.keys(pf.positions)) prices[symbol] = lastCloseAt(series[symbol]['15m'], closeMs);
     equityCurve.push({ date: new Date(closeMs).toISOString().slice(0, 10), equityIdr: markToMarket(pf, prices, USD_IDR).equityIdr });
   };
-  const out = advance(state, portfolio, series, {
-    nowMs: endMs, startMs, usdIdrRate: USD_IDR, cfg, tradeSymbols: symbols, onGroup, keepAllTransactions: true
-  });
+  const out = autopilot
+    ? advanceWithAutopilot(state, portfolio, series, { startMs, endMs, cfg, symbols, onGroup })
+    : advance(state, portfolio, series, {
+      nowMs: endMs, startMs, usdIdrRate: USD_IDR, cfg, tradeSymbols: symbols, onGroup, keepAllTransactions: true
+    });
   const prices = {};
   for (const symbol of Object.keys(portfolio.positions)) prices[symbol] = lastCloseAt(series[symbol]['15m'], endMs);
   const marked = markToMarket(portfolio, prices, USD_IDR);
@@ -168,6 +206,7 @@ export function simulate(series, { symbols, startMs, endMs, cfg }) {
   // Paper-only daily breakout entry, replayed over the same window with the live tick's code.
   const paperJournal = updatePaperJournal([], series, symbols, { window: { startMs, endMs }, maxRecords: Infinity });
   metrics.paperBreakout = summarizePaper(paperJournal, { costPct: paperCostPct(cfg) });
+  if (out.decisions) metrics.autopilotDecisions = out.decisions;
   return { metrics, transactions: out.transactions, equityCurve, riskEvents: out.riskEvents };
 }
 
@@ -343,6 +382,27 @@ async function main() {
       const costly = simulate(series, { symbols: args.symbols, startMs: splitMs, endMs: args.end, cfg: resolveEngineCfg({ ...baseCfg, ...chosen, ...timing, roundTripCostPct: 0.3 }) }).metrics;
       console.log(`  ${name.padEnd(20)} ${fmtMetrics(base)} | 0.3%: exp ${costly.expectancyR ?? '-'}R, return ${costly.totalReturnPct}%`);
       return { name, ...timing, metrics: base, stressExpectancyR: costly.expectancyR };
+    });
+  }
+
+  if (args.auto) {
+    console.log('\nAutopilot vs each breakout alone, test window (0.2% / 0.3% cost):');
+    const runs = [
+      { name: '20-day breakout only', cfg: { profiles: { breakout: true, breakout55: false } } },
+      { name: '55-day breakout only', cfg: { profiles: { breakout: false, breakout55: true } } },
+      { name: 'both breakouts on', cfg: { profiles: { breakout: true, breakout55: true } } },
+      { name: 'autopilot', cfg: {}, autopilot: true }
+    ];
+    report.autopilot = runs.map((run) => {
+      const sim = (extra) => simulate(series, { symbols: args.symbols, startMs: splitMs, endMs: args.end, autopilot: run.autopilot, cfg: resolveEngineCfg({ ...baseCfg, ...run.cfg, ...extra }) }).metrics;
+      const base = sim({});
+      const costly = sim({ roundTripCostPct: 0.3 });
+      const verdictA = checkCriteria(base, costly);
+      console.log(`  ${run.name.padEnd(22)} ${fmtMetrics(base)} | 0.3%: exp ${costly.expectancyR ?? '-'}R, return ${costly.totalReturnPct}% | criteria ${verdictA.passed ? 'PASSED' : `failed ${verdictA.checks.filter((c) => !c.ok).length}`}`);
+      if (base.autopilotDecisions) {
+        for (const d of base.autopilotDecisions) console.log(`    ${d.date}: ${d.paused ? 'paused' : d.chosen} (${d.why})`);
+      }
+      return { name: run.name, metrics: base, stressExpectancyR: costly.expectancyR, stressReturnPct: costly.totalReturnPct, verdict: verdictA };
     });
   }
 

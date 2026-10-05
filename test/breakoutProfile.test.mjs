@@ -5,7 +5,7 @@ import { onBar } from '../src/engine/positionManager.js';
 import { createPortfolio } from '../src/engine/ledger.js';
 import { advance, createEngineState } from '../src/engine/core.js';
 import { updatePaperJournal } from '../src/engine/paperBreakout.js';
-import { normalize } from '../src/settings.js';
+import { normalize, engineCfgFromSettings } from '../src/settings.js';
 import { syntheticSeries } from './helpers.mjs';
 
 const RATE = 16_000;
@@ -18,15 +18,21 @@ const position = (o = {}) => ({
 const bar = (o) => ({ time: 0, open: 101, high: 102, low: 99, close: 101, atr14: 2, ema50: 90, ...o });
 
 test('breakout is the only strategy on by default', () => {
-  assert.deepEqual(cfg.profiles, { scalping: false, swing: false, trend: false, breakout: true });
+  assert.deepEqual(cfg.profiles, { scalping: false, swing: false, trend: false, breakout: true, breakout55: false });
 });
 
-test('settings saved before the switch move to breakout once, later choices stick', () => {
-  const old = normalize({ strategies: { swing: true, trend: true, scalping: false } });
-  assert.deepEqual(old.strategies, { scalping: false, swing: false, trend: false, breakout: true });
-  assert.equal(old.strategiesVersion, 2);
-  const chosen = normalize({ strategiesVersion: 2, strategies: { swing: true, trend: false, scalping: false, breakout: false } });
-  assert.deepEqual(chosen.strategies, { scalping: false, swing: true, trend: false, breakout: false });
+test('strategy switches are no longer settings: the autopilot decision sets the profiles', () => {
+  const old = normalize({ strategiesVersion: 2, strategies: { swing: true, breakout: false }, earlyEntry: true, autoTrade: { enabled: true, minConfidencePct: 60, scoreVersion: 2 } });
+  assert.equal(old.strategies, undefined);
+  assert.equal(old.earlyEntry, undefined);
+  assert.deepEqual(old.autoTrade, { enabled: true });
+  const none = engineCfgFromSettings(old);
+  assert.deepEqual(none.profiles, cfg.profiles);
+  assert.equal(none.earlyEntry, false);
+  assert.equal(none.minConfidencePct, 0);
+  const picked = engineCfgFromSettings(old, { profiles: { breakout: false, breakout55: true }, paused: true, pauseReason: 'losing' });
+  assert.deepEqual(picked.profiles, { breakout: false, breakout55: true });
+  assert.equal(picked.autopilotPause, 'losing');
 });
 
 test('breakout exits: sells at +1R, no breakeven move or trail', () => {

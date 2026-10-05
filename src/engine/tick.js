@@ -16,7 +16,8 @@ import { sizePosition } from './sizing.js';
 import { openPositionQty, sellPosition } from './ledger.js';
 import { predictCoin } from './prediction.js';
 import { signalRecords, updateJournal, summarizeOutcomes } from './outcomes.js';
-import { updatePaperJournal, summarizePaper, paperCostPct } from './paperBreakout.js';
+import { updatePaperJournal, summarizePaper, paperCostPct, paperResults } from './paperBreakout.js';
+import { decideStrategy, decisionChanged } from './autopilot.js';
 
 const LEASE_NAME = 'engine';
 const LEASE_TTL_MS = 120_000;
@@ -24,6 +25,8 @@ const TICK_LOG_KEY = 'engine-ticks.json';
 export const ENGINE_STATE_KEY = 'engine-state.json';
 export const SIGNAL_JOURNAL_KEY = 'signal-journal.json';
 export const PAPER_JOURNAL_KEY = 'paper-breakout-journal.json';
+export const AUTOPILOT_KEY = 'autopilot.json';
+const AUTOPILOT_CHANGES_MAX = 20;
 const TICK_LOG_MAX = 300;
 const STALE_AFTER_MS = 20 * 60_000;
 const SCHEDULE_MS = 5 * 60_000;
@@ -46,16 +49,45 @@ export async function withEngineLease(fn) {
   }
 }
 
+// The autopilot's latest decision (autopilot.js), with the history of changes.
+export async function readAutopilot() {
+  return readJson(AUTOPILOT_KEY, null);
+}
+
 async function loadContext() {
-  const settings = await readSettings();
-  const cfg = resolveEngineCfg(engineCfgFromSettings(settings));
+  const [settings, autopilot] = await Promise.all([readSettings(), readAutopilot()]);
+  const cfg = resolveEngineCfg(engineCfgFromSettings(settings, autopilot));
   const [portfolio, storedState, usdIdrRate] = await Promise.all([
     getPortfolio(settings),
     readJson(ENGINE_STATE_KEY, null),
     resolveUsdIdrRate(settings.usdIdrRate, settings.binanceBaseUrl)
   ]);
   const engineState = storedState?.version === 2 ? storedState : createEngineState();
-  return { settings, cfg, portfolio, engineState, usdIdrRate };
+  return { settings, cfg, portfolio, engineState, usdIdrRate, autopilot };
+}
+
+// Brings the paper test up to date, then lets the autopilot pick the strategy
+// from it. The first time, the paper test is replayed over every loaded daily
+// candle (about 200 days once BTC's 200-day average is available), so the
+// autopilot starts with evidence instead of an empty journal.
+async function updateAutopilot({ settings, series, previous, nowMs, costPct }) {
+  let paperJournal = await readJson(PAPER_JOURNAL_KEY, []);
+  const backfill = !previous?.backfilledAt;
+  paperJournal = updatePaperJournal(paperJournal, series, settings.watchlist, backfill ? { window: { startMs: 0, endMs: nowMs } } : {});
+  const decision = decideStrategy({
+    results: paperResults(paperJournal, series, { costPct }),
+    btcDaily: series[BTC_SYMBOL]?.['1d'],
+    nowMs,
+    previous
+  });
+  const changed = decisionChanged(previous, decision);
+  const changes = previous?.changes || [];
+  const autopilot = {
+    ...decision,
+    backfilledAt: previous?.backfilledAt || new Date(nowMs).toISOString(),
+    changes: changed ? [{ at: decision.decidedAt, chosen: decision.chosen, paused: decision.paused, why: decision.why }, ...changes].slice(0, AUTOPILOT_CHANGES_MAX) : changes
+  };
+  return { paperJournal, autopilot, changed: changed && Boolean(previous) };
 }
 
 // Every signal the engine flags, taken or skipped, followed until it reaches
@@ -108,19 +140,32 @@ async function notifyResults(notifications, out, cfg) {
 // One full engine pass. Caller holds the lease.
 async function enginePass({ notifications = new NotificationCenter() } = {}) {
   const startedAt = Date.now();
-  const { settings, cfg, portfolio, engineState, usdIdrRate } = await loadContext();
+  const context = await loadContext();
+  const { settings, portfolio, engineState, usdIdrRate } = context;
   const held = Object.keys(portfolio.positions || {});
   const symbols = [...new Set([...settings.watchlist, ...held, BTC_SYMBOL])];
   const { series, live, errors } = await loadLiveSeries(symbols, { baseUrl: settings.binanceBaseUrl, nowMs: startedAt });
+  const { paperJournal, autopilot, changed } = await updateAutopilot({
+    settings, series, previous: context.autopilot, nowMs: startedAt, costPct: paperCostPct(context.cfg)
+  });
+  const cfg = resolveEngineCfg(engineCfgFromSettings(settings, autopilot));
 
   // Auto-trade off stops new entries only; open positions keep their stops.
   const tradeSymbols = settings.autoTrade.enabled ? settings.watchlist.filter((s) => series[s]) : [];
   const out = advance(engineState, portfolio, series, { nowMs: startedAt, live: true, usdIdrRate, cfg, tradeSymbols });
   portfolio.updatedAt = new Date().toISOString();
   const journal = updateJournal(await readSignalJournal(), signalRecords(out.signals, cfg), series);
-  const paperJournal = updatePaperJournal(await readJson(PAPER_JOURNAL_KEY, []), series, settings.watchlist);
-  await writeJsonMany({ [PORTFOLIO_KEY]: portfolio, [ENGINE_STATE_KEY]: engineState, [SIGNAL_JOURNAL_KEY]: journal, [PAPER_JOURNAL_KEY]: paperJournal });
+  await writeJsonMany({
+    [PORTFOLIO_KEY]: portfolio, [ENGINE_STATE_KEY]: engineState, [SIGNAL_JOURNAL_KEY]: journal,
+    [PAPER_JOURNAL_KEY]: paperJournal, [AUTOPILOT_KEY]: autopilot
+  });
   await notifyResults(notifications, out, cfg);
+  if (changed) {
+    await notifications.notify({
+      title: autopilot.paused ? 'Autopilot paused new buys' : `Autopilot: ${profilesFor(cfg)[autopilot.chosen]?.label || autopilot.chosen}`,
+      message: autopilot.summary, level: autopilot.paused ? 'warning' : 'info', category: 'trade'
+    });
+  }
 
   const coins = {};
   for (const symbol of new Set([...settings.watchlist, ...held])) {
@@ -140,7 +185,8 @@ async function enginePass({ notifications = new NotificationCenter() } = {}) {
       symbol: t.symbol, type: t.type, partial: Boolean(t.partial), price: t.price, profile: t.profile,
       realizedProfitIdr: t.realizedProfitIdr ?? null, rMultiple: t.rMultiple ?? null, reason: t.reason
     })),
-    riskEvents: out.riskEvents
+    riskEvents: out.riskEvents,
+    autopilot: { chosen: autopilot.chosen, paused: autopilot.paused, changed }
   };
 }
 
@@ -265,13 +311,13 @@ function activityFrom(log) {
 }
 
 export async function readEngineStatus() {
-  const [log, coinsCache, settings, storedState] = await Promise.all([readTickLog(), readCoinsCache(), readSettings(), readJson(ENGINE_STATE_KEY, null)]);
+  const [log, coinsCache, settings, storedState, autopilot] = await Promise.all([readTickLog(), readCoinsCache(), readSettings(), readJson(ENGINE_STATE_KEY, null), readAutopilot()]);
   const last = log[0] || null;
   const lastCompleted = log.find((t) => !t.error) || null;
   const lastTickAt = lastCompleted?.startedAt || null;
   const lastMs = lastTickAt ? new Date(lastTickAt).getTime() : null;
   const ageMs = lastMs != null ? Date.now() - lastMs : null;
-  const cfg = resolveEngineCfg(engineCfgFromSettings(settings));
+  const cfg = resolveEngineCfg(engineCfgFromSettings(settings, autopilot));
   const pause = storedState?.risk ? entryBlock(storedState.risk, Date.now(), cfg) : null;
   return {
     lastTick: last,
@@ -284,6 +330,7 @@ export async function readEngineStatus() {
     recentErrors: log.slice(0, 20).filter((t) => t.error || t.symbolsFailed?.length).map((t) => ({
       startedAt: t.startedAt, error: t.error || null, symbolsFailed: t.symbolsFailed || []
     })),
+    autopilot,
     halt: pause ? { reason: pause, until: storedState.risk.haltedUntilMs ? new Date(storedState.risk.haltedUntilMs).toISOString() : null, untilEndOfDay: Boolean(storedState.risk.haltDayKey) } : null,
     activity: activityFrom(log)
   };

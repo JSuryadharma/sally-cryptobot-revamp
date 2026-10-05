@@ -41,6 +41,18 @@ function lastClosedIndex(bars, tf, ms) {
   return found;
 }
 
+// Index of the first bar opened after `time`, or -1. Binary search: the
+// backtest's autopilot replay calls advance() once per day.
+function firstAfter(bars, time) {
+  let lo = 0;
+  let hi = bars.length;
+  while (lo < hi) {
+    const mid = (lo + hi) >> 1;
+    if (bars[mid].time > time) hi = mid; else lo = mid + 1;
+  }
+  return lo < bars.length ? lo : -1;
+}
+
 function symbolState(state, symbol) {
   if (!state.symbols[symbol]) state.symbols[symbol] = { lastBarTime: {}, cooldownUntilMs: {} };
   const s = state.symbols[symbol];
@@ -106,7 +118,7 @@ function buildEvents(state, portfolio, series, { nowMs, startMs, live, cfg, trad
         start = live ? bars.length - 1 : bars.findIndex((b) => closeMsOf(b, tf) > startMs);
         if (start < 0) continue;
       } else {
-        start = bars.findIndex((b) => b.time > lastSeen);
+        start = firstAfter(bars, lastSeen);
         if (start < 0) continue;
       }
       const heldProfile = holding && profilesFor(cfg)[holding.profile];
@@ -316,6 +328,7 @@ export function advance(state, portfolio, series, opts) {
         else if (live && nowMs - closeMs > maxDelayMs) skip = 'missed-late: tick ran too long after the bar closed';
         else if (signal.score < cfg.minConfidencePct) skip = `score ${signal.score} below ${cfg.minConfidencePct}`;
         else if (blocked) skip = `entries paused: ${blocked}`;
+        else if (cfg.autopilotPause) skip = `autopilot paused: ${cfg.autopilotPause}`;
         else if (cooldownUntil && closeMs < cooldownUntil) skip = profile.cooldownAfterAnyExit ? 'cooldown: the last trade closed on this candle' : 'cooldown after stop-out';
         if (skip) { out.signals.push({ ...base, taken: false, skip }); continue; }
         candidates.push({ ...base, signal, event, profile, early });

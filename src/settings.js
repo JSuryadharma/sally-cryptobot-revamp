@@ -1,5 +1,5 @@
 import { readJson, writeJson } from './storage.js';
-import { PROFILES, DEFAULT_ENGINE_CFG } from './engine/config.js';
+import { DEFAULT_ENGINE_CFG } from './engine/config.js';
 
 const SETTINGS_FILE = 'settings.json';
 
@@ -11,16 +11,9 @@ const SETTINGS_FILE = 'settings.json';
 function defaultSettings() {
   return {
     watchlist: ['BTCUSDT', 'ETHUSDT', 'BNBUSDT', 'SOLUSDT', 'XRPUSDT'],
-    autoTrade: {
-      enabled: true,
-      // Minimum v2 setup score (0-100) to enter. 0 = the validated default:
-      // the backtests found the score ranks setups but is not a useful gate.
-      minConfidencePct: 0
-    },
-    strategies: { ...DEFAULT_ENGINE_CFG.profiles },
-    // Buy on the 15m candle that breaks the trigger instead of waiting for the
-    // 4h/daily close. Off until it has proved itself in the backtest.
-    earlyEntry: DEFAULT_ENGINE_CFG.earlyEntry,
+    // Which strategy trades is not a setting: the autopilot
+    // (engine/autopilot.js) picks it on every tick from the paper results.
+    autoTrade: { enabled: true },
     riskPerTradePct: DEFAULT_ENGINE_CFG.riskPerTradePct,
     maxPortfolioRiskPct: DEFAULT_ENGINE_CFG.maxPortfolioRiskPct,
     dailyLossLimitPct: DEFAULT_ENGINE_CFG.dailyLossLimitPct,
@@ -101,22 +94,9 @@ export function normalize(raw, watchlistFallback) {
   const base = defaultSettings();
   return {
     watchlist: boundedList(raw.watchlist, watchlistFallback || base.watchlist),
-    autoTrade: {
-      enabled: raw.autoTrade?.enabled !== false,
-      // The pre-v2 engine stored 55 here, on a different score scale; only a
-      // value saved after the v2 switch (marked scoreVersion 2) is honored.
-      minConfidencePct: raw.autoTrade?.scoreVersion === 2
-        ? boundedNumber(raw.autoTrade?.minConfidencePct, base.autoTrade.minConfidencePct, 0, 100)
-        : base.autoTrade.minConfidencePct,
-      scoreVersion: 2
-    },
-    // Settings saved before the breakout switch (no strategiesVersion 2) move
-    // to the new defaults once: breakout on, the losing pullback profiles off.
-    strategies: Object.fromEntries(Object.keys(PROFILES).map((key) => [
-      key, raw.strategiesVersion === 2 && typeof raw.strategies?.[key] === 'boolean' ? raw.strategies[key] : base.strategies[key]
-    ])),
-    strategiesVersion: 2,
-    earlyEntry: typeof raw.earlyEntry === 'boolean' ? raw.earlyEntry : base.earlyEntry,
+    // The strategy switches, "Buy early" and the minimum setup score that used
+    // to live here are gone: stored values are dropped on the next save.
+    autoTrade: { enabled: raw.autoTrade?.enabled !== false },
     riskPerTradePct: boundedNumber(raw.riskPerTradePct, base.riskPerTradePct, 0.1, 5),
     maxPortfolioRiskPct: boundedNumber(raw.maxPortfolioRiskPct, base.maxPortfolioRiskPct, 0.5, 20),
     dailyLossLimitPct: boundedNumber(raw.dailyLossLimitPct, base.dailyLossLimitPct, 0.5, 20),
@@ -174,7 +154,6 @@ export async function updateSettings(patch) {
     ...current,
     ...patch,
     autoTrade: { ...current.autoTrade, ...(patch.autoTrade || {}) },
-    strategies: { ...current.strategies, ...(patch.strategies || {}) },
     telegram: { ...current.telegram, ...(patch.telegram || {}) },
     ai: { ...current.ai, ...(patch.ai || {}) }
   };
@@ -210,22 +189,20 @@ export function publicSettings(settings) {
     refreshIntervalSec: settings.refreshIntervalSec,
     topMoversCount: settings.topMoversCount,
     minQuoteVolumeUsdt: settings.minQuoteVolumeUsdt,
-    strategies: settings.strategies,
-    earlyEntry: settings.earlyEntry,
-    earlyTf: DEFAULT_ENGINE_CFG.earlyTf,
     riskPerTradePct: settings.riskPerTradePct,
     maxPortfolioRiskPct: settings.maxPortfolioRiskPct,
     dailyLossLimitPct: settings.dailyLossLimitPct,
     maxConsecutiveLosses: settings.maxConsecutiveLosses,
     drawdownHaltPct: settings.drawdownHaltPct,
     slippagePct: settings.slippagePct,
-    minTradeQuoteVolumeUsdt: settings.minTradeQuoteVolumeUsdt,
-    strategyProfiles: Object.fromEntries(Object.values(PROFILES).map((p) => [p.key, { label: p.label, triggerTf: p.triggerTf, filterTf: p.filterTf }]))
+    minTradeQuoteVolumeUsdt: settings.minTradeQuoteVolumeUsdt
   };
 }
 
-// Engine configuration for the live tick and manual trades, from the stored settings.
-export function engineCfgFromSettings(settings) {
+// Engine configuration for the live tick and manual trades, from the stored
+// settings and the autopilot's latest decision (autopilot.js). Without a
+// decision yet, the engine defaults apply (the 20-day breakout).
+export function engineCfgFromSettings(settings, autopilot = null) {
   return {
     riskPerTradePct: settings.riskPerTradePct,
     maxPortfolioRiskPct: settings.maxPortfolioRiskPct,
@@ -233,13 +210,14 @@ export function engineCfgFromSettings(settings) {
     tradeAllocationPct: settings.tradeAllocationPct,
     roundTripCostPct: settings.roundTripCostPct,
     slippagePct: settings.slippagePct,
-    minConfidencePct: settings.autoTrade.minConfidencePct,
+    minConfidencePct: 0,
     minTradeQuoteVolumeUsdt: settings.minTradeQuoteVolumeUsdt,
     dailyLossLimitPct: settings.dailyLossLimitPct,
     maxConsecutiveLosses: settings.maxConsecutiveLosses,
     drawdownHaltPct: settings.drawdownHaltPct,
     timeZone: settings.timeZone,
-    earlyEntry: settings.earlyEntry,
-    profiles: { ...settings.strategies }
+    earlyEntry: false,
+    profiles: autopilot?.profiles ? { ...autopilot.profiles } : { ...DEFAULT_ENGINE_CFG.profiles },
+    autopilotPause: autopilot?.paused ? autopilot.pauseReason : null
   };
 }

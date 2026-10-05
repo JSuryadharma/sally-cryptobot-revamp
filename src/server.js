@@ -13,7 +13,7 @@ import { runAndStoreBacktest, VERDICT_KEY } from './backtestRunner.js';
 import { readCoinsCache } from './coinsCache.js';
 import { checkConnection } from './pgClient.js';
 import { checkBearer } from './auth.js';
-import { handleTickRequest, readEngineStatus, readPredictionAccuracy, readPaperBreakout, runTick, runTickIfDue, runManualTrade } from './engine/tick.js';
+import { handleTickRequest, readEngineStatus, readPredictionAccuracy, readPaperBreakout, runTick, runTickIfDue, runManualTrade, readAutopilot } from './engine/tick.js';
 import { loadChartCandles } from './engine/candles.js';
 
 const notifications = new NotificationCenter();
@@ -176,7 +176,7 @@ async function route(req, res) {
         symbols: body.symbols || settings.watchlist,
         months: Math.min(Number(body.months) || 1, 6),
         baseUrl: settings.binanceBaseUrl,
-        engineCfg: engineCfgFromSettings(settings),
+        engineCfg: engineCfgFromSettings(settings, await readAutopilot()),
         tradeAllocationPct: settings.tradeAllocationPct
       });
       return sendJson(res, 200, payload);

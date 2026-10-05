@@ -170,12 +170,15 @@ function livePrice(coin) {
 function liveChange(coin) { return state.prices[coin.symbol]?.changePct ?? coin.latest?.changePct ?? 0; }
 function headline(coin) { return coin?.prediction?.headline || null; }
 const STRATEGY_NOTES = {
-  breakout: 'Buys a daily close above the 20-day high while Bitcoin is above its 200-day average. Sells at +1R or after 30 days. The only strategy that made money on the research test period.',
-  swing: 'Pullback on 4h candles. Lost money on the 2025-26 research test period.',
-  trend: 'Pullback on daily candles. Lost money on the 2025-26 research test period.',
-  scalping: 'Lost money in every backtest after costs. Use with care.'
+  breakout: 'Buys a daily close above the 20-day high while Bitcoin is above its 200-day average. Sells at +1R, otherwise after 30 days.',
+  breakout55: 'Buys a daily close above the 55-day high while Bitcoin is above its 200-day average. Sells at +2R, otherwise after 30 days.'
 };
-const PROFILE_SHORT = { swing: 'Swing', trend: 'Trend', scalping: 'Scalp', breakout: 'Breakout' };
+const AUTOPILOT_STATUS = {
+  ok: ['good', 'Measured'],
+  learning: ['', 'Learning'],
+  benched: ['bad', 'Benched']
+};
+const PROFILE_SHORT = { swing: 'Swing', trend: 'Trend', scalping: 'Scalp', breakout: 'Breakout', breakout55: 'Breakout 55' };
 function shortProfile(h) { return h?.profile ? `${PROFILE_SHORT[h.profile] || h.profile} · ${TF_LABEL[h.timeframe] || ''}` : ''; }
 function stageOf(coin) { return headline(coin)?.stage || 'blocked'; }
 
@@ -248,6 +251,7 @@ function robotStatus() {
   const nextText = next == null ? '' : next > 0 ? `, next in ~${Math.max(1, Math.round(next / 60000))} min` : ', next any moment';
   const sub = `Last check ${fmtAgo(s.ageMs)}${nextText}.`;
   if (s.halt) return { cls: 'warn', title: 'New entries are paused', sub: `${s.halt.reason}. ${sub}` };
+  if (s.autopilot?.paused) return { cls: 'warn', title: 'Autopilot paused new buys', sub: `${s.autopilot.summary} ${sub}` };
   if (!s.autoTradeEnabled) return { cls: 'warn', title: 'Watching only', sub: `Auto-trade is off, so the robot won't open trades. ${sub}` };
   return { cls: 'ok', title: 'Robot is running', sub };
 }
@@ -274,6 +278,7 @@ function renderDashboard() {
   $('statusChips').innerHTML = [
     `<span class="pill ${inPlay ? 'warn' : ''}">${inPlay} coin${inPlay === 1 ? '' : 's'} setting up</span>`,
     `<span class="pill">${positions}/${max} positions</span>`,
+    state.status?.autopilot ? `<span class="pill pill-soft">Autopilot: ${escapeHtml(PROFILE_SHORT[state.status.autopilot.chosen] || state.status.autopilot.chosen)}</span>` : '',
     state.settings ? `<span class="pill">Risk ${state.settings.riskPerTradePct}% per trade</span>` : ''
   ].join('');
 
@@ -311,31 +316,16 @@ function renderDecision() {
   ring.dataset.period = String(TF_MS[next.timeframe]);
   ring.classList.toggle('signal', atNext.length > 0);
   const names = (list) => [...new Set(list.map((x) => base(x.coin.symbol)))].slice(0, 3).join(', ');
+  // Buys happen at the trigger candle's close (the daily close for the
+  // breakouts the autopilot trades), so the countdown is to that close.
   let text;
-  if (state.settings?.earlyEntry && inPlayOf(pool).length) {
-    const soon = inPlayOf(pool);
-    const checkTf = TF_MS[state.settings.earlyTf] ? state.settings.earlyTf : '5m';
-    const nextCheck = Math.ceil(Date.now() / TF_MS[checkTf]) * TF_MS[checkTf];
-    $('decisionCountdown').dataset.deadline = String(nextCheck);
-    ring.dataset.deadline = String(nextCheck);
-    ring.dataset.period = String(TF_MS[checkTf]);
-    ring.classList.add('signal');
-    text = `Buy early is on: checked every ${TF_WORD[checkTf]} candle, next at <b>${escapeHtml(fmtClock(nextCheck))}</b>. ${escapeHtml(names(soon))} could fire as soon as price breaks the trigger.`;
-  } else if (state.settings?.earlyEntry) {
-    // Buy early reacts to price, but only for coins whose setup (trend plus a
-    // pullback) already stands on closed candles, and new setups only form at
-    // a candle close. With none set up, that close is the next chance.
-    text = `Buy early is on, but no coin has a setup ready to buy yet. New setups can only form when a candle closes: the next ${TF_WORD[next.timeframe]} close is at <b>${escapeHtml(fmtClock(next.decisionAt))}</b>.`;
+  if (atNext.length) {
+    text = `The ${TF_WORD[next.timeframe]} candle closes at <b>${escapeHtml(fmtClock(next.decisionAt))}</b>. ${escapeHtml(names(atNext))} could fire then.`;
+  } else if (laterPlay) {
+    const later = inPlayOf(pool.filter((x) => x.h.decisionAt === laterPlay.h.decisionAt));
+    text = `Next ${TF_WORD[next.timeframe]} check at ${escapeHtml(fmtClock(next.decisionAt))}, no coin set up for it. ${escapeHtml(names(later))} could fire at the ${TF_WORD[laterPlay.h.timeframe]} close, ${escapeHtml(fmtClock(laterPlay.h.decisionAt))}.`;
   } else {
-    const off = ' Buy early is off in Settings, so buys wait for the candle close.';
-    if (atNext.length) {
-      text = `The ${TF_WORD[next.timeframe]} candle closes at <b>${escapeHtml(fmtClock(next.decisionAt))}</b>. ${escapeHtml(names(atNext))} could fire then.${off}`;
-    } else if (laterPlay) {
-      const later = inPlayOf(pool.filter((x) => x.h.decisionAt === laterPlay.h.decisionAt));
-      text = `Next ${TF_WORD[next.timeframe]} check at ${escapeHtml(fmtClock(next.decisionAt))}, no coin set up for it. ${escapeHtml(names(later))} could fire at the ${TF_WORD[laterPlay.h.timeframe]} close, ${escapeHtml(fmtClock(laterPlay.h.decisionAt))}.${off}`;
-    } else {
-      text = `No coin is set up yet. The next ${TF_WORD[next.timeframe]} check is at ${escapeHtml(fmtClock(next.decisionAt))}.${off}`;
-    }
+    text = `No coin is set up yet. The next ${TF_WORD[next.timeframe]} check is at ${escapeHtml(fmtClock(next.decisionAt))}.`;
   }
   $('decisionText').innerHTML = text;
 }
@@ -989,17 +979,12 @@ function renderSettings() {
   const s = state.settings;
   if (!s) return;
   $('autoTradeToggle').checked = s.autoTrade.enabled;
-  const strategyEntries = Object.entries(s.strategyProfiles || {}).sort(([a], [b]) => (a === 'scalping') - (b === 'scalping'));
-  $('strategyList').innerHTML = strategyEntries.map(([key, p]) => `
-    <label class="strategy-row"><span><b>${escapeHtml(p.label)}</b><small>${STRATEGY_NOTES[key] || `Trades ${TF_WORD[p.triggerTf]} candles, trend from ${TF_WORD[p.filterTf]} chart.`}</small></span>
-    <input type="checkbox" role="switch" data-strategy="${key}" ${s.strategies?.[key] ? 'checked' : ''} /></label>`).join('');
-  $('earlyEntryToggle').checked = Boolean(s.earlyEntry);
+  renderAutopilot();
   $('setRiskPerTrade').value = s.riskPerTradePct;
   $('setMaxPositions').value = s.maxOpenPositions;
   $('setPortfolioRisk').value = s.maxPortfolioRiskPct;
   $('setDailyLoss').value = s.dailyLossLimitPct;
   $('setLossStreak').value = s.maxConsecutiveLosses;
-  $('setMinScore').value = s.autoTrade.minConfidencePct;
 
   $('settingsWatchlist').innerHTML = s.watchlist.map((sym) => `<span class="tag">${escapeHtml(base(sym))}<button data-remove="${sym}" aria-label="Remove ${escapeHtml(sym)}">&times;</button></span>`).join('');
   $('settingsWatchlist').querySelectorAll('[data-remove]').forEach((b) => b.addEventListener('click', async () => {
@@ -1025,6 +1010,37 @@ function renderSettings() {
   renderAdminTokenState();
 }
 
+// What the autopilot (src/engine/autopilot.js) chose on the last engine check
+// and why, from the paper test results. Read-only: there is nothing to switch.
+function renderAutopilot() {
+  const a = state.status?.autopilot;
+  const panel = $('autopilotPanel');
+  if (!a) {
+    panel.innerHTML = '<div class="muted">The autopilot picks the strategy on the next engine check.</div>';
+    return;
+  }
+  const r = (v) => (v == null ? '-' : `${v >= 0 ? '+' : ''}${v}R`);
+  const regime = a.regime?.known
+    ? `<span class="pill ${a.regime.btcAbove200d ? 'good' : 'warn'}">BTC ${a.regime.btcAbove200d ? 'above' : 'below'} its 200-day average</span>`
+    : '<span class="pill">BTC trend not known yet</span>';
+  const rows = a.candidates.map((c) => {
+    const [cls, word] = AUTOPILOT_STATUS[c.status] || ['', c.status];
+    const active = c.profile === a.chosen && !a.paused;
+    const measured = c.closed
+      ? `Paper test, last ${c.closed} closed: ${r(c.avgR)} a trade after costs, ${Math.round(c.winPct)}% winners.`
+      : 'No closed paper trades yet.';
+    return `<div class="strategy-row"><span><b>${escapeHtml(c.label)}</b><small>${escapeHtml(STRATEGY_NOTES[c.profile] || '')} ${escapeHtml(measured)} Research: ${escapeHtml(c.research)}.</small></span>
+      <span class="stack tight" style="align-items:flex-end">${active ? '<span class="pill pill-soft">Trading</span>' : ''}<span class="pill ${cls}">${word}</span></span></div>`;
+  }).join('');
+  const changes = (a.changes || []).slice(0, 5).map((ch) => `<li>${escapeHtml(fmtClock(Date.parse(ch.at)))}: ${ch.paused ? 'paused new buys' : escapeHtml(PROFILE_SHORT[ch.chosen] || ch.chosen)} (${escapeHtml(ch.why)})</li>`).join('');
+  panel.innerHTML = `
+    <div class="muted">${escapeHtml(a.summary)}</div>
+    <div>${regime}</div>
+    ${rows}
+    <small class="muted">Not traded: 4h and daily pullbacks and scalping, which lost money on the research test period. A strategy is benched when its last ${a.params?.window ?? 20} paper trades average ${a.params?.benchBelowR ?? -0.15}R or worse, and comes back when they recover.</small>
+    ${changes ? `<details><summary class="muted">Recent changes</summary><ul class="muted">${changes}</ul></details>` : ''}`;
+}
+
 function renderAdminTokenState() {
   const el = $('adminTokenState');
   if (el) el.textContent = readAdminToken() ? 'Admin token saved on this device.' : 'No admin token saved on this device.';
@@ -1035,13 +1051,8 @@ $('autoTradeToggle').addEventListener('change', async (e) => {
   catch (err) { e.target.checked = !e.target.checked; note('tradingNote', err.message, 'bad'); }
 });
 $('saveTrading').addEventListener('click', async () => {
-  const strategies = {};
-  document.querySelectorAll('[data-strategy]').forEach((el) => { strategies[el.dataset.strategy] = el.checked; });
   try {
     await saveSettings({
-      strategies,
-      earlyEntry: $('earlyEntryToggle').checked,
-      autoTrade: { minConfidencePct: Number($('setMinScore').value) },
       riskPerTradePct: Number($('setRiskPerTrade').value),
       maxOpenPositions: Number($('setMaxPositions').value),
       maxPortfolioRiskPct: Number($('setPortfolioRisk').value),

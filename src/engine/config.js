@@ -46,7 +46,7 @@ export const PROFILES = {
   // closes.
   breakout: {
     key: 'breakout',
-    label: 'Breakout (daily, BTC above its 200-day average)',
+    label: 'Breakout 20-day (daily, BTC above its 200-day average)',
     entry: 'breakout',
     triggerTf: '1d',
     filterTf: '1d',
@@ -59,6 +59,27 @@ export const PROFILES = {
     breakeven: false,
     earlyEntry: false,
     // No re-entry on the candle that closed the last trade, as in the research.
+    cooldownAfterAnyExit: true,
+    cooldownBars: 1,
+    barsPer24h: 1
+  },
+  // The other rule that made money in both research periods: the 55-day high
+  // with a +2R target. The autopilot (autopilot.js) runs it instead of the
+  // 20-day breakout when the paper test shows it doing better.
+  breakout55: {
+    key: 'breakout55',
+    label: 'Breakout 55-day (daily, BTC above its 200-day average)',
+    entry: 'breakout',
+    triggerTf: '1d',
+    filterTf: '1d',
+    breakoutLookback: 55,
+    stopAtr: 2,
+    targetR: 2,
+    timeStopBars: 30,
+    timeStopMinR: Infinity,
+    trailAtrMult: null,
+    breakeven: false,
+    earlyEntry: false,
     cooldownAfterAnyExit: true,
     cooldownBars: 1,
     barsPer24h: 1
@@ -137,8 +158,12 @@ export const DEFAULT_ENGINE_CFG = {
   trailMult: 1,
   timeZone: 'Asia/Jakarta',
   // The 4h/daily pullback (swing, trend) lost money on the test period of the
-  // entry research, so breakout is the only strategy on by default.
-  profiles: { scalping: false, swing: false, trend: false, breakout: true },
+  // entry research, so breakout is the only strategy on by default. Live, the
+  // autopilot (autopilot.js) picks the profiles on every tick.
+  profiles: { scalping: false, swing: false, trend: false, breakout: true, breakout55: false },
+  // Set by the autopilot when every candidate strategy is losing in the paper
+  // test: signals are still recorded, but no new position is opened.
+  autopilotPause: null,
   setup: SETUP_PARAMS
 };
 

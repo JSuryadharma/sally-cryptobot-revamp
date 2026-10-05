@@ -39,27 +39,31 @@ const INITIAL_IDR = 10_000_000;
 // Only used with --train > 0. Kept small: every extra knob raises the odds of
 // fitting noise.
 export const GRID = {
-  trailMult: [0.75, 1, 1.25],
   btcGate: [false, true],
   enableBreakout: [false, true]
 };
 
+// The exits before 2026-10-05 (breakeven at +1R, ATR trail, no target); the
+// variants below start from them so their results stay comparable to PR #2.
+const OLD_EXITS = { trailing: true, breakevenStop: true, targetR: null };
+
 // Exit rules compared by --exits. Entries are unchanged, so differences come
 // from the exits alone. partialAtR also sets where the stop moves to breakeven.
 export const EXIT_VARIANTS = [
-  { name: 'old: checks at 4h/daily close only', cfg: { exitTf: null } },
-  { name: 'old + fixed target +1.5R', cfg: { exitTf: null, targetR: 1.5 } },
-  { name: '5m checks (breakeven at +1R, ATR trail)', cfg: { exitTf: '5m' } },
-  { name: '5m + fixed target +1R', cfg: { exitTf: '5m', targetR: 1 } },
-  { name: '5m + fixed target +1.5R', cfg: { exitTf: '5m', targetR: 1.5 } },
-  { name: '5m + fixed target +2R', cfg: { exitTf: '5m', targetR: 2 } },
-  { name: '5m + fixed target +3R', cfg: { exitTf: '5m', targetR: 3 } },
-  { name: '5m + half at +1R, trail the rest', cfg: { exitTf: '5m', partialFraction: 0.5 } },
-  { name: '5m + half at +1R, rest at +2R', cfg: { exitTf: '5m', partialFraction: 0.5, targetR: 2 } },
-  { name: '5m + tight trail (half ATR mult)', cfg: { exitTf: '5m', trailMult: 0.5 } },
-  { name: '5m + +1.5R target, no time stop', cfg: { exitTf: '5m', targetR: 1.5, timeStopMult: 100 } },
-  { name: '5m + +2R target, no time stop', cfg: { exitTf: '5m', targetR: 2, timeStopMult: 100 } },
-  { name: '5m + breakeven at +0.75R, +1.5R target', cfg: { exitTf: '5m', partialAtR: 0.75, targetR: 1.5 } }
+  { name: 'live default: stop-loss + fixed target +1.5R, no breakeven/trail', cfg: {} },
+  { name: 'old: checks at 4h/daily close only', cfg: { ...OLD_EXITS, exitTf: null } },
+  { name: 'old + fixed target +1.5R', cfg: { ...OLD_EXITS, exitTf: null, targetR: 1.5 } },
+  { name: '5m checks (breakeven at +1R, ATR trail)', cfg: { ...OLD_EXITS, exitTf: '5m' } },
+  { name: '5m + fixed target +1R', cfg: { ...OLD_EXITS, exitTf: '5m', targetR: 1 } },
+  { name: '5m + fixed target +1.5R', cfg: { ...OLD_EXITS, exitTf: '5m', targetR: 1.5 } },
+  { name: '5m + fixed target +2R', cfg: { ...OLD_EXITS, exitTf: '5m', targetR: 2 } },
+  { name: '5m + fixed target +3R', cfg: { ...OLD_EXITS, exitTf: '5m', targetR: 3 } },
+  { name: '5m + half at +1R, trail the rest', cfg: { ...OLD_EXITS, exitTf: '5m', partialFraction: 0.5 } },
+  { name: '5m + half at +1R, rest at +2R', cfg: { ...OLD_EXITS, exitTf: '5m', partialFraction: 0.5, targetR: 2 } },
+  { name: '5m + tight trail (half ATR mult)', cfg: { ...OLD_EXITS, exitTf: '5m', trailMult: 0.5 } },
+  { name: '5m + +1.5R target, no time stop', cfg: { ...OLD_EXITS, exitTf: '5m', targetR: 1.5, timeStopMult: 100 } },
+  { name: '5m + +2R target, no time stop', cfg: { ...OLD_EXITS, exitTf: '5m', targetR: 2, timeStopMult: 100 } },
+  { name: '5m + breakeven at +0.75R, +1.5R target', cfg: { ...OLD_EXITS, exitTf: '5m', partialAtR: 0.75, targetR: 1.5 } }
 ];
 
 export const CRITERIA = { minTrades: 60, minProfitFactor: 1.3, maxDrawdownPct: 12, maxSymbolProfitShare: 0.4 };

@@ -10,6 +10,8 @@ import { syntheticSeries, cutSeries } from './helpers.mjs';
 
 const RATE = 16_000;
 const cfg = resolveEngineCfg({ profiles: { swing: true, trend: true, breakout: false }, minTradeQuoteVolumeUsdt: 0 });
+// The exits before 2026-10-05: breakeven at +1R, then the ATR trail, no target.
+const trailCfg = { ...cfg, trailing: true, breakevenStop: true, targetR: null };
 const scalp = PROFILES.scalping;
 
 function position(overrides = {}) {
@@ -61,7 +63,7 @@ test('onBar: a bar touching both stop and 1R counts as a stop', () => {
 });
 
 test('onBar: with a partial configured, 1R sells part and moves the stop to breakeven plus costs', () => {
-  const partialCfg = { ...cfg, partialFraction: 0.5 };
+  const partialCfg = { ...trailCfg, partialFraction: 0.5 };
   const { fills, updates } = onBar(position(), bar({ high: 102.1, close: 101.5 }), scalp, partialCfg);
   assert.equal(fills[0].exitKind, 'partial');
   assert.equal(fills[0].price, 102);
@@ -69,11 +71,21 @@ test('onBar: with a partial configured, 1R sells part and moves the stop to brea
   assert.ok(updates.stopPrice >= 100 * (1 + cfg.roundTripCostPct / 100) - 1e-9);
 });
 
-test('onBar: default (no partial) still arms breakeven at 1R without selling', () => {
-  const { fills, updates } = onBar(position(), bar({ high: 102.1, close: 101.5 }), scalp, cfg);
+test('onBar: with breakeven on and no partial, 1R arms breakeven without selling', () => {
+  const { fills, updates } = onBar(position(), bar({ high: 102.1, close: 101.5 }), scalp, trailCfg);
   assert.equal(fills.length, 0);
   assert.equal(updates.partialTaken, true);
   assert.ok(updates.stopPrice >= 100 * (1 + cfg.roundTripCostPct / 100) - 1e-9);
+});
+
+test('onBar: default exits keep the stop-loss, no breakeven or trail, sell at +1.5R', () => {
+  const p = position({ highWaterMark: 102.9, mfeR: 1.45 });
+  const held = onBar(p, bar({ high: 102.9, close: 102.8, atr14: 0.5 }), scalp, cfg);
+  assert.equal(held.fills.length, 0);
+  assert.equal(held.updates.stopPrice, 98);
+  const { fills } = onExitBar(p, bar({ high: 103.2 }), scalp, cfg, 0.5);
+  assert.equal(fills.at(-1).exitKind, 'target');
+  assert.equal(fills.at(-1).price, 103);
 });
 
 test('onBar: fixed target exits the whole position', () => {
@@ -84,7 +96,7 @@ test('onBar: fixed target exits the whole position', () => {
 
 test('onBar: trailing stop never moves down', () => {
   const p = position({ partialTaken: true, stopPrice: 101, highWaterMark: 104 });
-  const { updates } = onBar(p, bar({ open: 102, high: 103, low: 101.5, close: 102, atr14: 2 }), scalp, cfg);
+  const { updates } = onBar(p, bar({ open: 102, high: 103, low: 101.5, close: 102, atr14: 2 }), scalp, trailCfg);
   assert.equal(updates.stopPrice, 101);
 });
 
@@ -95,10 +107,10 @@ test('onExitBar: a 5m candle hits the target without waiting for the trigger clo
 });
 
 test('onExitBar: reaching 1R moves the stop to breakeven for the next candle, not this one', () => {
-  const { fills, updates } = onExitBar(position(), bar({ high: 102.1, low: 99 }), scalp, cfg, 1);
+  const { fills, updates } = onExitBar(position(), bar({ high: 102.1, low: 99 }), scalp, trailCfg, 1);
   assert.equal(fills.length, 0);
   assert.ok(updates.stopPrice >= 100 * (1 + cfg.roundTripCostPct / 100) - 1e-9);
-  const next = onExitBar({ ...position(), ...updates }, bar({ open: 100.5, low: 100.1 }), scalp, cfg, 1);
+  const next = onExitBar({ ...position(), ...updates }, bar({ open: 100.5, low: 100.1 }), scalp, trailCfg, 1);
   assert.equal(next.fills[0].exitKind, 'stop');
   assert.equal(next.updates, null);
 });

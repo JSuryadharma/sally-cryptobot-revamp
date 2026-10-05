@@ -1,4 +1,4 @@
-import { profileTimeStopBars, profileTrailAtr, profileTargetR, profileTimeStopMinR } from './config.js';
+import { profileTimeStopBars, profileTrailAtr, profileTargetR, profileTimeStopMinR, profileBreakeven } from './config.js';
 
 // Manages one open position across one closed trigger-timeframe bar. Pure:
 // returns the fills and the updated management fields without mutating input.
@@ -82,7 +82,7 @@ function priceStep(position, bar, profile, cfg, fills) {
   // partialTaken doubles as "1R reached": it arms breakeven and the trail even
   // when partialFraction is 0 and nothing is sold there.
   const partialPrice = position.entryPrice + cfg.partialAtR * riskPerUnit;
-  if (profile.breakeven !== false && !position.partialTaken && riskPerUnit > 0 && bar.high >= partialPrice) {
+  if (profileBreakeven(profile, cfg) && !position.partialTaken && riskPerUnit > 0 && bar.high >= partialPrice) {
     if (cfg.partialFraction > 0) {
       fills.push({ fraction: cfg.partialFraction, price: partialPrice, exitKind: 'partial', reason: `Took ${Math.round(cfg.partialFraction * 100)}% at +${cfg.partialAtR}R (${partialPrice.toPrecision(8)}); stop moved to breakeven.` });
     }

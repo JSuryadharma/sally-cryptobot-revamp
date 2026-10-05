@@ -2,7 +2,7 @@
 // evaluateSetup() the engine trades on. The still-forming candle is judged as
 // if it closed right now, which is exactly the check the engine will run when
 // that candle actually closes.
-import { profilesFor, exitTfFor, profileTargetR, profileTimeStopMinR, TF_MS, BTC_SYMBOL } from './config.js';
+import { profilesFor, exitTfFor, profileTargetR, profileTimeStopMinR, profileBreakeven, TF_MS, BTC_SYMBOL } from './config.js';
 import { evaluateSetup, placeStop } from './setups.js';
 import { sizePosition } from './sizing.js';
 import { entryBlock } from './riskGuard.js';
@@ -197,7 +197,7 @@ function exitPrediction({ position: raw, series, live, cfg, nowMs }) {
     stopKind,
     distanceToStopPct: round2(((price - position.stopPrice) / price) * 100),
     rNow: riskPerUnit > 0 ? round2((price - position.entryPrice) / riskPerUnit) : null,
-    breakevenArmPrice: profile.breakeven === false || position.partialTaken || !(riskPerUnit > 0) ? null : roundPrice(position.entryPrice + cfg.partialAtR * riskPerUnit),
+    breakevenArmPrice: !profileBreakeven(profile, cfg) || position.partialTaken || !(riskPerUnit > 0) ? null : roundPrice(position.entryPrice + cfg.partialAtR * riskPerUnit),
     targetPrice: targetR && riskPerUnit > 0 ? roundPrice(position.entryPrice + targetR * riskPerUnit) : null,
     timeStopAt: timeStopActive ? position.openedBarTime * 1000 + tfMs * (1 + timeStopBars) : null,
     // The stop and target are checked on every exit candle (5m) when exit checks are on.

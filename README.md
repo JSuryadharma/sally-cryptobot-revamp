@@ -23,7 +23,7 @@ A 24/7 crypto paper-trading robot and dashboard for Binance USDT pairs. It reads
   - Exits are never paused.
 - **Pullback exits:**
   - Stop-loss below the pullback low.
-  - Breakeven once the trade is +1R, then a wide ATR trailing stop so winners can run.
+  - Sells the whole position at a fixed take-profit of +1.5R (1.5x the stop distance above the entry). There is no breakeven move and no trailing stop.
   - A time stop for trades that go nowhere.
   - Stops fill at the stop price on the candle that touched them, even if the engine runs late.
 - **Predictions:** for every coin the dashboard shows:

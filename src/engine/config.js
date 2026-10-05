@@ -105,7 +105,14 @@ export const DEFAULT_ENGINE_CFG = {
   partialAtR: 1,
   partialFraction: 0,
   timeStopMinR: 0.5,
-  targetR: null,
+  // Exits are the stop-loss and a fixed take-profit: sell the whole position
+  // once price reaches entry + targetR x risk. A profile's own targetR wins
+  // (breakout: +1R). +1.5R was the best fixed target in the PR #2 exit
+  // comparison. The ATR trailing stop and the move to breakeven at +1R are off
+  // (Joe, 2026-10-05); the backtest's --exits still compares them.
+  targetR: 1.5,
+  trailing: false,
+  breakevenStop: false,
   trendExit: false,
   maxCatchUpBars: 96,
   // Live only: an entry is taken only while the tick runs within this share of
@@ -170,7 +177,13 @@ export function exitTfFor(profile, cfg) {
 }
 
 export function profileTrailAtr(profile, cfg) {
+  if (cfg.trailing === false) return null;
   return profile.trailAtrMult ? profile.trailAtrMult * (cfg.trailMult ?? 1) : null;
+}
+
+// Whether the stop moves to breakeven once the trade is +partialAtR R.
+export function profileBreakeven(profile, cfg) {
+  return profile.breakeven !== false && cfg.breakevenStop !== false;
 }
 
 // Exit settings a profile can pin regardless of the engine-wide config.
@@ -209,6 +222,6 @@ export function describeProfile(profileKey, cfg = DEFAULT_ENGINE_CFG) {
     slAtrMult: SETUP_PARAMS.minStopAtr,
     tpAtrMult: null,
     maxHoldBars: profileTimeStopBars(profile, cfg),
-    holdLabel: `time stop after ${profileTimeStopBars(profile, cfg)} bars (~${hours < 48 ? `${Math.round(hours)}h` : `${Math.round(hours / 24)}d`}) if not +${cfg.timeStopMinR}R`
+    holdLabel: `${profileTargetR(profile, cfg) ? `sell at +${profileTargetR(profile, cfg)}R, otherwise ` : ''}time stop after ${profileTimeStopBars(profile, cfg)} bars (~${hours < 48 ? `${Math.round(hours)}h` : `${Math.round(hours / 24)}d`}) if not +${cfg.timeStopMinR}R`
   };
 }

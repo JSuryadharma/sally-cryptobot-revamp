@@ -86,7 +86,7 @@ test('blockers explain why a ready setup would not fire', () => {
   assert.ok(headline.blockers.some((b) => b.includes('3 losing trades')));
 });
 
-test('holding: exit plan shows stop distance and the breakeven arm price', () => {
+test('holding: exit plan shows stop distance and the take-profit price', () => {
   const portfolio = createPortfolio(10_000_000);
   portfolio.positions.COINUSDT = {
     symbol: 'COINUSDT', profile: 'swing', quantity: 10, entryPrice: 100, stopPrice: 98, initialStop: 98,
@@ -95,7 +95,8 @@ test('holding: exit plan shows stop distance and the breakeven arm price', () =>
   };
   const { headline, exit } = predict(scenario(), { portfolio });
   assert.equal(headline.stage, 'holding');
-  assert.equal(exit.breakevenArmPrice, 102);
+  assert.equal(exit.breakevenArmPrice, null);
+  assert.equal(exit.targetPrice, 103);
   assert.equal(exit.stopKind, 'initial');
   assert.equal(exit.rNow, 0.5);
   assert.ok(exit.timeStopAt > 0);

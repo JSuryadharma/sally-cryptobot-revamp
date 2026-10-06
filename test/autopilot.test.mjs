@@ -24,59 +24,57 @@ function btc(closes) {
 const btcUp = btc(Array.from({ length: 260 }, (_, k) => 100 + k));
 const btcDown = btc(Array.from({ length: 260 }, (_, k) => 400 - k));
 
-test('no paper evidence yet: trades the 20-day breakout', () => {
+test('no paper evidence yet: trades the 55-day breakout', () => {
   const d = decideStrategy({ results: [], btcDaily: btcUp, nowMs: NOW });
-  assert.equal(d.chosen, 'breakout');
+  assert.equal(d.chosen, 'breakout55');
   assert.equal(d.paused, false);
-  assert.equal(d.profiles.breakout, true);
-  assert.equal(d.profiles.breakout55, false);
+  assert.equal(d.profiles.breakout55, true);
+  assert.equal(d.profiles.breakout, false);
   assert.equal(d.profiles.swing, false);
   assert.deepEqual(d.candidates.map((c) => c.status), ['learning', 'learning']);
   assert.equal(d.regime.btcAbove200d, true);
 });
 
-test('a proven 55-day breakout beats a 20-day one that is still learning', () => {
-  const d = decideStrategy({ results: [...trades('breakout20', 5, 0.5), ...trades('breakout55', 14, 0.3)], btcDaily: btcUp, nowMs: NOW });
+test('does not chase the 20-day breakout when it did better lately', () => {
+  const d = decideStrategy({ results: [...trades('breakout20', 20, 0.8), ...trades('breakout55', 20, 0.1)], btcDaily: btcUp, nowMs: NOW });
   assert.equal(d.chosen, 'breakout55');
-  assert.equal(d.candidates[1].status, 'ok');
-  assert.equal(d.candidates[1].avgR, 0.3);
+  assert.equal(d.candidates[0].status, 'ok');
+  assert.equal(d.candidates[1].avgR, 0.8);
 });
 
-test('switches only when the challenger leads by the margin', () => {
-  const close = [...trades('breakout20', 20, 0.2), ...trades('breakout55', 20, 0.25)];
-  assert.equal(decideStrategy({ results: close, btcDaily: btcUp, nowMs: NOW }).chosen, 'breakout55', 'no previous choice: best wins');
-  const kept = decideStrategy({ results: close, btcDaily: btcUp, nowMs: NOW, previous: { chosen: 'breakout' } });
-  assert.equal(kept.chosen, 'breakout');
-  assert.match(kept.why, /^kept/);
-  const clear = [...trades('breakout20', 20, 0.1), ...trades('breakout55', 20, 0.3)];
-  assert.equal(decideStrategy({ results: clear, btcDaily: btcUp, nowMs: NOW, previous: { chosen: 'breakout' } }).chosen, 'breakout55');
+test('the 20-day breakout takes over while the 55-day is benched', () => {
+  const d = decideStrategy({ results: [...trades('breakout55', 20, -0.3), ...trades('breakout20', 4, 0.1)], btcDaily: btcUp, nowMs: NOW });
+  assert.equal(d.candidates[0].status, 'benched');
+  assert.equal(d.chosen, 'breakout');
+  assert.match(d.why, /benched/);
 });
 
-test('a losing strategy is benched; when both lose, new buys pause', () => {
-  const one = decideStrategy({ results: [...trades('breakout20', 20, -0.3), ...trades('breakout55', 4, 0.1)], btcDaily: btcUp, nowMs: NOW, previous: { chosen: 'breakout' } });
-  assert.equal(one.candidates[0].status, 'benched');
-  assert.equal(one.chosen, 'breakout55');
+test('when both lose, new buys pause', () => {
   const both = decideStrategy({ results: [...trades('breakout20', 20, -0.3), ...trades('breakout55', 15, -0.2)], btcDaily: btcUp, nowMs: NOW });
   assert.equal(both.paused, true);
   assert.ok(both.pauseReason);
-  assert.equal(both.profiles.breakout, true, 'a profile stays on so signals are still recorded');
-  assert.ok(decisionChanged(one, both));
+  assert.equal(both.profiles.breakout55, true, 'a profile stays on so signals are still recorded');
+  const fine = decideStrategy({ results: [], btcDaily: btcUp, nowMs: NOW });
+  assert.ok(decisionChanged(fine, both));
   assert.ok(!decisionChanged(both, { ...both }));
 });
 
 test('results closed after the decision time are not used', () => {
   const future = trades('breakout55', 20, 1, { endMs: NOW + 30 * DAY_MS });
   const d = decideStrategy({ results: future, btcDaily: btcUp, nowMs: NOW });
-  assert.equal(d.candidates[1].closed, 0);
-  assert.equal(d.chosen, 'breakout');
+  const bad = trades('breakout55', 20, -1, { endMs: NOW + 30 * DAY_MS });
+  const d2 = decideStrategy({ results: bad, btcDaily: btcUp, nowMs: NOW });
+  assert.equal(d.candidates[0].closed, 0);
+  assert.equal(d2.chosen, 'breakout55', 'future losses do not bench it');
 });
 
 test('only the last window of closed trades counts', () => {
-  const old = trades('breakout20', 30, -1, { endMs: NOW - 40 * DAY_MS });
-  const recent = trades('breakout20', AUTOPILOT_PARAMS.window, 0.2);
+  const old = trades('breakout55', 30, -1, { endMs: NOW - 40 * DAY_MS });
+  const recent = trades('breakout55', AUTOPILOT_PARAMS.window, 0.2);
   const d = decideStrategy({ results: [...old, ...recent], btcDaily: btcUp, nowMs: NOW });
   assert.equal(d.candidates[0].closed, AUTOPILOT_PARAMS.window);
   assert.equal(d.candidates[0].avgR, 0.2);
+  assert.equal(d.chosen, 'breakout55');
 });
 
 test('BTC below its 200-day average is reported in the summary', () => {

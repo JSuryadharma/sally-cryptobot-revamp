@@ -146,7 +146,7 @@ function advanceWithAutopilot(state, portfolio, series, { startMs, endMs, cfg, s
   const decisions = [];
   let previous = null;
   for (let nowMs = Math.ceil(startMs / day) * day; ; nowMs = Math.min(nowMs + day, endMs)) {
-    const decision = decideStrategy({ results, btcDaily, nowMs, previous });
+    const decision = decideStrategy({ results, btcDaily, nowMs });
     if (!previous || previous.chosen !== decision.chosen || previous.paused !== decision.paused) {
       decisions.push({ date: new Date(nowMs).toISOString().slice(0, 10), chosen: decision.chosen, paused: decision.paused, why: decision.why });
     }

@@ -228,7 +228,6 @@ export function engineCfgFromSettings(settings, autopilot = null) {
     timeZone: settings.timeZone,
     earlyEntry: false,
     profiles: autopilot?.profiles ? { ...autopilot.profiles } : { ...DEFAULT_ENGINE_CFG.profiles },
-    autopilotPause: autopilot?.paused ? autopilot.pauseReason : null,
-    riskScale: autopilot?.riskScale ?? 1
+    autopilotPause: autopilot?.paused ? autopilot.pauseReason : null
   };
 }

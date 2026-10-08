@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { normalize, engineCfgFromSettings } from '../src/settings.js';
+import { normalize } from '../src/settings.js';
 import { DEFAULT_ENGINE_CFG } from '../src/engine/config.js';
 
 const OLD = { riskPerTradePct: 0.75, maxPortfolioRiskPct: 3, maxOpenPositions: 4, dailyLossLimitPct: 2, drawdownHaltPct: 10 };
@@ -20,10 +20,4 @@ test('risk settings edited after the sizing change stick', () => {
   const edited = normalize({ ...s, riskPerTradePct: 1.25, maxOpenPositions: 3 });
   assert.equal(edited.riskPerTradePct, 1.25);
   assert.equal(edited.maxOpenPositions, 3);
-});
-
-test('the engine config carries the autopilot riskScale', () => {
-  const s = normalize({});
-  assert.equal(engineCfgFromSettings(s).riskScale, 1);
-  assert.equal(engineCfgFromSettings(s, { riskScale: 0.5, profiles: {} }).riskScale, 0.5);
 });

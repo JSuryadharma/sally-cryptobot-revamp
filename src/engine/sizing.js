@@ -16,9 +16,7 @@ export function openRiskIdr(portfolio, usdIdrRate) {
 export function sizePosition({ portfolio, entryPrice, stopPrice, usdIdrRate, cfg }) {
   if (!(entryPrice > stopPrice) || !(stopPrice > 0)) return { qty: 0, reason: 'invalid stop' };
   const equity = bookEquityIdr(portfolio);
-  // riskScale comes from the autopilot: below 1 while the strategy's paper
-  // results don't yet justify full size.
-  const riskBudget = equity * cfg.riskPerTradePct * (cfg.riskScale ?? 1) / 100;
+  const riskBudget = equity * cfg.riskPerTradePct / 100;
   const portfolioRoom = equity * cfg.maxPortfolioRiskPct / 100 - openRiskIdr(portfolio, usdIdrRate);
   const riskIdr = Math.min(riskBudget, portfolioRoom);
   if (!(riskIdr > 0)) return { qty: 0, reason: `portfolio risk cap (${cfg.maxPortfolioRiskPct}%) reached` };

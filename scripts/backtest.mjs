@@ -151,7 +151,7 @@ function advanceWithAutopilot(state, portfolio, series, { startMs, endMs, cfg, s
       decisions.push({ date: new Date(nowMs).toISOString().slice(0, 10), chosen: decision.chosen, paused: decision.paused, why: decision.why });
     }
     previous = decision;
-    const dayCfg = resolveEngineCfg({ ...cfg, profiles: decision.profiles, autopilotPause: decision.paused ? decision.pauseReason : null, riskScale: decision.riskScale });
+    const dayCfg = resolveEngineCfg({ ...cfg, profiles: decision.profiles, autopilotPause: decision.paused ? decision.pauseReason : null });
     const step = advance(state, portfolio, series, {
       nowMs, startMs, usdIdrRate: USD_IDR, cfg: dayCfg, tradeSymbols: symbols, onGroup, keepAllTransactions: true
     });

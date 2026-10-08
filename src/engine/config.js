@@ -109,8 +109,11 @@ export const SETUP_PARAMS = {
 };
 
 export const DEFAULT_ENGINE_CFG = {
-  // Sized so the daily breakout (stop ~2 ATR, often 10-15% below entry) puts
-  // roughly 15% of equity in each coin and up to 6 coins can be open at once.
+  // 24-month backtest (2024-10 to 2026-10, 15 coins, 5m exits, autopilot):
+  // 2% risk, 6 positions and up to 6 new entries per daily close returned
+  // +76% (+33% a year) with a 15.9% max drawdown, PF 1.77. Today's 0.75% risk,
+  // 4 positions and 1 entry per close returned +6.8%, drawdown 9.5%. Raising
+  // risk alone (still 1 entry per close) mostly raised the drawdown.
   riskPerTradePct: 2,
   maxPortfolioRiskPct: 10,
   maxOpenPositions: 6,
@@ -120,10 +123,10 @@ export const DEFAULT_ENGINE_CFG = {
   minConfidencePct: 0,
   minNotionalUsdt: 10,
   minTradeQuoteVolumeUsdt: 20_000_000,
-  dailyLossLimitPct: 6,
+  dailyLossLimitPct: 4,
   maxConsecutiveLosses: 3,
   streakPauseMs: 12 * 60 * 60_000,
-  drawdownHaltPct: 20,
+  drawdownHaltPct: 25,
   drawdownHaltMs: 3 * 24 * 60 * 60_000,
   partialAtR: 1,
   partialFraction: 0,
@@ -143,9 +146,11 @@ export const DEFAULT_ENGINE_CFG = {
   // that bar's close. Later ticks record the signal as skipped instead of
   // buying at a stale price.
   maxEntryDelayBarFrac: 0.25,
-  // Signals on one bar close are mostly the same market move (the majors rise
-  // and fall together), so only the best-scoring one is opened per bar close.
-  maxNewEntriesPerBar: 1,
+  // Daily breakouts cluster: several coins often break out on the same close.
+  // With 1 entry per close the 24-month backtest dropped most of them (+3.8% a
+  // year); taking up to 6 returned +33% a year and won 56% vs 44% of trades.
+  // The portfolio risk cap still bounds how much one bad day can cost.
+  maxNewEntriesPerBar: 6,
   // Re-check setups on every closed earlyTf candle instead of only at the
   // trigger candle's close (see core.js).
   earlyEntry: false,

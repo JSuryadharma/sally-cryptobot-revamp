@@ -31,12 +31,6 @@ test('sizing risks riskPerTradePct of equity, costs included', () => {
   assert.ok(Math.abs(qty * (0.02 + 0.002) * RATE - budget) < 1);
 });
 
-test('sizing scales the risk by the autopilot riskScale', () => {
-  const pf = createPortfolio(10_000_000);
-  const { riskIdr } = sizePosition({ portfolio: pf, entryPrice: 1, stopPrice: 0.98, usdIdrRate: RATE, cfg: { ...cfg, tradeAllocationPct: 1, riskScale: 0.5 } });
-  assert.ok(Math.abs(riskIdr - 10_000_000 * cfg.riskPerTradePct / 200) < 1, `risk ${riskIdr}`);
-});
-
 test('sizing caps notional at tradeAllocationPct of equity', () => {
   const pf = createPortfolio(10_000_000);
   const { qty } = sizePosition({ portfolio: pf, entryPrice: 1, stopPrice: 0.999, usdIdrRate: RATE, cfg });

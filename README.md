@@ -18,7 +18,7 @@ A 24/7 crypto paper-trading robot and dashboard for Binance USDT pairs. It reads
   5. The newest candle closes above the previous candle's high.
   6. Price is not stretched far above the EMA20.
 - **Risk:**
-  - Each trade risks 2% of equity at its stop-loss (configurable), with position size capped at 30% of equity and up to 6 coins open. The autopilot halves that risk while the traded breakout's last 20 paper trades average less than +0.2R.
+  - Each trade risks 2% of equity at its stop-loss (configurable), with position size capped at 30% of equity, up to 6 coins open and up to 6 new buys on one daily close.
   - Total open risk is capped, and new entries pause after a daily loss, a losing streak, or a drawdown.
   - Exits are never paused.
 - **Pullback exits:**

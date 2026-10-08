@@ -109,19 +109,21 @@ export const SETUP_PARAMS = {
 };
 
 export const DEFAULT_ENGINE_CFG = {
-  riskPerTradePct: 0.75,
-  maxPortfolioRiskPct: 3,
-  maxOpenPositions: 4,
+  // Sized so the daily breakout (stop ~2 ATR, often 10-15% below entry) puts
+  // roughly 15% of equity in each coin and up to 6 coins can be open at once.
+  riskPerTradePct: 2,
+  maxPortfolioRiskPct: 10,
+  maxOpenPositions: 6,
   tradeAllocationPct: 0.3,
   roundTripCostPct: 0.2,
   slippagePct: 0.05,
   minConfidencePct: 0,
   minNotionalUsdt: 10,
   minTradeQuoteVolumeUsdt: 20_000_000,
-  dailyLossLimitPct: 2,
+  dailyLossLimitPct: 6,
   maxConsecutiveLosses: 3,
   streakPauseMs: 12 * 60 * 60_000,
-  drawdownHaltPct: 10,
+  drawdownHaltPct: 20,
   drawdownHaltMs: 3 * 24 * 60 * 60_000,
   partialAtR: 1,
   partialFraction: 0,

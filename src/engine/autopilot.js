@@ -28,7 +28,12 @@ import { PROFILES } from './config.js';
 export const AUTOPILOT_PARAMS = {
   window: 20,
   minClosed: 12,
-  benchBelowR: -0.15
+  benchBelowR: -0.15,
+  // Position size follows the evidence: full risk only while the traded rule's
+  // last WINDOW paper trades average at least fullRiskFromR, otherwise
+  // reducedRiskScale of it (still learning, or proven but only marginal).
+  fullRiskFromR: 0.2,
+  reducedRiskScale: 0.5
 };
 
 // In priority order. Research: the entry research test period (2025-07 to
@@ -100,13 +105,18 @@ export function decideStrategy({ results, btcDaily, nowMs, params = AUTOPILOT_PA
 
   const paused = !chosen;
   const active = chosen || candidates[0];
+  const fullRisk = active.status === 'ok' && active.avgR >= params.fullRiskFromR;
+  const riskScale = fullRisk ? 1 : params.reducedRiskScale;
+  const sizing = fullRisk
+    ? `full size: its last ${active.closed} paper trades average +${active.avgR}R`
+    : `half size until its last ${params.window} paper trades average at least +${params.fullRiskFromR}R`;
   const profiles = Object.fromEntries(Object.keys(PROFILES).map((key) => [key, key === active.profile]));
   const regime = regimeAt(btcDaily, nowMs);
 
   let summary;
   if (paused) summary = `New buys are paused: ${why}. The paper test keeps running and buying resumes once a breakout recovers.`;
   else if (regime.known && !regime.btcAbove200d) summary = `Trading the ${describe(active)} (${why}). Bitcoin is below its 200-day average, so no new buys until it climbs back above.`;
-  else summary = `Trading the ${describe(active)}, selling at +${active.targetR}R: ${why}.`;
+  else summary = `Trading the ${describe(active)}, selling at +${active.targetR}R: ${why}. Buying at ${sizing}.`;
 
   return {
     version: 1,
@@ -117,6 +127,7 @@ export function decideStrategy({ results, btcDaily, nowMs, params = AUTOPILOT_PA
     why,
     summary,
     profiles,
+    riskScale,
     regime,
     candidates,
     params

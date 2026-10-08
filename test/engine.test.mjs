@@ -25,9 +25,16 @@ const bar = (o) => ({ time: 0, open: 100, high: 100.5, low: 99.5, close: 100.2, 
 
 test('sizing risks riskPerTradePct of equity, costs included', () => {
   const pf = createPortfolio(10_000_000);
+  const budget = 10_000_000 * cfg.riskPerTradePct / 100;
   const { qty, riskIdr } = sizePosition({ portfolio: pf, entryPrice: 1, stopPrice: 0.98, usdIdrRate: RATE, cfg: { ...cfg, tradeAllocationPct: 1 } });
-  assert.ok(Math.abs(riskIdr - 75_000) < 1, `risk ${riskIdr}`);
-  assert.ok(Math.abs(qty * (0.02 + 0.002) * RATE - 75_000) < 1);
+  assert.ok(Math.abs(riskIdr - budget) < 1, `risk ${riskIdr}`);
+  assert.ok(Math.abs(qty * (0.02 + 0.002) * RATE - budget) < 1);
+});
+
+test('sizing scales the risk by the autopilot riskScale', () => {
+  const pf = createPortfolio(10_000_000);
+  const { riskIdr } = sizePosition({ portfolio: pf, entryPrice: 1, stopPrice: 0.98, usdIdrRate: RATE, cfg: { ...cfg, tradeAllocationPct: 1, riskScale: 0.5 } });
+  assert.ok(Math.abs(riskIdr - 10_000_000 * cfg.riskPerTradePct / 200) < 1, `risk ${riskIdr}`);
 });
 
 test('sizing caps notional at tradeAllocationPct of equity', () => {
@@ -38,7 +45,8 @@ test('sizing caps notional at tradeAllocationPct of equity', () => {
 
 test('sizing refuses when portfolio open risk is used up', () => {
   const pf = createPortfolio(10_000_000);
-  pf.positions.A = { entryPrice: 1, stopPrice: 0.9, quantity: 300_000 / (0.1 * RATE) * 1.0, investedIdr: 0 };
+  const capIdr = 10_000_000 * cfg.maxPortfolioRiskPct / 100;
+  pf.positions.A = { entryPrice: 1, stopPrice: 0.9, quantity: capIdr / (0.1 * RATE), investedIdr: 0 };
   const result = sizePosition({ portfolio: pf, entryPrice: 1, stopPrice: 0.98, usdIdrRate: RATE, cfg });
   assert.equal(result.qty, 0);
 });
@@ -159,7 +167,7 @@ test('risk: daily loss halts entries for the rest of the local day', () => {
   const risk = createRiskState();
   const day = Date.UTC(2026, 0, 5, 3);
   updateRisk(risk, 10_000_000, day, cfg);
-  const event = updateRisk(risk, 9_790_000, day + 60_000, cfg);
+  const event = updateRisk(risk, 10_000_000 * (1 - (cfg.dailyLossLimitPct + 0.1) / 100), day + 60_000, cfg);
   assert.equal(event?.kind, 'daily-loss');
   assert.ok(entryBlock(risk, day + 120_000, cfg));
   assert.equal(entryBlock(risk, day + 24 * 3_600_000, cfg), null);

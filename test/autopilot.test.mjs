@@ -59,6 +59,14 @@ test('when both lose, new buys pause', () => {
   assert.ok(!decisionChanged(both, { ...both }));
 });
 
+test('position size follows the paper evidence of the traded rule', () => {
+  const scale = (results) => decideStrategy({ results, btcDaily: btcUp, nowMs: NOW }).riskScale;
+  assert.equal(scale([]), AUTOPILOT_PARAMS.reducedRiskScale, 'learning: reduced size');
+  assert.equal(scale(trades('breakout55', 20, 0.1)), AUTOPILOT_PARAMS.reducedRiskScale, 'marginal: reduced size');
+  assert.equal(scale(trades('breakout55', 20, 0.6)), 1, 'proven: full size');
+  assert.equal(scale([...trades('breakout55', 20, -0.3), ...trades('breakout20', 20, 0.4)]), 1, 'proven fallback: full size');
+});
+
 test('results closed after the decision time are not used', () => {
   const future = trades('breakout55', 20, 1, { endMs: NOW + 30 * DAY_MS });
   const d = decideStrategy({ results: future, btcDaily: btcUp, nowMs: NOW });

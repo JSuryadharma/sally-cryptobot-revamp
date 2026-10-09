@@ -90,7 +90,12 @@ const SYMBOLS = ['AAAUSDT', 'BBBUSDT', 'CCCUSDT'];
 const series = syntheticSeries({ symbols: [...SYMBOLS, 'BTCUSDT'], bars: BARS, startMs: START, seedBase: 3 });
 const startMs = START + 210.5 * DAY_MS;
 const endMs = START + BARS * TF_MS['15m'];
+// The paper test keeps the researched 2x ATR stop and +2R target; the engine
+// profiles trade 3x ATR / +3R. Give the engine the paper exits so the two
+// can be compared trade for trade.
+const PAPER_EXITS = { breakout: { stopAtr: 2 }, breakout55: { stopAtr: 2, targetR: 2 } };
 const loose = (o = {}) => resolveEngineCfg({
+  profileOverrides: PAPER_EXITS,
   minTradeQuoteVolumeUsdt: 0, slippagePct: 0, maxOpenPositions: 50, maxNewEntriesPerBar: 50, maxPortfolioRiskPct: 100,
   tradeAllocationPct: 0.05, maxConsecutiveLosses: 1000, dailyLossLimitPct: 100, drawdownHaltPct: 100, ...o
 });

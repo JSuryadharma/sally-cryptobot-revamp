@@ -38,8 +38,8 @@ function defaultSettings() {
     // Paper trading only - this never sends a real order to Binance.
     initialBalanceIdr: 10_000_000,
     usdIdrRate: 16800,
-    tradeAllocationPct: 0.3,
-    maxOpenPositions: 4,
+    tradeAllocationPct: DEFAULT_ENGINE_CFG.tradeAllocationPct,
+    maxOpenPositions: DEFAULT_ENGINE_CFG.maxOpenPositions,
     roundTripCostPct: 0.2,
     refreshIntervalSec: 60,
     topMoversCount: 6,
@@ -90,8 +90,17 @@ function isHttpUrl(value) {
 // built-in defaults if something in the patch turns out invalid - so a bad
 // or unlucky write degrades to "keep what you had," never a silent reset to
 // BTC/ETH/BNB/SOL/XRP.
-export function normalize(raw, watchlistFallback) {
+// Settings saved before the 2026-10-08 sizing change (no sizingVersion 2) move
+// to the new risk defaults once, so the engine actually uses more capital;
+// later edits on the Settings page stick.
+const SIZING_VERSION = 2;
+const SIZING_KEYS = ['riskPerTradePct', 'maxPortfolioRiskPct', 'maxOpenPositions', 'dailyLossLimitPct', 'drawdownHaltPct'];
+
+export function normalize(input, watchlistFallback) {
   const base = defaultSettings();
+  const raw = input.sizingVersion === SIZING_VERSION
+    ? input
+    : { ...input, ...Object.fromEntries(SIZING_KEYS.map((key) => [key, base[key]])) };
   return {
     watchlist: boundedList(raw.watchlist, watchlistFallback || base.watchlist),
     // The strategy switches, "Buy early" and the minimum setup score that used
@@ -131,7 +140,8 @@ export function normalize(raw, watchlistFallback) {
     roundTripCostPct: boundedNumber(raw.roundTripCostPct, base.roundTripCostPct, 0, 5),
     refreshIntervalSec: boundedNumber(raw.refreshIntervalSec, base.refreshIntervalSec, 10, 3600),
     topMoversCount: boundedNumber(raw.topMoversCount, base.topMoversCount, 1, 20),
-    minQuoteVolumeUsdt: boundedNumber(raw.minQuoteVolumeUsdt, base.minQuoteVolumeUsdt, 0, 1_000_000_000)
+    minQuoteVolumeUsdt: boundedNumber(raw.minQuoteVolumeUsdt, base.minQuoteVolumeUsdt, 0, 1_000_000_000),
+    sizingVersion: SIZING_VERSION
   };
 }
 

@@ -58,7 +58,9 @@ test('engine breakout trades match the paper test trade for trade', () => {
   const series = syntheticSeries({ symbols: [...symbols, 'BTCUSDT'], bars: BARS, startMs: START, seedBase: 3 });
   const startMs = START + 210.5 * 86_400_000;
   const endMs = START + BARS * TF_MS['15m'];
+  // With the paper test's researched 2x ATR stop (the live profile uses 3x).
   const loose = resolveEngineCfg({
+    profileOverrides: { breakout: { stopAtr: 2 } },
     minTradeQuoteVolumeUsdt: 0, slippagePct: 0, maxOpenPositions: 50, maxNewEntriesPerBar: 50, maxPortfolioRiskPct: 100,
     tradeAllocationPct: 0.05, maxConsecutiveLosses: 1000, dailyLossLimitPct: 100, drawdownHaltPct: 100
   });

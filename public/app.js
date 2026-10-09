@@ -171,7 +171,7 @@ function liveChange(coin) { return state.prices[coin.symbol]?.changePct ?? coin.
 function headline(coin) { return coin?.prediction?.headline || null; }
 const STRATEGY_NOTES = {
   breakout: 'Buys a daily close above the 20-day high while Bitcoin is above its 200-day average. Sells at +1R, otherwise after 30 days.',
-  breakout55: 'Buys a daily close above the 55-day high while Bitcoin is above its 200-day average. Sells at +2R, otherwise after 30 days.'
+  breakout55: 'Buys a daily close above the 55-day high while Bitcoin is above its 200-day average. Sells at +3R, otherwise after 30 days.'
 };
 const AUTOPILOT_STATUS = {
   ok: ['good', 'Measured'],

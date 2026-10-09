@@ -41,7 +41,7 @@ export const PROFILES = {
   // later test period (scripts/entryResearch.mjs, 36 months, 2026-09-28), and
   // in the paper test since (paperBreakout.js). Traded exactly as researched:
   // buy the daily close above the prior 20-day high while BTC is above its
-  // 200-day average, 2x ATR stop, sell at +1R, otherwise exit after 30 days.
+  // 200-day average, sell at +1R, otherwise exit after 30 days.
   // No breakeven move or trail, and no early entry: the edge was measured on
   // closes.
   breakout: {
@@ -51,7 +51,10 @@ export const PROFILES = {
     triggerTf: '1d',
     filterTf: '1d',
     breakoutLookback: 20,
-    stopAtr: 2,
+    // 3x ATR, not the researched 2x: in the 36-month backtest (2023-10 to
+    // 2026-10, 15 coins) the 2x stop shook out many breakouts that dipped
+    // before running. See breakout55 below.
+    stopAtr: 3,
     targetR: 1,
     timeStopBars: 30,
     timeStopMinR: Infinity,
@@ -63,8 +66,7 @@ export const PROFILES = {
     cooldownBars: 1,
     barsPer24h: 1
   },
-  // The other rule that made money in both research periods: the 55-day high
-  // with a +2R target. The autopilot (autopilot.js) runs it instead of the
+  // The other rule that made money in both research periods: the 55-day high. The autopilot (autopilot.js) runs it instead of the
   // 20-day breakout when the paper test shows it doing better.
   breakout55: {
     key: 'breakout55',
@@ -73,8 +75,14 @@ export const PROFILES = {
     triggerTf: '1d',
     filterTf: '1d',
     breakoutLookback: 55,
-    stopAtr: 2,
-    targetR: 2,
+    // 36-month backtest (2023-10 to 2026-10, 15 coins, autopilot, 5m exits):
+    // 3x ATR stop with +3R returned +145% (PF 2.30, 64% wins, max drawdown
+    // 19.8%) vs +65% (PF 1.38, 49% wins, 18.0%) for 2x ATR with +2R, and won
+    // in both the first 24 and the last 12 months. The paper test
+    // (paperBreakout.js) keeps the researched 2x ATR / +2R as the autopilot's
+    // evidence, as in that backtest.
+    stopAtr: 3,
+    targetR: 3,
     timeStopBars: 30,
     timeStopMinR: Infinity,
     trailAtrMult: null,
@@ -109,19 +117,24 @@ export const SETUP_PARAMS = {
 };
 
 export const DEFAULT_ENGINE_CFG = {
-  riskPerTradePct: 0.75,
-  maxPortfolioRiskPct: 3,
-  maxOpenPositions: 4,
+  // 24-month backtest (2024-10 to 2026-10, 15 coins, 5m exits, autopilot):
+  // 2% risk, 6 positions and up to 6 new entries per daily close returned
+  // +76% (+33% a year) with a 15.9% max drawdown, PF 1.77. Today's 0.75% risk,
+  // 4 positions and 1 entry per close returned +6.8%, drawdown 9.5%. Raising
+  // risk alone (still 1 entry per close) mostly raised the drawdown.
+  riskPerTradePct: 2,
+  maxPortfolioRiskPct: 10,
+  maxOpenPositions: 6,
   tradeAllocationPct: 0.3,
   roundTripCostPct: 0.2,
   slippagePct: 0.05,
   minConfidencePct: 0,
   minNotionalUsdt: 10,
   minTradeQuoteVolumeUsdt: 20_000_000,
-  dailyLossLimitPct: 2,
+  dailyLossLimitPct: 4,
   maxConsecutiveLosses: 3,
   streakPauseMs: 12 * 60 * 60_000,
-  drawdownHaltPct: 10,
+  drawdownHaltPct: 25,
   drawdownHaltMs: 3 * 24 * 60 * 60_000,
   partialAtR: 1,
   partialFraction: 0,
@@ -141,9 +154,11 @@ export const DEFAULT_ENGINE_CFG = {
   // that bar's close. Later ticks record the signal as skipped instead of
   // buying at a stale price.
   maxEntryDelayBarFrac: 0.25,
-  // Signals on one bar close are mostly the same market move (the majors rise
-  // and fall together), so only the best-scoring one is opened per bar close.
-  maxNewEntriesPerBar: 1,
+  // Daily breakouts cluster: several coins often break out on the same close.
+  // With 1 entry per close the 24-month backtest dropped most of them (+3.8% a
+  // year); taking up to 6 returned +33% a year and won 56% vs 44% of trades.
+  // The portfolio risk cap still bounds how much one bad day can cost.
+  maxNewEntriesPerBar: 6,
   // Re-check setups on every closed earlyTf candle instead of only at the
   // trigger candle's close (see core.js).
   earlyEntry: false,

@@ -7,7 +7,7 @@ A 24/7 crypto paper-trading robot and dashboard for Binance USDT pairs. It reads
 ## What the robot does
 
 - **Strategies** (Settings > Auto-trading):
-  - **Breakout** (on by default): daily candles. Buys when a coin closes above its prior 20-day high while Bitcoin's daily close is above its 200-day average. The stop is 2x ATR below the entry. It sells at +1R, otherwise after 30 days. There is no breakeven move and no trail, so it trades exactly as researched. It was the only entry that made money both on the data it was tuned on and on the later test period of `npm run research -- --months 36`. The evidence is still thin (30-54 test trades), which is why it runs on paper.
+  - **Breakout** (on by default): daily candles. Buys when a coin closes above its prior 20-day high while Bitcoin's daily close is above its 200-day average. The stop is 3x ATR below the entry (2x in the research; 3x won both periods of the 36-month backtest). It sells at +1R (the 55-day version at +3R), otherwise after 30 days. There is no breakeven move and no trail, so it trades exactly as researched. It was the only entry that made money both on the data it was tuned on and on the later test period of `npm run research -- --months 36`. The evidence is still thin (30-54 test trades), which is why it runs on paper.
   - **Swing / Trend** (off by default): 4-hour or daily trend pullbacks. They lost money on the research test period (−0.18R to −0.51R per trade). Settings saved before the switch move to the new defaults once.
   - **Scalping** (15-minute candles) is available but off by default. It lost money in every backtest once trading costs were included.
 - **Pullback entry (Swing / Trend).** Every condition has to hold on a closed candle:

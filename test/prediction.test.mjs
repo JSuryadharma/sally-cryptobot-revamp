@@ -134,7 +134,7 @@ test('breakout: watching below the 20-day high, setting up within 1 ATR, ready a
   assert.equal(predictBreakout(breakoutScenario({ formingClose: 99.5 })).stage, 'setting-up');
   const ready = predictBreakout(breakoutScenario({ formingClose: 102 }));
   assert.equal(ready.stage, 'ready');
-  assert.equal(ready.plan.stopPrice, 98, 'stop 2x ATR below the close');
+  assert.equal(ready.plan.stopPrice, 96, 'stop 3x ATR below the close');
 });
 
 test('breakout: blocked while BTC is below its 200-day average', () => {

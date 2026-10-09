@@ -41,7 +41,7 @@ export const PROFILES = {
   // later test period (scripts/entryResearch.mjs, 36 months, 2026-09-28), and
   // in the paper test since (paperBreakout.js). Traded exactly as researched:
   // buy the daily close above the prior 20-day high while BTC is above its
-  // 200-day average, 2x ATR stop, sell at +1R, otherwise exit after 30 days.
+  // 200-day average, sell at +1R, otherwise exit after 30 days.
   // No breakeven move or trail, and no early entry: the edge was measured on
   // closes.
   breakout: {
@@ -51,7 +51,10 @@ export const PROFILES = {
     triggerTf: '1d',
     filterTf: '1d',
     breakoutLookback: 20,
-    stopAtr: 2,
+    // 3x ATR, not the researched 2x: in the 36-month backtest (2023-10 to
+    // 2026-10, 15 coins) the 2x stop shook out many breakouts that dipped
+    // before running. See breakout55 below.
+    stopAtr: 3,
     targetR: 1,
     timeStopBars: 30,
     timeStopMinR: Infinity,
@@ -63,8 +66,7 @@ export const PROFILES = {
     cooldownBars: 1,
     barsPer24h: 1
   },
-  // The other rule that made money in both research periods: the 55-day high
-  // with a +2R target. The autopilot (autopilot.js) runs it instead of the
+  // The other rule that made money in both research periods: the 55-day high. The autopilot (autopilot.js) runs it instead of the
   // 20-day breakout when the paper test shows it doing better.
   breakout55: {
     key: 'breakout55',
@@ -73,8 +75,14 @@ export const PROFILES = {
     triggerTf: '1d',
     filterTf: '1d',
     breakoutLookback: 55,
-    stopAtr: 2,
-    targetR: 2,
+    // 36-month backtest (2023-10 to 2026-10, 15 coins, autopilot, 5m exits):
+    // 3x ATR stop with +3R returned +145% (PF 2.30, 64% wins, max drawdown
+    // 19.8%) vs +65% (PF 1.38, 49% wins, 18.0%) for 2x ATR with +2R, and won
+    // in both the first 24 and the last 12 months. The paper test
+    // (paperBreakout.js) keeps the researched 2x ATR / +2R as the autopilot's
+    // evidence, as in that backtest.
+    stopAtr: 3,
+    targetR: 3,
     timeStopBars: 30,
     timeStopMinR: Infinity,
     trailAtrMult: null,

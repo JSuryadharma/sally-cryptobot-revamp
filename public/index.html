@@ -268,6 +268,23 @@
               <button id="forgetAdminToken" class="link-btn">Forget admin token on this device</button>
             </div>
           </div>
+
+          <div class="card">
+            <h2>Reset data</h2>
+            <p class="muted">Starts the paper account over. This can't be undone.</p>
+            <div class="form-grid one">
+              <label>What to clear
+                <select id="resetScope">
+                  <option value="account">Trading account: balance, trades, risk counters, activity</option>
+                  <option value="history">Also paper test, strategy record and prediction history</option>
+                  <option value="everything">Everything, settings included</option>
+                </select>
+              </label>
+              <label>Type RESET to confirm<input id="resetConfirm" autocomplete="off" /></label>
+            </div>
+            <button id="resetData" class="btn full">Reset</button>
+            <div class="form-note" id="resetNote"></div>
+          </div>
         </div>
       </section>
     </main>

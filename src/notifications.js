@@ -4,8 +4,8 @@ import { readJson, writeJson } from './storage.js';
 import { readSettings } from './settings.js';
 import crypto from 'node:crypto';
 
-const NOTIFICATIONS_FILE = 'notifications.json';
-const TELEGRAM_STATUS_FILE = 'telegram-status.json';
+export const NOTIFICATIONS_FILE = 'notifications.json';
+export const TELEGRAM_STATUS_FILE = 'telegram-status.json';
 const defaultNotifications = { items: [] };
 const defaultTelegramStatus = {
   configured: false, lastAttemptAt: null, lastSuccessAt: null, lastFailureAt: null,

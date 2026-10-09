@@ -1046,6 +1046,15 @@ function renderAdminTokenState() {
   if (el) el.textContent = readAdminToken() ? 'Admin token saved on this device.' : 'No admin token saved on this device.';
 }
 
+$('resetData').addEventListener('click', async () => {
+  if ($('resetConfirm').value.trim() !== 'RESET') { note('resetNote', 'Type RESET to confirm.', 'bad'); return; }
+  try {
+    await api('/api/admin/reset', { method: 'POST', body: { scope: $('resetScope').value } });
+    $('resetConfirm').value = '';
+    note('resetNote', 'Reset done. The robot starts fresh on its next check.', 'good');
+    loadCore();
+  } catch (e) { note('resetNote', e.message, 'bad'); }
+});
 $('autoTradeToggle').addEventListener('change', async (e) => {
   try { await saveSettings({ autoTrade: { enabled: e.target.checked } }); note('tradingNote', e.target.checked ? 'Auto-trading is on.' : 'Auto-trading is off. The robot only watches.', 'good'); loadCore(); }
   catch (err) { e.target.checked = !e.target.checked; note('tradingNote', err.message, 'bad'); }

@@ -138,6 +138,7 @@ function showView(name) {
 document.querySelectorAll('.nav-tab').forEach((btn) => btn.addEventListener('click', () => showView(btn.dataset.view)));
 document.querySelectorAll('[data-goto]').forEach((btn) => btn.addEventListener('click', () => showView(btn.dataset.goto)));
 $('backButton').addEventListener('click', () => showView('radar'));
+window.addEventListener('scroll', () => document.querySelector('.topbar').classList.toggle('scrolled', window.scrollY > 4), { passive: true });
 
 function openCoin(symbol) {
   if (symbol !== state.coinSymbol) { state.chartTf = null; state.planProfile = null; state.chartHighlight = null; }
@@ -709,7 +710,7 @@ function renderEntryPlan(coin, plan) {
   $('planHighlight').innerHTML = `
     <svg class="ring" viewBox="0 0 44 44" aria-hidden="true"><circle class="ring-track" cx="22" cy="22" r="19"/><circle class="ring-fill ${plan.stage === 'ready' ? 'bull' : 'signal'}" data-deadline="${plan.decisionAt}" data-period="${period}" cx="22" cy="22" r="19"/></svg>
     ${highlight}
-    <div style="margin-left:auto;text-align:right"><div class="muted">${TF_LABEL[plan.timeframe]} candle closes in</div><div class="big-number" data-deadline="${plan.decisionAt}">${fmtCountdown(plan.decisionAt - Date.now())}</div><div class="muted small">${escapeHtml(plan.decisionLabel)}, robot acts within ~5-15 min</div></div>`;
+    <div class="plan-countdown"><div class="muted">${TF_LABEL[plan.timeframe]} candle closes in</div><div class="big-number" data-deadline="${plan.decisionAt}">${fmtCountdown(plan.decisionAt - Date.now())}</div><div class="muted small">${escapeHtml(plan.decisionLabel)}, robot acts within ~5-15 min</div></div>`;
   $('planBlockers').innerHTML = plan.blockers?.length && plan.stage !== 'blocked'
     ? `<div class="blockers">${plan.blockers.map((b) => `<div>${escapeHtml(b)}</div>`).join('')}</div>` : '';
   $('planChecklist').innerHTML = plan.conditions.map((c) => `<div class="check ${c.na ? '' : c.ok ? 'ok' : 'fail'}">
@@ -732,7 +733,7 @@ function renderExitPlan(coin, exit) {
   const pnl = pos?.unrealizedProfitIdr ?? 0;
   $('planHighlight').innerHTML = `
     <div><div class="muted">Open result</div><div class="big-number ${pnl >= 0 ? 'up' : 'down'}">${pnl >= 0 ? '+' : ''}${fmtIdr(pnl)}</div><div class="muted">${exit.rNow != null ? `${exit.rNow >= 0 ? '+' : ''}${exit.rNow}R` : ''}</div></div>
-    ${exit.nextCheckAt ? `<div style="margin-left:auto;text-align:right"><div class="muted">Next stop check in</div><div class="big-number" data-deadline="${exit.nextCheckAt}">${fmtCountdown(exit.nextCheckAt - Date.now())}</div><div class="muted small">${escapeHtml(exit.nextCheckLabel || '')}</div></div>` : ''}`;
+    ${exit.nextCheckAt ? `<div class="plan-countdown"><div class="muted">Next stop check in</div><div class="big-number" data-deadline="${exit.nextCheckAt}">${fmtCountdown(exit.nextCheckAt - Date.now())}</div><div class="muted small">${escapeHtml(exit.nextCheckLabel || '')}</div></div>` : ''}`;
   $('planBlockers').innerHTML = '';
   $('planChecklist').innerHTML = `<div style="margin-bottom:12px">${exitBarHtml(exit)}</div>`;
   $('planTrade').innerHTML = `
@@ -1013,7 +1014,7 @@ function renderAutopilot() {
       ? `Paper test, last ${c.closed} closed: ${r(c.avgR)} a trade after costs, ${Math.round(c.winPct)}% winners.`
       : 'No closed paper trades yet.';
     return `<div class="strategy-row"><span><b>${escapeHtml(c.label)}</b><small>${escapeHtml(STRATEGY_NOTES[c.profile] || '')} ${escapeHtml(measured)} Research: ${escapeHtml(c.research)}.</small></span>
-      <span class="stack tight" style="align-items:flex-end">${active ? '<span class="pill pill-soft">Trading</span>' : ''}<span class="pill ${cls}">${word}</span></span></div>`;
+      <span class="strategy-badges">${active ? '<span class="pill pill-soft">Trading</span>' : ''}<span class="pill ${cls}">${word}</span></span></div>`;
   }).join('');
   const changes = (a.changes || []).slice(0, 5).map((ch) => `<li>${escapeHtml(fmtClock(Date.parse(ch.at)))}: ${ch.paused ? 'paused new buys' : escapeHtml(PROFILE_SHORT[ch.chosen] || ch.chosen)} (${escapeHtml(ch.why)})</li>`).join('');
   panel.innerHTML = `

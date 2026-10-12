@@ -56,16 +56,6 @@
         </div>
 
         <div class="grid-2">
-          <div class="card decision-card">
-            <div class="eyebrow">Next decision</div>
-            <div class="decision-row">
-              <svg class="ring" viewBox="0 0 44 44" aria-hidden="true"><circle class="ring-track" cx="22" cy="22" r="19"/><circle class="ring-fill" id="decisionRing" cx="22" cy="22" r="19"/></svg>
-              <div>
-                <div class="big-number" id="decisionCountdown">-</div>
-                <div class="muted" id="decisionText">Waiting for the first engine check.</div>
-              </div>
-            </div>
-          </div>
           <div class="card equity-card">
             <div class="eyebrow">Paper equity</div>
             <div class="big-number" id="equityValue">Rp -</div>
@@ -76,15 +66,26 @@
               <div><span>Realized P&amp;L</span><b id="realizedValue">-</b></div>
             </div>
           </div>
+          <div class="card decision-card">
+            <div class="eyebrow">Next decision</div>
+            <div class="decision-row">
+              <svg class="ring" viewBox="0 0 44 44" aria-hidden="true"><circle class="ring-track" cx="22" cy="22" r="19"/><circle class="ring-fill" id="decisionRing" cx="22" cy="22" r="19"/></svg>
+              <div>
+                <div class="big-number" id="decisionCountdown">-</div>
+                <div class="muted" id="decisionText">Waiting for the first engine check.</div>
+              </div>
+            </div>
+          </div>
         </div>
-
-        <div class="section-head"><h2>Closest to firing</h2><button class="link-btn" data-goto="radar">See all coins</button></div>
-        <div id="firingList" class="firing-grid"><div class="skeleton-card"></div><div class="skeleton-card"></div><div class="skeleton-card"></div></div>
 
         <div class="section-head"><h2>Open positions</h2></div>
         <div id="positionsList" class="stack"></div>
 
-        <div class="grid-2 align-start">
+        <div class="section-head"><h2>Closest to firing</h2><button class="link-btn" data-goto="radar">See all coins</button></div>
+        <div id="firingList" class="firing-grid"><div class="skeleton-card"></div><div class="skeleton-card"></div><div class="skeleton-card"></div></div>
+
+        <div class="section-head"><h2>Activity and results</h2></div>
+        <div class="grid-2 align-start results-grid">
           <div class="card">
             <div class="section-head tight"><h2>Robot activity</h2></div>
             <div id="activityList" class="activity"></div>
@@ -147,10 +148,12 @@
             <div class="coin-symbol" id="coinSymbol">-</div>
             <div class="coin-price-row"><span class="coin-price" id="coinPrice">-</span><span class="change" id="coinChange"></span></div>
           </div>
-          <span class="stage-chip" id="coinStage"></span>
-          <button id="watchlistStar" class="icon-btn" aria-label="Toggle watchlist">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01z"/></svg>
-          </button>
+          <div class="coin-top-right">
+            <span class="stage-chip" id="coinStage"></span>
+            <button id="watchlistStar" class="icon-btn" aria-label="Toggle watchlist">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01z"/></svg>
+            </button>
+          </div>
         </div>
 
         <div class="coin-grid">
@@ -172,22 +175,22 @@
             <div class="chart-wrap"><canvas id="coinChart"></canvas></div>
             <div class="chart-legend" id="chartLegend"></div>
           </div>
-        </div>
 
-        <details class="card details-card">
-          <summary>Market details <span class="muted">indicators, structure and summary</span></summary>
-          <div class="details-body">
-            <p class="muted" id="summaryText">-</p>
-            <div class="kv-grid" id="indicatorGrid"></div>
-            <div class="kv-grid" id="structureGrid"></div>
-          </div>
-        </details>
+          <details class="card details-card">
+            <summary>Market details <span class="muted summary-hint">indicators, structure and summary</span></summary>
+            <div class="details-body">
+              <p class="muted" id="summaryText">-</p>
+              <div class="kv-grid" id="indicatorGrid"></div>
+              <div class="kv-grid" id="structureGrid"></div>
+            </div>
+          </details>
 
-        <div class="card action-bar">
-          <div class="muted" id="positionDetail">No open position.</div>
-          <div class="action-buttons">
-            <button id="sellBtn" class="btn btn-sell">Sell</button>
-            <button id="buyBtn" class="btn btn-buy">Buy</button>
+          <div class="card action-bar">
+            <div class="muted action-note" id="positionDetail">No open position.</div>
+            <div class="action-buttons">
+              <button id="sellBtn" class="btn btn-sell">Sell</button>
+              <button id="buyBtn" class="btn btn-buy">Buy</button>
+            </div>
           </div>
         </div>
       </section>
@@ -250,8 +253,8 @@
             <div class="form-note" id="aiStatus"></div>
           </div>
 
-          <div class="card">
-            <h2>Advanced</h2>
+          <details class="card details-card settings-fold">
+            <summary>Advanced <span class="muted summary-hint">balance, costs, data source</span></summary>
             <div class="form-grid">
               <label>Starting balance (Rp)<input id="setInitialBalance" type="number" min="100000" step="100000" /></label>
               <label>USD/IDR fallback rate<input id="setUsdIdr" type="number" min="1000" step="10" /></label>
@@ -263,11 +266,11 @@
             <div class="form-grid one"><label>Binance data URL<input id="setBinanceUrl" placeholder="https://data-api.binance.vision" /></label></div>
             <button id="saveAdvanced" class="btn btn-primary full">Save advanced</button>
             <div class="form-note" id="advancedNote"></div>
-          </div>
+          </details>
 
-          <div class="card">
-            <h2>Reset data</h2>
-            <p class="muted">Starts the paper account over. This can't be undone.</p>
+          <details class="card details-card settings-fold danger-zone">
+            <summary>Reset data <span class="muted summary-hint">start the paper account over</span></summary>
+            <p class="muted">This can't be undone.</p>
             <div class="form-grid one">
               <label>What to clear
                 <select id="resetScope">
@@ -278,9 +281,9 @@
               </label>
               <label>Type RESET to confirm<input id="resetConfirm" autocomplete="off" /></label>
             </div>
-            <button id="resetData" class="btn full">Reset</button>
+            <button id="resetData" class="btn btn-danger full">Reset</button>
             <div class="form-note" id="resetNote"></div>
-          </div>
+          </details>
         </div>
       </section>
     </main>

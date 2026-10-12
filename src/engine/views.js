@@ -22,7 +22,7 @@ export async function buildCoinView({ symbol, series, live, cfg, portfolio, engi
     triggerKind: 'pullback',
     directionBlocked: head?.stage === 'blocked'
   };
-  const summary = await getMarketSummary({ symbol, snapshot: { latest: daily }, headline: sentence, entryOrExit, aiSettings: settings.ai });
+  const summary = await getMarketSummary({ symbol, snapshot: { latest: daily }, headline: sentence });
 
   return {
     symbol,

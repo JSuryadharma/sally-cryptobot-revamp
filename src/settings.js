@@ -22,17 +22,6 @@ function defaultSettings() {
     slippagePct: DEFAULT_ENGINE_CFG.slippagePct,
     minTradeQuoteVolumeUsdt: DEFAULT_ENGINE_CFG.minTradeQuoteVolumeUsdt,
     telegram: { enabled: true, botToken: '', chatId: '', categories: ['trade', 'ai-review'] },
-    // Optional AI advisor - default "local" mode is deterministic rule-based
-    // summarization (works immediately, no key, no cost). Switch mode to
-    // "openai" + set an API key to get a natural-language paragraph layered
-    // on top of the same computed indicators. openaiBaseUrl is overridable
-    // for an OpenAI-compatible proxy/gateway, not just api.openai.com itself.
-    ai: {
-      mode: 'local',
-      openaiBaseUrl: 'https://api.openai.com/v1/responses',
-      openaiApiKey: '',
-      model: 'gpt-4.1-mini'
-    },
     binanceBaseUrl: 'https://data-api.binance.vision',
     timeZone: 'Asia/Jakarta',
     // Paper trading only - this never sends a real order to Binance.
@@ -46,8 +35,6 @@ function defaultSettings() {
     minQuoteVolumeUsdt: 5_000_000
   };
 }
-
-const AI_MODELS = ['gpt-4.1-mini', 'gpt-4.1', 'gpt-4o', 'gpt-4o-mini', 'o4-mini'];
 
 // Matches a real Binance USDT pair, e.g. BTCUSDT (3-char ticker), DOGEUSDT (4),
 // MATICUSDT (5). Bug fix: this used to require a 5-15 char ticker before
@@ -124,13 +111,6 @@ export function normalize(input, watchlistFallback) {
         ? raw.telegram.categories.filter((c) => typeof c === 'string')
         : base.telegram.categories
     },
-    ai: {
-      mode: raw.ai?.mode === 'openai' ? 'openai' : 'local',
-      openaiBaseUrl: isHttpUrl(raw.ai?.openaiBaseUrl) ? raw.ai.openaiBaseUrl : base.ai.openaiBaseUrl,
-      // Same "don't clobber a secret with blank" rule as the Telegram token above.
-      openaiApiKey: raw.ai?.openaiApiKey || base.ai.openaiApiKey,
-      model: typeof raw.ai?.model === 'string' && raw.ai.model.trim() ? raw.ai.model.trim() : base.ai.model
-    },
     binanceBaseUrl: isHttpUrl(raw.binanceBaseUrl) ? raw.binanceBaseUrl : base.binanceBaseUrl,
     timeZone: typeof raw.timeZone === 'string' && raw.timeZone.trim() ? raw.timeZone.trim() : base.timeZone,
     initialBalanceIdr: boundedNumber(raw.initialBalanceIdr, base.initialBalanceIdr, 100_000, 10_000_000_000),
@@ -153,8 +133,7 @@ export async function readSettings() {
     ...base,
     ...stored,
     autoTrade: { ...base.autoTrade, ...stored.autoTrade },
-    telegram: { ...base.telegram, ...stored.telegram },
-    ai: { ...base.ai, ...stored.ai }
+    telegram: { ...base.telegram, ...stored.telegram }
   });
 }
 
@@ -164,8 +143,7 @@ export async function updateSettings(patch) {
     ...current,
     ...patch,
     autoTrade: { ...current.autoTrade, ...(patch.autoTrade || {}) },
-    telegram: { ...current.telegram, ...(patch.telegram || {}) },
-    ai: { ...current.ai, ...(patch.ai || {}) }
+    telegram: { ...current.telegram, ...(patch.telegram || {}) }
   };
   const next = normalize(merged, current.watchlist);
   await writeJson(SETTINGS_FILE, next);
@@ -181,13 +159,6 @@ export function publicSettings(settings) {
       enabled: settings.telegram.enabled,
       configured: Boolean(settings.telegram.botToken && settings.telegram.chatId),
       categories: settings.telegram.categories
-    },
-    ai: {
-      mode: settings.ai.mode,
-      openaiBaseUrl: settings.ai.openaiBaseUrl,
-      model: settings.ai.model,
-      configured: Boolean(settings.ai.openaiApiKey),
-      availableModels: AI_MODELS
     },
     binanceBaseUrl: settings.binanceBaseUrl,
     timeZone: settings.timeZone,

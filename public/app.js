@@ -978,12 +978,6 @@ function renderSettings() {
 
   $('telegramToggle').checked = s.telegram.enabled;
   note('telegramStatus', s.telegram.configured ? 'Bot token and chat ID are saved.' : 'Not configured yet.');
-  document.querySelectorAll('#aiModeToggle button').forEach((b) => b.classList.toggle('active', b.dataset.mode === s.ai.mode));
-  $('aiOpenaiFields').classList.toggle('hidden', s.ai.mode !== 'openai');
-  $('aiBaseUrl').value = s.ai.openaiBaseUrl || '';
-  $('aiModel').innerHTML = (s.ai.availableModels || []).map((m) => `<option ${m === s.ai.model ? 'selected' : ''}>${escapeHtml(m)}</option>`).join('');
-  note('aiStatus', s.ai.mode === 'openai' ? (s.ai.configured ? 'OpenAI key saved.' : 'Add an API key to use OpenAI.') : 'Local summaries: free and instant.');
-
   $('setInitialBalance').value = s.initialBalanceIdr;
   $('setUsdIdr').value = s.usdIdrRate;
   $('setAllocation').value = s.tradeAllocationPct;
@@ -1078,16 +1072,6 @@ $('saveTelegram').addEventListener('click', async () => {
 $('testTelegram').addEventListener('click', async () => {
   try { await api('/api/telegram/test', { method: 'POST' }); note('telegramStatus', 'Test message sent.', 'good'); }
   catch (e) { note('telegramStatus', e.message, 'bad'); }
-});
-document.querySelectorAll('#aiModeToggle button').forEach((b) => b.addEventListener('click', async () => {
-  try { await saveSettings({ ai: { mode: b.dataset.mode } }); renderSettings(); }
-  catch (e) { note('aiStatus', e.message, 'bad'); }
-}));
-$('saveAi').addEventListener('click', async () => {
-  const ai = { openaiBaseUrl: $('aiBaseUrl').value.trim(), model: $('aiModel').value };
-  if ($('aiApiKey').value.trim()) ai.openaiApiKey = $('aiApiKey').value.trim();
-  try { await saveSettings({ ai }); $('aiApiKey').value = ''; renderSettings(); note('aiStatus', 'Saved.', 'good'); }
-  catch (e) { note('aiStatus', e.message, 'bad'); }
 });
 $('saveAdvanced').addEventListener('click', async () => {
   try {

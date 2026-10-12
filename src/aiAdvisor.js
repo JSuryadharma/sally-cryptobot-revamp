@@ -1,6 +1,5 @@
-// Market summary for the coin page. Local mode (the default, no API key)
-// scores the daily candle's indicators deterministically; optional OpenAI mode
-// narrates the same numbers and never replaces them.
+// Market summary for the coin page: scores the daily candle's indicators
+// deterministically (no API key, no cost).
 
 const ADX_TREND_FLOOR = 20;
 
@@ -62,32 +61,7 @@ function localSummary({ symbol, snapshot, headline }) {
   ].join(' ').trim();
 }
 
-export async function getMarketSummary({ symbol, snapshot, headline, entryOrExit, aiSettings }) {
-  const local = localSummary({ symbol, snapshot, headline });
+export async function getMarketSummary({ symbol, snapshot, headline }) {
   const { score, points } = scoreSnapshot(snapshot);
-  const base = { mode: 'local', score, label: scoreToLabel(score), gaugePct: scoreToGaugePct(score), points, text: local, createdAt: new Date().toISOString() };
-
-  const ai = aiSettings || {};
-  if (ai.mode !== 'openai' || !ai.openaiApiKey) return base;
-
-  try {
-    const prompt = [
-      'You are a terse crypto technical-analysis assistant inside a PAPER-TRADING dashboard (no real money moves). ',
-      `Symbol: ${symbol}. Robot status: ${headline}. Robot action: ${entryOrExit?.action}.`,
-      `Daily indicators: ${JSON.stringify(points)}.`,
-      'In 2 short sentences, summarize the setup and note the key risk. Do not give financial advice or price predictions.'
-    ].join('\n');
-    const response = await fetch(ai.openaiBaseUrl || 'https://api.openai.com/v1/responses', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${ai.openaiApiKey}` },
-      body: JSON.stringify({ model: ai.model, input: prompt })
-    });
-    if (!response.ok) throw new Error(`OpenAI HTTP ${response.status}`);
-    const body = await response.json();
-    const text = body.output_text
-      || body.output?.flatMap((item) => item.content || []).map((item) => item.text).filter(Boolean).join('\n');
-    return { ...base, mode: 'openai', text: text || local };
-  } catch (error) {
-    return { ...base, mode: 'local-fallback', text: `${local} (OpenAI advisor unavailable: ${error.message})` };
-  }
+  return { mode: 'local', score, label: scoreToLabel(score), gaugePct: scoreToGaugePct(score), points, text: localSummary({ symbol, snapshot, headline }), createdAt: new Date().toISOString() };
 }

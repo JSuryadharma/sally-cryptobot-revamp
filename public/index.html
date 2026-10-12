@@ -239,22 +239,7 @@
           </div>
 
           <div class="card">
-            <h2>AI summary</h2>
-            <div class="segmented" id="aiModeToggle" role="group" aria-label="AI mode">
-              <button class="active" data-mode="local">Local (free)</button>
-              <button data-mode="openai">OpenAI</button>
-            </div>
-            <div class="form-grid one" id="aiOpenaiFields">
-              <label>API base URL<input id="aiBaseUrl" placeholder="https://api.openai.com/v1/responses" /></label>
-              <label>Model<select id="aiModel"></select></label>
-              <label>API key<input id="aiApiKey" type="password" placeholder="Leave empty to keep the saved key" /></label>
-            </div>
-            <button id="saveAi" class="btn btn-primary full">Save AI settings</button>
-            <div class="form-note" id="aiStatus"></div>
-          </div>
-
-          <details class="card details-card settings-fold">
-            <summary>Advanced <span class="muted summary-hint">balance, costs, data source</span></summary>
+            <h2>Advanced</h2>
             <div class="form-grid">
               <label>Starting balance (Rp)<input id="setInitialBalance" type="number" min="100000" step="100000" /></label>
               <label>USD/IDR fallback rate<input id="setUsdIdr" type="number" min="1000" step="10" /></label>

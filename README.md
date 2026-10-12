@@ -90,7 +90,7 @@ src/engine/       trading engine: config, setups, prediction, position manager, 
 src/server.js     http routes (dashboard API, tick endpoint, static files)
 src/settings.js   stored settings and engine configuration
 src/tradingRobot.js  stored paper portfolio
-src/aiAdvisor.js  daily-chart summary (local, or OpenAI if configured)
+src/aiAdvisor.js  daily-chart summary (rule-based, no API key)
 src/marketStructure.js  swing pivots and support/resistance for the chart
 api/engine/tick.js      Vercel function called by the cron-job.org schedule
 scripts/backtest.mjs    walk-forward backtester

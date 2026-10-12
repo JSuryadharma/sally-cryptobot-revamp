@@ -50,14 +50,13 @@ The engine lives in `src/engine/`. `core.js` is pure and shared by the live tick
 ## Setup
 
 ```bash
-cp .env.example .env    # DATABASE_URL (Postgres), PORT, ADMIN_TOKEN, ENGINE_TICK_SECRET
+cp .env.example .env    # DATABASE_URL (Postgres), PORT, ENGINE_TICK_SECRET
 npm install
 npm start               # http://localhost:3300
 ```
 
 On Vercel, set these environment variables:
 - `DATABASE_URL`
-- `ADMIN_TOKEN`: protects settings changes and manual trades. Backtests run without it. The dashboard asks for it once.
 - `ENGINE_TICK_SECRET`
 
 On cron-job.org, create a job that POSTs to `https://<your-app>/api/engine/tick` with the header `Authorization: Bearer <ENGINE_TICK_SECRET>`, on a custom schedule at minutes `1,6,11,16,21,26,31,36,41,46,51,56`.

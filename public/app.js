@@ -86,25 +86,9 @@ function fmtClock(ms) {
   catch { return new Date(ms).toLocaleString(); }
 }
 
-// --- API (admin token for state-changing calls) --------------------------------
-const ADMIN_TOKEN_KEY = 'sally-admin-token';
-function readAdminToken() { try { return localStorage.getItem(ADMIN_TOKEN_KEY) || ''; } catch { return ''; } }
-function saveAdminToken(token) { try { token ? localStorage.setItem(ADMIN_TOKEN_KEY, token) : localStorage.removeItem(ADMIN_TOKEN_KEY); } catch { /* storage blocked */ } }
-
-async function api(path, opts, { retried = false } = {}) {
-  const headers = { 'Content-Type': 'application/json' };
-  const token = readAdminToken();
-  if (opts?.method && opts.method !== 'GET' && token) headers.Authorization = `Bearer ${token}`;
-  const res = await fetch(path, opts && { method: opts.method || 'GET', headers, body: opts.body ? JSON.stringify(opts.body) : undefined });
-  if (res.status === 401 && !retried) {
-    const entered = window.prompt('Admin token required for this action:');
-    if (entered) {
-      saveAdminToken(entered.trim());
-      renderAdminTokenState();
-      return api(path, opts, { retried: true });
-    }
-  }
-  if (res.status === 401) { saveAdminToken(''); renderAdminTokenState(); }
+// --- API --------------------------------------------------------------------------
+async function api(path, opts) {
+  const res = await fetch(path, opts && { method: opts.method || 'GET', headers: { 'Content-Type': 'application/json' }, body: opts.body ? JSON.stringify(opts.body) : undefined });
   if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || `Request failed (${res.status})`);
   return res.json();
 }
@@ -1007,7 +991,6 @@ function renderSettings() {
   $('setSlippage').value = s.slippagePct;
   $('setMinVolume').value = s.minTradeQuoteVolumeUsdt;
   $('setBinanceUrl').value = s.binanceBaseUrl;
-  renderAdminTokenState();
 }
 
 // What the autopilot (src/engine/autopilot.js) chose on the last engine check
@@ -1039,11 +1022,6 @@ function renderAutopilot() {
     ${rows}
     <small class="muted">Not traded: 4h and daily pullbacks and scalping, which lost money on the research test period. A strategy is benched when its last ${a.params?.window ?? 20} paper trades average ${a.params?.benchBelowR ?? -0.15}R or worse, and comes back when they recover.</small>
     ${changes ? `<details><summary class="muted">Recent changes</summary><ul class="muted">${changes}</ul></details>` : ''}`;
-}
-
-function renderAdminTokenState() {
-  const el = $('adminTokenState');
-  if (el) el.textContent = readAdminToken() ? 'Admin token saved on this device.' : 'No admin token saved on this device.';
 }
 
 $('resetData').addEventListener('click', async () => {
@@ -1126,7 +1104,6 @@ $('saveAdvanced').addEventListener('click', async () => {
     note('advancedNote', 'Saved. Takes effect on the next engine check.', 'good');
   } catch (e) { note('advancedNote', e.message, 'bad'); }
 });
-$('forgetAdminToken').addEventListener('click', () => { saveAdminToken(''); renderAdminTokenState(); });
 
 // --- clock: countdowns and rings, once a second --------------------------------------
 function tickClock() {

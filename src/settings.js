@@ -1,7 +1,7 @@
 import { readJson, writeJson } from './storage.js';
 import { DEFAULT_ENGINE_CFG } from './engine/config.js';
 
-const SETTINGS_FILE = 'settings.json';
+export const SETTINGS_FILE = 'settings.json';
 
 // Everything the app needs to run its own business logic lives here now,
 // not in .env - watchlist, trading parameters, Binance's base URL, Telegram,

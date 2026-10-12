@@ -15,6 +15,7 @@ import { checkConnection } from './pgClient.js';
 import { checkBearer } from './auth.js';
 import { handleTickRequest, readEngineStatus, readPredictionAccuracy, readPaperBreakout, runTick, runTickIfDue, runManualTrade, readAutopilot } from './engine/tick.js';
 import { loadChartCandles } from './engine/candles.js';
+import { resetData } from './engine/reset.js';
 
 const notifications = new NotificationCenter();
 const CHART_TFS = ['15m', '1h', '4h', '1d'];
@@ -38,7 +39,8 @@ const ADMIN_ROUTES = [
   /^\/api\/settings$/,
   /^\/api\/coins\/[A-Z0-9]+\/trade$/i,
   /^\/api\/telegram\/test$/,
-  /^\/api\/notifications\/read$/
+  /^\/api\/notifications\/read$/,
+  /^\/api\/admin\/reset$/
 ];
 
 async function route(req, res) {
@@ -74,6 +76,12 @@ async function route(req, res) {
   if (pathname === '/api/engine/tick') {
     const { status, body } = await handleTickRequest(req);
     return sendJson(res, status, body);
+  }
+
+  if (pathname === '/api/admin/reset' && method === 'POST') {
+    const body = await readBody(req);
+    const { status, body: result } = await resetData(String(body.scope || ''));
+    return sendJson(res, status, result);
   }
 
   if (pathname === '/api/engine/status' && method === 'GET') {

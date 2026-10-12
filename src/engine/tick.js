@@ -21,7 +21,7 @@ import { decideStrategy, decisionChanged } from './autopilot.js';
 
 const LEASE_NAME = 'engine';
 const LEASE_TTL_MS = 120_000;
-const TICK_LOG_KEY = 'engine-ticks.json';
+export const TICK_LOG_KEY = 'engine-ticks.json';
 export const ENGINE_STATE_KEY = 'engine-state.json';
 export const SIGNAL_JOURNAL_KEY = 'signal-journal.json';
 export const PAPER_JOURNAL_KEY = 'paper-breakout-journal.json';

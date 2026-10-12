@@ -12,7 +12,6 @@ import { readJson } from './storage.js';
 import { runAndStoreBacktest, VERDICT_KEY } from './backtestRunner.js';
 import { readCoinsCache } from './coinsCache.js';
 import { checkConnection } from './pgClient.js';
-import { checkBearer } from './auth.js';
 import { handleTickRequest, readEngineStatus, readPredictionAccuracy, readPaperBreakout, runTick, runTickIfDue, runManualTrade, readAutopilot } from './engine/tick.js';
 import { loadChartCandles } from './engine/candles.js';
 import { resetData } from './engine/reset.js';
@@ -33,25 +32,10 @@ const server = http.createServer((req, res) => {
 const hub = new WebSocketHub(server);
 notifications.setBroadcast((message) => hub.broadcast(message));
 
-// Backtest runs are open (no admin token): they only read public market data
-// and overwrite the stored backtest verdict.
-const ADMIN_ROUTES = [
-  /^\/api\/settings$/,
-  /^\/api\/coins\/[A-Z0-9]+\/trade$/i,
-  /^\/api\/telegram\/test$/,
-  /^\/api\/notifications\/read$/,
-  /^\/api\/admin\/reset$/
-];
-
 async function route(req, res) {
   const url = new URL(req.url, `http://${req.headers.host}`);
   const pathname = url.pathname;
   const method = req.method;
-
-  if (method !== 'GET' && ADMIN_ROUTES.some((pattern) => pattern.test(pathname))) {
-    const denied = checkBearer(req, 'ADMIN_TOKEN');
-    if (denied) return sendJson(res, denied.status, { error: denied.error });
-  }
 
   if (pathname === '/api/health' && method === 'GET') {
     const db = await checkConnection();

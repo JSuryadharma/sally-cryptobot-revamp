@@ -59,6 +59,8 @@ On Vercel, set these environment variables:
 - `DATABASE_URL`
 - `ENGINE_TICK_SECRET`
 
+To run it on your own server (VPS) instead, with Docker, Postgres and automatic HTTPS, follow [docs/DEPLOY-SERVER.md](docs/DEPLOY-SERVER.md).
+
 On cron-job.org, create a job that POSTs to `https://<your-app>/api/engine/tick` with the header `Authorization: Bearer <ENGINE_TICK_SECRET>`, on a custom schedule at minutes `1,6,11,16,21,26,31,36,41,46,51,56`.
 
 ## Backtesting
@@ -93,6 +95,7 @@ src/tradingRobot.js  stored paper portfolio
 src/aiAdvisor.js  daily-chart summary (rule-based, no API key)
 src/marketStructure.js  swing pivots and support/resistance for the chart
 api/engine/tick.js      Vercel function called by the cron-job.org schedule
+deploy/                 self-hosted server stack (Docker Compose, Caddy, DB copy script)
 scripts/backtest.mjs    walk-forward backtester
 public/           dashboard (plain HTML/CSS/JS, no build step)
 test/             node --test suites

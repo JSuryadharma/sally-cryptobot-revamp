@@ -8,3 +8,4 @@ reports/
 robocrypto.log
 .DS_Store
 _to_delete/
+deploy/.env

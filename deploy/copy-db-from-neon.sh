@@ -10,9 +10,16 @@ set -euo pipefail
 
 SOURCE_URL="${1:?Usage: ./copy-db-from-neon.sh '<current DATABASE_URL>'}"
 
-echo "Dumping kv_store from the current database..."
+# A ?schema=NAME on the URL is the app's own setting, not something pg_dump knows:
+# take it off, dump NAME.kv_store, and load it as public.kv_store on the server.
+SCHEMA=$(printf '%s' "$SOURCE_URL" | sed -n 's/.*[?&]schema=\([A-Za-z0-9_]*\).*/\1/p')
+SCHEMA=${SCHEMA:-public}
+SOURCE_URL=$(printf '%s' "$SOURCE_URL" | sed -E 's/([?&])schema=[A-Za-z0-9_]*&?/\1/; s/[?&]$//')
+
+echo "Dumping $SCHEMA.kv_store from the current database..."
 docker run --rm postgres:17-alpine \
-  pg_dump "$SOURCE_URL" --table=kv_store --clean --if-exists --no-owner --no-privileges \
+  pg_dump "$SOURCE_URL" --table="$SCHEMA.kv_store" --clean --if-exists --no-owner --no-privileges \
+  | sed "s/\b$SCHEMA\.kv_store\b/public.kv_store/g" \
   > kv_store.sql
 
 echo "Loading it into the server database..."

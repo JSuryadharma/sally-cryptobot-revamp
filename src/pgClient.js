@@ -21,7 +21,23 @@ import pg from 'pg';
 
 const { Pool } = pg;
 
-const CONNECTION_STRING = process.env.DATABASE_URL || process.env.POSTGRES_URL || '';
+const RAW_URL = process.env.DATABASE_URL || process.env.POSTGRES_URL || '';
+
+// Optional ?schema=<name> on the URL (Prisma-style): keeps the app's table in its own
+// Postgres schema, e.g. postgresql://user:pass@host:5432/db?schema=sallybot.
+// pg itself doesn't know this parameter, so it's taken off the URL here and the table
+// name is qualified instead (works through poolers like Neon's/PgBouncer too).
+function splitSchema(url) {
+  const match = url.match(/[?&]schema=([^&]*)/);
+  if (!match) return { connectionString: url, schema: '' };
+  const schema = decodeURIComponent(match[1]);
+  if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(schema)) throw new Error(`Invalid schema name in DATABASE_URL: "${schema}" (letters, digits and _ only).`);
+  const connectionString = url.replace(/([?&])schema=[^&]*&?/, '$1').replace(/[?&]$/, '');
+  return { connectionString, schema };
+}
+
+const { connectionString: CONNECTION_STRING, schema: SCHEMA } = splitSchema(RAW_URL);
+const TABLE = SCHEMA ? `"${SCHEMA}".kv_store` : 'kv_store';
 
 // A small pool, not pg's default of 10 - serverless functions each get their
 // own process, so a generous per-instance pool multiplies across concurrent
@@ -59,13 +75,13 @@ function getPool() {
 
 async function ensureSchema() {
   if (!schemaReady) {
-    schemaReady = getPool().query(`
-      CREATE TABLE IF NOT EXISTS kv_store (
+    schemaReady = (SCHEMA ? getPool().query(`CREATE SCHEMA IF NOT EXISTS "${SCHEMA}"`) : Promise.resolve()).then(() => getPool().query(`
+      CREATE TABLE IF NOT EXISTS ${TABLE} (
         key TEXT PRIMARY KEY,
         value JSONB NOT NULL,
         updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
       )
-    `);
+    `));
   }
   return schemaReady;
 }
@@ -76,14 +92,14 @@ export function isPgConfigured() {
 
 export async function pgGet(key) {
   await ensureSchema();
-  const { rows } = await getPool().query('SELECT value FROM kv_store WHERE key = $1', [key]);
+  const { rows } = await getPool().query(`SELECT value FROM ${TABLE} WHERE key = $1`, [key]);
   return rows.length ? rows[0].value : null;
 }
 
 export async function pgSet(key, value) {
   await ensureSchema();
   await getPool().query(
-    `INSERT INTO kv_store (key, value, updated_at) VALUES ($1, $2, now())
+    `INSERT INTO ${TABLE} AS kv (key, value, updated_at) VALUES ($1, $2, now())
      ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = now()`,
     [key, JSON.stringify(value)]
   );
@@ -96,7 +112,7 @@ export async function pgSetMany(entries) {
     await client.query('BEGIN');
     for (const [key, value] of entries) {
       await client.query(
-        `INSERT INTO kv_store (key, value, updated_at) VALUES ($1, $2, now())
+        `INSERT INTO ${TABLE} AS kv (key, value, updated_at) VALUES ($1, $2, now())
          ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = now()`,
         [key, JSON.stringify(value)]
       );
@@ -118,9 +134,9 @@ export async function pgTryAcquireLease(key, owner, ttlMs) {
   await ensureSchema();
   const now = Date.now();
   const { rows } = await getPool().query(
-    `INSERT INTO kv_store (key, value, updated_at) VALUES ($1, $2, now())
+    `INSERT INTO ${TABLE} AS kv (key, value, updated_at) VALUES ($1, $2, now())
      ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = now()
-     WHERE COALESCE((kv_store.value->>'expiresAt')::bigint, 0) < $3
+     WHERE COALESCE((kv.value->>'expiresAt')::bigint, 0) < $3
      RETURNING key`,
     [key, JSON.stringify({ owner, expiresAt: now + ttlMs }), now]
   );
@@ -129,12 +145,12 @@ export async function pgTryAcquireLease(key, owner, ttlMs) {
 
 export async function pgReleaseLease(key, owner) {
   await ensureSchema();
-  await getPool().query(`DELETE FROM kv_store WHERE key = $1 AND value->>'owner' = $2`, [key, owner]);
+  await getPool().query(`DELETE FROM ${TABLE} WHERE key = $1 AND value->>'owner' = $2`, [key, owner]);
 }
 
 export async function pgDel(key) {
   await ensureSchema();
-  await getPool().query('DELETE FROM kv_store WHERE key = $1', [key]);
+  await getPool().query(`DELETE FROM ${TABLE} WHERE key = $1`, [key]);
 }
 
 // Real connection check (not just "is DATABASE_URL set") - actually pings

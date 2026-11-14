@@ -35,7 +35,7 @@ A 24/7 crypto paper-trading robot and dashboard for Binance USDT pairs. It reads
 
 ## How it runs
 
-The server does no trading on its own timer on Vercel. An external scheduler ([cron-job.org](https://cron-job.org)) calls `POST /api/engine/tick` every 5 minutes, at minutes 1, 6, 11, … 56, with the header `Authorization: Bearer <ENGINE_TICK_SECRET>`. That lands each tick 1 minute after every 5-minute candle close, including each 4h and daily close. Each tick:
+The server does no trading on its own timer on Vercel. An external scheduler ([cron-job.org](https://cron-job.org)) calls `POST /api/engine/tick` every 5 minutes, at minutes 1, 6, 11, … 56. That lands each tick 1 minute after every 5-minute candle close, including each 4h and daily close. Each tick:
 
 1. Takes a Postgres lease, so two ticks can never trade at once.
 2. Replays any candles it missed.
@@ -50,18 +50,16 @@ The engine lives in `src/engine/`. `core.js` is pure and shared by the live tick
 ## Setup
 
 ```bash
-cp .env.example .env    # DATABASE_URL (Postgres), PORT, ENGINE_TICK_SECRET
+cp .env.example .env    # DATABASE_URL (Postgres, optional ?schema=), PORT
 npm install
 npm start               # http://localhost:3300
 ```
 
-On Vercel, set these environment variables:
-- `DATABASE_URL`
-- `ENGINE_TICK_SECRET`
+On Vercel, set the `DATABASE_URL` environment variable.
 
 To run it on your own server (VPS) instead, with Docker, Postgres and automatic HTTPS, follow [docs/DEPLOY-SERVER.md](docs/DEPLOY-SERVER.md).
 
-On cron-job.org, create a job that POSTs to `https://<your-app>/api/engine/tick` with the header `Authorization: Bearer <ENGINE_TICK_SECRET>`, on a custom schedule at minutes `1,6,11,16,21,26,31,36,41,46,51,56`.
+On cron-job.org, create a job that POSTs to `https://<your-app>/api/engine/tick` on a custom schedule at minutes `1,6,11,16,21,26,31,36,41,46,51,56`.
 
 ## Backtesting
 

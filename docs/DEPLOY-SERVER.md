@@ -74,15 +74,12 @@ openssl rand -hex 24     # copy the output: this is POSTGRES_PASSWORD
 nano .env
 ```
 
-Fill in three lines (save with `Ctrl+O`, `Enter`, quit with `Ctrl+X`):
+Fill in two lines (save with `Ctrl+O`, `Enter`, quit with `Ctrl+X`):
 
 ```
 DOMAIN=YOUR_DOMAIN
 POSTGRES_PASSWORD=<the random value you just generated>
-ENGINE_TICK_SECRET=<the same secret cron-job.org uses today>
 ```
-
-For `ENGINE_TICK_SECRET`, reuse the value from Vercel (Project → Settings → Environment Variables) so the cron-job.org job keeps working with only a URL change. Or make a new one with `openssl rand -hex 32` and update the job in Step 8.
 
 ## Step 6. Start it
 
@@ -123,11 +120,11 @@ In cron-job.org, edit the existing job:
 
 - **URL:** `https://YOUR_DOMAIN/api/engine/tick`
 - **Method:** POST
-- **Header:** `Authorization: Bearer <ENGINE_TICK_SECRET>` (unchanged if you reused it)
+- **Header:** none needed (an old `Authorization` header is harmless)
 - **Schedule:** custom, minutes `1,6,11,16,21,26,31,36,41,46,51,56`, every hour, every day (unchanged)
 - **Enable** the job again (it was paused in Step 7).
 
-Press "Test run" once. It should return HTTP 200 with JSON. `401` means the secret doesn't match `deploy/.env`.
+Press "Test run" once. It should return HTTP 200 with JSON.
 
 ## Step 9. Check it's ticking
 
@@ -198,6 +195,7 @@ Copy a backup to your Mac with `scp root@YOUR_SERVER_IP:~/backup-*.sql.gz ~/Down
 
 - **The server survives reboots.** Every service has `restart: unless-stopped`, and Docker starts on boot.
 - **The dashboard is public**, same as on Vercel today: anyone who knows the address can change settings or press Reset (paper money only). If you ever want a password in front of it, replace `deploy/Caddyfile` with the version below and run `docker compose restart caddy`. The tick and health URLs stay open so cron-job.org keeps working.
+- **The tick URL is open.** There is no tick secret, so anyone who knows the address can trigger an extra engine pass. That's harmless (a pass only acts on closed candles and the lease stops overlaps), it just costs a little CPU.
 
   ```
   {$DOMAIN} {
@@ -211,7 +209,7 @@ Copy a backup to your Mac with `scp root@YOUR_SERVER_IP:~/backup-*.sql.gz ~/Down
   ```
 
 - **Built-in timer.** On a server the app could tick itself every minute without cron-job.org (`ENGINE_LOCAL_LOOP=on` in `deploy/.env`). It's off by default so cron-job.org remains the only scheduler. Never run both: they'd compete, and cron-job.org would see `409` answers and may disable the job.
-- **Keeping Neon instead of the server database.** Set `DATABASE_URL=` (the Neon address) and `POSTGRES_SSL=true` in `deploy/.env`, skip Step 7, then `docker compose up -d`. The bundled Postgres still starts but sits unused.
+- **Keeping Neon instead of the server database.** Set `DATABASE_URL=` (the Neon address, format `postgresql://USER:PASSWORD@HOST:PORT/DATABASE?schema=SCHEMA&sslmode=require`; `?schema=` is optional) and `POSTGRES_SSL=true` in `deploy/.env`, skip Step 7, then `docker compose up -d`. The bundled Postgres still starts but sits unused.
 - **Vercel still works.** Nothing here breaks the Vercel deploy, so you can switch back by pointing cron-job.org at the Vercel URL again.
 
 ## Troubleshooting
@@ -221,6 +219,5 @@ Copy a backup to your Mac with `scp root@YOUR_SERVER_IP:~/backup-*.sql.gz ~/Down
 | Browser shows a certificate error | DNS doesn't point at the server yet, or ports 80/443 are blocked. Check `docker compose logs caddy`. |
 | `502 Bad Gateway` | The app isn't up. `docker compose logs app` shows why (usually a typo in `.env`). |
 | `/api/health` says `connected: false` | Database problem: check `POSTGRES_PASSWORD` / `DATABASE_URL` in `.env`. If you change `POSTGRES_PASSWORD` after the first start, it won't apply to the existing database; run `docker compose down -v` (wipes the server database) and start again. |
-| cron-job.org test run gives `401` | The secret in the job header doesn't match `ENGINE_TICK_SECRET` in `deploy/.env`. |
-| cron-job.org gives `503` "not configured" | `ENGINE_TICK_SECRET` is empty in `deploy/.env`. |
+| cron-job.org gives `409` | Another tick was still running (or the built-in timer is on too). It's harmless once; if it repeats, check `ENGINE_LOCAL_LOOP`. |
 | Ticks run but every coin shows a Binance error | The server's region can't reach `data-api.binance.vision`; move to a Singapore/Tokyo server. |

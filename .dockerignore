@@ -1,0 +1,16 @@
+.git
+.claude/*
+!.claude/skills
+node_modules
+.env
+.env.*
+benchmarks
+reports
+docs
+test
+data
+deploy
+*.log
+*.pdf
+*.command
+HANDOFF-*.md

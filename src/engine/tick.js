@@ -5,7 +5,6 @@ import { readSettings, engineCfgFromSettings } from '../settings.js';
 import { getPortfolio, PORTFOLIO_KEY } from '../tradingRobot.js';
 import { resolveUsdIdrRate } from '../binanceData.js';
 import { NotificationCenter } from '../notifications.js';
-import { checkBearer } from '../auth.js';
 import { resolveEngineCfg, profilesFor, BTC_SYMBOL } from './config.js';
 import { advance, createEngineState } from './core.js';
 import { loadLiveSeries } from './candles.js';
@@ -338,8 +337,6 @@ export async function readEngineStatus() {
 // Shared by the Vercel function (api/engine/tick.js) and server.js's local route.
 export async function handleTickRequest(req) {
   if (req.method !== 'POST') return { status: 405, body: { error: 'POST only.' } };
-  const denied = checkBearer(req, 'ENGINE_TICK_SECRET');
-  if (denied) return { status: denied.status, body: { error: denied.error } };
   try {
     const result = await runTick({ reason: req.headers['x-tick-reason'] || 'scheduler' });
     return { status: result.skipped ? 409 : 200, body: result };

@@ -261,14 +261,31 @@ function readBody(req) {
 
 // Local/persistent-host scheduler. On Vercel an external scheduler (cron-job.org) calls
 // /api/engine/tick instead, because serverless instances don't keep timers alive.
+// On a server driven by cron-job.org, ENGINE_LOCAL_LOOP=off turns this timer off so the
+// two never race for the engine lease (a busy lease answers cron-job.org with 409).
+const localLoopEnabled = !process.env.VERCEL && process.env.ENGINE_LOCAL_LOOP !== 'off';
+let tickTimer = null;
+
 async function scheduleTick() {
   await runTick({ reason: 'local-loop' }).catch((error) => console.warn('[tick] failed:', error.message));
   const settings = await readSettings().catch(() => null);
   const intervalSec = settings?.refreshIntervalSec ?? 60;
-  setTimeout(scheduleTick, intervalSec * 1000);
+  tickTimer = setTimeout(scheduleTick, intervalSec * 1000);
 }
 
 server.listen(config.port, () => {
   console.log(`robocrypto listening on http://localhost:${config.port}`);
-  if (!process.env.VERCEL) scheduleTick();
+  console.log(localLoopEnabled ? '[tick] built-in timer on' : '[tick] built-in timer off - waiting for POST /api/engine/tick');
+  if (localLoopEnabled) scheduleTick();
 });
+
+// `docker stop` / systemd send SIGTERM. Stop taking requests and exit; an interrupted
+// tick is safe because its writes are one transaction and the lease expires on its own.
+for (const signal of ['SIGTERM', 'SIGINT']) {
+  process.once(signal, () => {
+    console.log(`[server] ${signal} received, shutting down`);
+    clearTimeout(tickTimer);
+    server.close(() => process.exit(0));
+    setTimeout(() => process.exit(0), 5000).unref();
+  });
+}

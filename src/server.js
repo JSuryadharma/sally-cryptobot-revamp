@@ -34,7 +34,11 @@ notifications.setBroadcast((message) => hub.broadcast(message));
 
 async function route(req, res) {
   const url = new URL(req.url, `http://${req.headers.host}`);
-  const pathname = url.pathname;
+  const pathname = stripBasePath(url.pathname);
+  if (pathname === null) {
+    res.writeHead(302, { Location: `${config.basePath}/${url.search}` });
+    return res.end();
+  }
   const method = req.method;
 
   if (pathname === '/api/health' && method === 'GET') {
@@ -215,6 +219,16 @@ async function route(req, res) {
   return serveStatic(req, res, pathname);
 }
 
+// With BASE_PATH=/sally, "/sally/api/x" is routed as "/api/x". "/" and "/sally" return
+// null (redirect to "/sally/"). Unprefixed paths still work, so the container's health
+// check and an old cron-job.org URL keep working.
+function stripBasePath(pathname) {
+  const base = config.basePath;
+  if (!base) return pathname;
+  if (pathname === '/' || pathname === base) return null;
+  return pathname.startsWith(`${base}/`) ? pathname.slice(base.length) : pathname;
+}
+
 // --- static file serving -----------------------------------------------------
 const CONTENT_TYPES = {
   '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8',
@@ -227,8 +241,9 @@ async function serveStatic(req, res, pathname) {
   const filePath = path.normalize(path.join(config.publicDir, relative));
   if (!filePath.startsWith(config.publicDir)) return sendJson(res, 403, { error: 'Forbidden' });
   try {
-    const data = await fs.readFile(filePath);
+    let data = await fs.readFile(filePath);
     const ext = path.extname(filePath);
+    if (ext === '.html' && config.basePath) data = withBasePath(data.toString('utf8'));
     res.writeHead(200, {
       'Content-Type': CONTENT_TYPES[ext] || 'application/octet-stream',
       'Cache-Control': ext === '.html' ? 'no-store' : 'public, max-age=60'
@@ -239,6 +254,13 @@ async function serveStatic(req, res, pathname) {
     res.writeHead(404);
     res.end('Not found');
   }
+}
+
+// Points the page's own links and its API calls (public/app.js reads the meta tag) at BASE_PATH.
+function withBasePath(html) {
+  return html
+    .replace(/(href|src)="\/(?!\/)/g, `$1="${config.basePath}/`)
+    .replace('<head>', `<head>\n<meta name="base-path" content="${config.basePath}" />`);
 }
 
 function sendJson(res, status, body) {
@@ -274,7 +296,7 @@ async function scheduleTick() {
 }
 
 server.listen(config.port, () => {
-  console.log(`robocrypto listening on http://localhost:${config.port}`);
+  console.log(`robocrypto listening on http://localhost:${config.port}${config.basePath}/`);
   console.log(localLoopEnabled ? '[tick] built-in timer on' : '[tick] built-in timer off - waiting for POST /api/engine/tick');
   if (localLoopEnabled) scheduleTick();
 });

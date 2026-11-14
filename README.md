@@ -50,7 +50,7 @@ The engine lives in `src/engine/`. `core.js` is pure and shared by the live tick
 ## Setup
 
 ```bash
-cp .env.example .env    # DATABASE_URL (Postgres, optional ?schema=), PORT
+cp .env.example .env    # DATABASE_URL (Postgres, optional ?schema=), PORT, BASE_PATH (optional URL prefix)
 npm install
 npm start               # http://localhost:3300
 ```

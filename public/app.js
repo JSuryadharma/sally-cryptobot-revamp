@@ -87,8 +87,11 @@ function fmtClock(ms) {
 }
 
 // --- API --------------------------------------------------------------------------
+// Set by the server when the app runs under a URL prefix (BASE_PATH, e.g. "/sally").
+const BASE_PATH = document.querySelector('meta[name="base-path"]')?.content || '';
+
 async function api(path, opts) {
-  const res = await fetch(path, opts && { method: opts.method || 'GET', headers: { 'Content-Type': 'application/json' }, body: opts.body ? JSON.stringify(opts.body) : undefined });
+  const res = await fetch(BASE_PATH + path, opts && { method: opts.method || 'GET', headers: { 'Content-Type': 'application/json' }, body: opts.body ? JSON.stringify(opts.body) : undefined });
   if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || `Request failed (${res.status})`);
   return res.json();
 }

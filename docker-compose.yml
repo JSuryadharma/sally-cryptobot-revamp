@@ -1,19 +1,51 @@
-# Local Postgres for sally-cryptobot-app dev. Matches the connection string
-# already set in .env (DATABASE_URL=postgresql://postgres:***@localhost:5433/sallycryptobot).
-# Start:  docker compose up -d
-# Stop:   docker compose down          (data persists in the named volume)
-# Wipe:   docker compose down -v       (also deletes the volume - fresh DB next start)
-# Logs:   docker compose logs -f
+# Web app + Postgres in one command, for local use or a server that already has
+# its own web server (nginx/Caddy/Apache) in front.
+#
+#   docker compose up -d --build     -> http://localhost:3300/sally/
+#   docker compose logs -f app       (app logs)
+#   docker compose down              (stop; data persists in the named volume)
+#   docker compose down -v           (also deletes the database volume)
+#
+# Settings come from a .env file next to this one (all optional):
+#   BASE_PATH=/sally          URL path of the app (empty = root of the domain)
+#   APP_PORT=3300             host port of the web app
+#   APP_BIND=127.0.0.1        0.0.0.0 to open the port to other machines
+#   POSTGRES_PASSWORD=...     database password (change it on a server)
+#   ENGINE_LOCAL_LOOP=off     "on" = the app ticks itself; keep "off" when cron-job.org calls
+#                             POST <url>/sally/api/engine/tick
+#
+# A fresh server with nothing in front should use deploy/docker-compose.yml instead
+# (adds Caddy with automatic HTTPS). Guide: docs/DEPLOY-SERVER.md
 services:
+  app:
+    build: .
+    container_name: sally-cryptobot-app
+    restart: unless-stopped
+    environment:
+      PORT: "3300"
+      BASE_PATH: ${BASE_PATH-/sally}
+      DATABASE_URL: postgresql://postgres:${POSTGRES_PASSWORD:-HVj_T6YoUXbXD9w6LP-kYxgO}@postgres:5432/sallycryptobot
+      POSTGRES_SSL: "false"
+      ENGINE_LOCAL_LOOP: ${ENGINE_LOCAL_LOOP:-off}
+    ports:
+      - "${APP_BIND:-127.0.0.1}:${APP_PORT:-3300}:3300"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    logging:
+      driver: json-file
+      options: { max-size: "10m", max-file: "5" }
+
   postgres:
     image: postgres:16
     container_name: sally-cryptobot-postgres
     restart: unless-stopped
     environment:
-      POSTGRES_PASSWORD: HVj_T6YoUXbXD9w6LP-kYxgO
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-HVj_T6YoUXbXD9w6LP-kYxgO}
       POSTGRES_DB: sallycryptobot
     ports:
-      - "5434:5432"
+      # Local tools (psql, npm start outside Docker) reach it on localhost:5434 only.
+      - "127.0.0.1:5434:5432"
     volumes:
       - sally-cryptobot-pgdata:/var/lib/postgresql/data
     healthcheck:

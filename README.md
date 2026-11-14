@@ -57,6 +57,8 @@ npm start               # http://localhost:3300
 
 On Vercel, set the `DATABASE_URL` environment variable.
 
+`docker compose up -d --build` in the repo root runs the web app and Postgres together (http://localhost:3300/sally/).
+
 To run it on your own server (VPS) instead, with Docker, Postgres and automatic HTTPS, follow [docs/DEPLOY-SERVER.md](docs/DEPLOY-SERVER.md).
 
 On cron-job.org, create a job that POSTs to `https://<your-app>/api/engine/tick` on a custom schedule at minutes `1,6,11,16,21,26,31,36,41,46,51,56`.

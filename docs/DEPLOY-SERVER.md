@@ -153,6 +153,33 @@ Once the server has ticked fine for a day:
 
 ---
 
+## Server that already has nginx (or another web server)?
+
+Then skip Caddy and use the `docker-compose.yml` in the repo root. It runs the web app and Postgres. Do Steps 1, 3 and 4 above, then:
+
+```bash
+cd /opt/sally-cryptobot-revamp
+printf 'BASE_PATH=/sally\nPOSTGRES_PASSWORD=%s\n' "$(openssl rand -hex 24)" > .env
+docker compose up -d --build
+curl http://127.0.0.1:3300/sally/api/health
+```
+
+The app listens on `127.0.0.1:3300` only. Add this inside your existing nginx `server { ... }` block, then run `nginx -t && systemctl reload nginx`:
+
+```nginx
+location /sally/ {
+    proxy_pass http://127.0.0.1:3300;
+    proxy_set_header Host $host;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    proxy_http_version 1.1;
+    proxy_set_header Upgrade $http_upgrade;
+    proxy_set_header Connection "upgrade";
+    proxy_read_timeout 120s;
+}
+```
+
+`proxy_pass` has no path after the port, so nginx forwards `/sally/...` unchanged, which is what the app expects. Steps 7-10 work the same (use `https://YOUR_DOMAIN/sally/...`). For Step 7, run the copy from the repo root: `DB_SERVICE=postgres deploy/copy-db-from-neon.sh '<Vercel DATABASE_URL>'`, then `docker compose restart app`.
+
 ## Everyday commands
 
 Run these on the server inside `/opt/sally-cryptobot-revamp/deploy`.

@@ -31,6 +31,8 @@ HTTPS needs a name, not a bare IP. Pick one:
 
 From now on this guide calls it `YOUR_DOMAIN`.
 
+The app lives under the path **`/sally`**, so the dashboard is at `https://YOUR_DOMAIN/sally/` (opening `https://YOUR_DOMAIN` redirects there). The path is the `BASE_PATH` setting in Step 5. Change it to anything you like, or leave it empty to serve the app at the root.
+
 ## Step 3. Log in and install Docker
 
 From your Mac's Terminal:
@@ -78,6 +80,7 @@ Fill in two lines (save with `Ctrl+O`, `Enter`, quit with `Ctrl+X`):
 
 ```
 DOMAIN=YOUR_DOMAIN
+BASE_PATH=/sally
 POSTGRES_PASSWORD=<the random value you just generated>
 ```
 
@@ -91,11 +94,11 @@ docker compose ps
 After a minute all three services should say `Up`, and `app` and `db` should say `(healthy)`. Then check:
 
 ```bash
-curl https://YOUR_DOMAIN/api/health
+curl https://YOUR_DOMAIN/sally/api/health
 # {"database":{"connected":true,...}}
 ```
 
-Open `https://YOUR_DOMAIN` in your browser. You should see the dashboard (empty, because the database is new).
+Open `https://YOUR_DOMAIN/sally/` in your browser. You should see the dashboard (empty, because the database is new).
 
 ## Step 7. Bring over your current data (optional, recommended)
 
@@ -118,7 +121,7 @@ Skip this step if you want to start fresh.
 
 In cron-job.org, edit the existing job:
 
-- **URL:** `https://YOUR_DOMAIN/api/engine/tick`
+- **URL:** `https://YOUR_DOMAIN/sally/api/engine/tick`
 - **Method:** POST
 - **Header:** none needed (an old `Authorization` header is harmless)
 - **Schedule:** custom, minutes `1,6,11,16,21,26,31,36,41,46,51,56`, every hour, every day (unchanged)
@@ -131,7 +134,7 @@ Press "Test run" once. It should return HTTP 200 with JSON.
 Wait 5-10 minutes, then open:
 
 ```
-https://YOUR_DOMAIN/api/engine/status
+https://YOUR_DOMAIN/sally/api/engine/status
 ```
 
 `lastTickAt` should be within the last 5 minutes and `recentErrors` empty. You can also watch it live:
@@ -200,7 +203,7 @@ Copy a backup to your Mac with `scp root@YOUR_SERVER_IP:~/backup-*.sql.gz ~/Down
   ```
   {$DOMAIN} {
   	encode gzip
-  	@protected not path /api/engine/tick /api/health
+  	@protected not path /sally/api/engine/tick /sally/api/health /api/engine/tick /api/health
   	basic_auth @protected {
   		joe <hash from: docker compose exec caddy caddy hash-password>
   	}

@@ -27,5 +27,15 @@ export const config = {
   // The server has to bind a port before it can query the database to find
   // out what port to bind to - a hard chicken-and-egg case, so this is the
   // one business-ish setting that has to stay an env var (or its default).
-  port: numberFromEnv('PORT', 3300)
+  port: numberFromEnv('PORT', 3300),
+  // URL prefix the app is served under, e.g. "/sally" -> https://host/sally/.
+  // Empty (the default, and what Vercel uses) serves it at the root.
+  basePath: normalizeBasePath(process.env.BASE_PATH)
 };
+
+function normalizeBasePath(raw) {
+  const trimmed = String(raw || '').trim().replace(/^\/+|\/+$/g, '');
+  if (!trimmed) return '';
+  if (!/^[A-Za-z0-9._~\-/]+$/.test(trimmed)) throw new Error(`Invalid BASE_PATH "${raw}".`);
+  return `/${trimmed}`;
+}

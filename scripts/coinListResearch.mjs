@@ -15,7 +15,7 @@
 // Stage 2 (--compare) runs the real engine (advance() + autopilot, 5m exits)
 // on each named list over the same window - the same simulate() that
 // scripts/backtest.mjs uses - for the full window and A/B separately.
-// Lists: "current" (the 15 in backtest.mjs), "default5" (the app's built-in
+// Lists: "current" (the old 15-coin research list), "live" (DEFAULT_WATCHLIST), "default5" (the app's built-in
 // default watchlist), "proposed" (--proposed A,B,...), or any comma list.
 //
 // Flags: --months 36 (default), --a 24 (months in period A), --top 50 (pairs
@@ -26,13 +26,16 @@ import { fileURLToPath } from 'node:url';
 import { fetchKlinesRange } from '../src/engine/candles.js';
 import { enrichCandles } from '../src/indicators.js';
 import { resolveEngineCfg } from '../src/engine/config.js';
-import { loadSeries, simulate, DEFAULT_SYMBOLS } from './backtest.mjs';
+import { loadSeries, simulate } from './backtest.mjs';
+import { DEFAULT_WATCHLIST } from '../src/settings.js';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const BASE_URL = 'https://data-api.binance.vision';
 const DAY = 86_400_000;
 const MONTH = 30 * DAY;
 const DEFAULT5 = ['BTCUSDT', 'ETHUSDT', 'BNBUSDT', 'SOLUSDT', 'XRPUSDT'];
+// The 15-coin research list used before the 2026-11-15 refresh.
+const DEFAULT_SYMBOLS = ['BTCUSDT', 'ETHUSDT', 'BNBUSDT', 'SOLUSDT', 'XRPUSDT', 'ADAUSDT', 'DOGEUSDT', 'AVAXUSDT', 'TRXUSDT', 'APTUSDT', 'LTCUSDT', 'NEARUSDT', 'ATOMUSDT', 'INJUSDT', 'TONUSDT'];
 
 // Not tradeable trend assets: stablecoins, fiat, wrapped/staked copies, gold.
 const NOT_COINS = new Set(['USDC', 'FDUSD', 'TUSD', 'USDP', 'DAI', 'BUSD', 'EUR', 'EURI', 'AEUR', 'USDE', 'XUSD', 'RLUSD', 'USD1', 'BFUSD', 'PYUSD', 'USTC',
@@ -215,6 +218,7 @@ async function compare(args) {
     if (name === 'current14') return { name, symbols: DEFAULT_SYMBOLS.filter((s) => s !== 'TONUSDT') };
     if (name === 'default5') return { name, symbols: DEFAULT5 };
     if (name === 'proposed') return { name, symbols: args.proposed };
+    if (name === 'live') return { name, symbols: DEFAULT_WATCHLIST };
     return { name, symbols: name.split('+').map((s) => s.toUpperCase()) };
   });
   const all = [...new Set(lists.flatMap((l) => l.symbols))];

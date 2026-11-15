@@ -8,9 +8,18 @@ export const SETTINGS_FILE = 'settings.json';
 // and the OpenAI advisor are all DB-backed and editable at runtime from the
 // Settings page. Only DATABASE_URL (and PORT, which can't live in the
 // database - see config.js) stays in .env.
+// The coins the robot watches by default, from the 2026-11-15 coin screen
+// (scripts/coinListResearch.mjs): liquid (median daily volume >= $10M), at
+// least ~18 months of Binance history, fresh data, and positive daily-breakout
+// results on the older 24 months of a 36-month window; checked on the last 12.
+export const DEFAULT_WATCHLIST = [
+  'BTCUSDT', 'ETHUSDT', 'BNBUSDT', 'SOLUSDT', 'XRPUSDT', 'ADAUSDT', 'DOGEUSDT', 'AVAXUSDT',
+  'TRXUSDT', 'NEARUSDT', 'ZECUSDT', 'PEPEUSDT', 'SUIUSDT', 'FETUSDT', 'ENAUSDT', 'AAVEUSDT'
+];
+
 function defaultSettings() {
   return {
-    watchlist: ['BTCUSDT', 'ETHUSDT', 'BNBUSDT', 'SOLUSDT', 'XRPUSDT'],
+    watchlist: [...DEFAULT_WATCHLIST],
     // Which strategy trades is not a setting: the autopilot
     // (engine/autopilot.js) picks it on every tick from the paper results.
     autoTrade: { enabled: true },
@@ -81,13 +90,18 @@ function isHttpUrl(value) {
 // to the new risk defaults once, so the engine actually uses more capital;
 // later edits on the Settings page stick.
 const SIZING_VERSION = 2;
+// Settings saved before the 2026-11-15 coin refresh (no watchlistVersion 2)
+// move to DEFAULT_WATCHLIST once - a fresh database started on the old 5-coin
+// default. Later edits on the Settings page stick.
+const WATCHLIST_VERSION = 2;
 const SIZING_KEYS = ['riskPerTradePct', 'maxPortfolioRiskPct', 'maxOpenPositions', 'dailyLossLimitPct', 'drawdownHaltPct'];
 
 export function normalize(input, watchlistFallback) {
   const base = defaultSettings();
-  const raw = input.sizingVersion === SIZING_VERSION
+  const sized = input.sizingVersion === SIZING_VERSION
     ? input
     : { ...input, ...Object.fromEntries(SIZING_KEYS.map((key) => [key, base[key]])) };
+  const raw = sized.watchlistVersion === WATCHLIST_VERSION ? sized : { ...sized, watchlist: base.watchlist };
   return {
     watchlist: boundedList(raw.watchlist, watchlistFallback || base.watchlist),
     // The strategy switches, "Buy early" and the minimum setup score that used
@@ -121,7 +135,8 @@ export function normalize(input, watchlistFallback) {
     refreshIntervalSec: boundedNumber(raw.refreshIntervalSec, base.refreshIntervalSec, 10, 3600),
     topMoversCount: boundedNumber(raw.topMoversCount, base.topMoversCount, 1, 20),
     minQuoteVolumeUsdt: boundedNumber(raw.minQuoteVolumeUsdt, base.minQuoteVolumeUsdt, 0, 1_000_000_000),
-    sizingVersion: SIZING_VERSION
+    sizingVersion: SIZING_VERSION,
+    watchlistVersion: WATCHLIST_VERSION
   };
 }
 

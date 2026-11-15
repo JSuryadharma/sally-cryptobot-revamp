@@ -34,7 +34,8 @@ import { updatePaperJournal, summarizePaper, paperCostPct, paperResults } from '
 import { decideStrategy } from '../src/engine/autopilot.js';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-export const DEFAULT_SYMBOLS = ['BTCUSDT', 'ETHUSDT', 'BNBUSDT', 'SOLUSDT', 'XRPUSDT', 'ADAUSDT', 'DOGEUSDT', 'AVAXUSDT', 'TRXUSDT', 'APTUSDT', 'LTCUSDT', 'NEARUSDT', 'ATOMUSDT', 'INJUSDT', 'TONUSDT'];
+// Same coins as the app's DEFAULT_WATCHLIST (src/settings.js), refreshed 2026-11-15.
+export const DEFAULT_SYMBOLS = ['BTCUSDT', 'ETHUSDT', 'BNBUSDT', 'SOLUSDT', 'XRPUSDT', 'ADAUSDT', 'DOGEUSDT', 'AVAXUSDT', 'TRXUSDT', 'NEARUSDT', 'ZECUSDT', 'PEPEUSDT', 'SUIUSDT', 'FETUSDT', 'ENAUSDT', 'AAVEUSDT'];
 const DEFAULT_BASE_URL = 'https://data-api.binance.vision';
 const MONTH_MS = 30 * 86_400_000;
 const USD_IDR = 16_800;

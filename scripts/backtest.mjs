@@ -16,6 +16,7 @@
 //   --exits          also compare exit-rule variants (EXIT_VARIANTS) on the test window
 //   --early          also compare early entry (5m and 15m checks) with close-only entry
 //   --buy-early      run everything with "Buy early" (5m checks) switched on
+//   --risk <pct>     risk per trade (default: the engine's 2%)
 //   --entry-timing   compare breakout entry timings (cfg.breakoutEntry: daily
 //                    close, next-close confirmation, live 5m price with or
 //                    without a hold), each under the autopilot, on the whole
@@ -95,6 +96,7 @@ function parseArgs(argv) {
     else if (flag === '--buy-early') args.buyEarly = true;
     else if (flag === '--auto') args.auto = true;
     else if (flag === '--entry-timing') args.entryTiming = true;
+    else if (flag === '--risk') { args.risk = Number(value); k += 1; }
     else if (flag === '--timings') { args.timings = value.split(','); k += 1; }
   }
   return args;
@@ -319,7 +321,7 @@ async function main() {
   const args = parseArgs(process.argv.slice(2));
   const startMs = args.end - args.months * MONTH_MS;
   const splitMs = args.train > 0 ? startMs + args.train * MONTH_MS : startMs;
-  const baseCfg = { roundTripCostPct: args.cost, slippagePct: args.slip, ...(args.buyEarly ? { earlyEntry: true } : {}) };
+  const baseCfg = { roundTripCostPct: args.cost, slippagePct: args.slip, ...(args.buyEarly ? { earlyEntry: true } : {}), ...(args.risk ? { riskPerTradePct: args.risk } : {}) };
   console.log(`Loading ${args.symbols.length} symbols, ${args.months} months (${new Date(startMs).toISOString().slice(0, 10)} -> ${new Date(args.end).toISOString().slice(0, 10)})...`);
   const series = await loadSeries({ symbols: args.symbols, startMs, endMs: args.end, useCache: args.cache, log: (m) => console.log(m) });
 

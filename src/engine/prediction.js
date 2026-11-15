@@ -35,7 +35,8 @@ function conditionText(key, profile, hold = null) {
     noChase: { label: 'Not overextended (close near the EMA20)', fail: 'price is stretched too far above the EMA20' },
     btcRegime: { label: 'Bitcoin is above its 200-day average', fail: 'Bitcoin is below its 200-day average' },
     breakout: hold ? {
-      label: hold.hours ? `Live price holds above the prior ${profile.breakoutLookback}-day high for ${hold.hours} hours` : `Live price trades above the prior ${profile.breakoutLookback}-day high`,
+      label: hold.hours ? `Live price holds above the prior ${profile.breakoutLookback}-day high for ${hold.hours} hours`
+        : hold.bufferAtr ? `Live price clears the prior ${profile.breakoutLookback}-day high by ${hold.bufferAtr} ATR` : `Live price trades above the prior ${profile.breakoutLookback}-day high`,
       fail: `price is not above the ${profile.breakoutLookback}-day high`
     } : {
       label: `This ${trig} candle closes above the prior ${profile.breakoutLookback}-day high`,
@@ -82,7 +83,7 @@ function profilePrediction({ symbol, profile, series, live, cfg, portfolio, risk
   const isBreakout = profile.entry === 'breakout';
   const mode = breakoutMode(cfg);
   // Live breakout timing: bought on 5m candles once price has held above the level.
-  const liveMode = isBreakout && (mode.kind === 'hold' || mode.kind === 'touch') && TF_MS[cfg.earlyTf] ? { hours: mode.holdMs / 3_600_000 } : null;
+  const liveMode = isBreakout && (mode.kind === 'hold' || mode.kind === 'touch') && TF_MS[cfg.earlyTf] ? { hours: mode.holdMs / 3_600_000, bufferAtr: mode.bufferAtr || 0 } : null;
   const byKey = Object.fromEntries(evaluation.checklist.map((c) => [c.key, c]));
   for (const c of closedEvaluation.checklist) if (spec.gates.includes(c.key)) byKey[c.key] = c;
   const conditions = spec.conditions.map((key) => {
@@ -92,7 +93,7 @@ function profilePrediction({ symbol, profile, series, live, cfg, portfolio, risk
     return { key, label: text.label, ok: Boolean(item?.ok), detail: item?.detail || 'not enough data yet', failText: text.fail };
   });
   const counted = conditions.filter((c) => !c.na);
-  const met = counted.filter((c) => c.ok).length;
+  let met = counted.filter((c) => c.ok).length;
   const ok = (key) => conditions.find((c) => c.key === key)?.ok;
 
   const prev = closed.at(-1);
@@ -103,6 +104,8 @@ function profilePrediction({ symbol, profile, series, live, cfg, portfolio, risk
     let high = -Infinity;
     for (let k = Math.max(0, i - profile.breakoutLookback); k < i; k += 1) high = Math.max(high, trig[k].high);
     triggerPrice = roundPrice(high);
+    // A clean break: live price has to clear the level by bufferAtr daily ATRs.
+    if (liveMode?.bufferAtr && Number.isFinite(prev.atr14)) triggerPrice = roundPrice(high + liveMode.bufferAtr * prev.atr14);
   }
   const chaseCeiling = !isBreakout && Number.isFinite(forming.ema20) && Number.isFinite(atr) ? roundPrice(forming.ema20 + cfg.setup.chaseMaxAtr * atr) : null;
 
@@ -110,7 +113,14 @@ function profilePrediction({ symbol, profile, series, live, cfg, portfolio, risk
   if (!spec.gates.every(ok)) stage = 'blocked';
   else if (isBreakout) {
     // Setting up once price is within one ATR of the breakout level.
-    stage = ok('breakout') ? 'ready' : Number.isFinite(atr) && price >= triggerPrice - atr ? 'setting-up' : 'watching';
+    const broke = liveMode ? price > triggerPrice : ok('breakout');
+    const bc = conditions.find((c) => c.key === 'breakout');
+    if (liveMode && bc && bc.ok !== broke) {
+      bc.ok = broke;
+      bc.detail = `price ${roundPrice(price)} vs ${triggerPrice}`;
+      met += broke ? 1 : -1;
+    }
+    stage = broke ? 'ready' : Number.isFinite(atr) && price >= triggerPrice - atr ? 'setting-up' : 'watching';
   } else if (ok('tfTrend') && ok('pullback')) stage = ok('reclaim') && ok('noChase') ? 'ready' : 'setting-up';
   else stage = 'watching';
   let decisionAt = forming.time * 1000 + TF_MS[profile.triggerTf];

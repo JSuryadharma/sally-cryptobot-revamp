@@ -154,6 +154,17 @@ test('breakout with the 12h live hold: says when it buys if price stays above', 
   assert.match(describePrediction(far, 'COINUSDT'), /holds above 101 for 12 hours/);
 });
 
+test('breakout with the clean-break default: needs 0.75 ATR above the level, buys on the next 5m check', () => {
+  const near = predictBreakout(breakoutScenario({ formingClose: 102 }), { breakoutEntry: 'touch:b0.75' });
+  assert.equal(near.trigger.price, 102.5, '101 + 0.75 x ATR 2');
+  assert.equal(near.stage, 'setting-up');
+  assert.equal(near.conditions.at(-1).ok, false);
+  assert.match(near.conditions.at(-1).label, /clears the prior 20-day high by 0.75 ATR/);
+  const ready = predictBreakout(breakoutScenario({ formingClose: 103 }), { breakoutEntry: 'touch:b0.75' });
+  assert.equal(ready.stage, 'ready');
+  assert.match(describePrediction(ready, 'COINUSDT'), /next 5-minute check/);
+});
+
 test('breakout: blocked while BTC is below its 200-day average', () => {
   const blocked = predictBreakout(breakoutScenario({ formingClose: 102, btcUp: false }));
   assert.equal(blocked.stage, 'blocked');

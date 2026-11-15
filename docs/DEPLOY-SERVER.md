@@ -6,7 +6,7 @@ This guide moves the app from Vercel to a server you rent (a VPS). Everything ru
 - **db**: Postgres, kept on the server, never exposed to the internet
 - **caddy**: the web server in front, which gets and renews the HTTPS certificate by itself
 
-cron-job.org stays the only scheduler. It just calls the new address instead of the Vercel one.
+The server runs the robot by itself: a built-in timer ticks the engine every minute, so cron-job.org is no longer needed (the `POST /api/engine/tick` URL is switched off while the timer runs).
 
 Time needed: about 30-45 minutes the first time.
 
@@ -117,27 +117,25 @@ This copies your settings, paper portfolio, trade journal and history from the V
 
 Skip this step if you want to start fresh.
 
-## Step 8. Point cron-job.org at the server
+## Step 8. Turn off the cron-job.org job
 
-In cron-job.org, edit the existing job:
+The server ticks itself, so the cron-job.org job is no longer needed. In cron-job.org, **disable or delete** the job (it was paused in Step 7). Leaving it pointed at Vercel would keep the old Vercel copy trading on the old database.
 
-- **URL:** `https://YOUR_DOMAIN/sally/api/engine/tick`
-- **Method:** POST
-- **Header:** none needed (an old `Authorization` header is harmless)
-- **Schedule:** custom, minutes `1,6,11,16,21,26,31,36,41,46,51,56`, every hour, every day (unchanged)
-- **Enable** the job again (it was paused in Step 7).
+The app log shows the timer is on:
 
-Press "Test run" once. It should return HTTP 200 with JSON.
+```
+[tick] built-in timer on - POST /api/engine/tick is disabled
+```
 
 ## Step 9. Check it's ticking
 
-Wait 5-10 minutes, then open:
+Wait a few minutes, then open:
 
 ```
 https://YOUR_DOMAIN/sally/api/engine/status
 ```
 
-`lastTickAt` should be within the last 5 minutes and `recentErrors` empty. You can also watch it live:
+`lastTickAt` should be within the last 1-2 minutes and `recentErrors` empty. You can also watch it live:
 
 ```bash
 docker compose logs -f app
@@ -147,7 +145,7 @@ docker compose logs -f app
 
 Once the server has ticked fine for a day:
 
-- Make sure **no** cron-job.org job still calls the Vercel URL.
+- Make sure the cron-job.org job is off, so the Vercel copy stops trading.
 - In Vercel, either delete the project or pause it (Settings → General). Otherwise you'll have two dashboards showing different data.
 - Keep the Neon database for a week or two as a backup, then delete it if you like.
 
@@ -178,7 +176,7 @@ location /sally/ {
 }
 ```
 
-`proxy_pass` has no path after the port, so nginx forwards `/sally/...` unchanged. A trailing slash (`http://127.0.0.1:3300/`), which strips `/sally`, works too. Steps 7-10 work the same (use `https://YOUR_DOMAIN/sally/...`). For Step 7, run the copy from the repo root: `DB_SERVICE=postgres deploy/copy-db-from-neon.sh '<Vercel DATABASE_URL>'`, then `docker compose restart app`.
+`proxy_pass` has no path after the port, so nginx forwards `/sally/...` unchanged. A trailing slash (`http://127.0.0.1:3300/`), which strips `/sally`, works too. Steps 7-10 work the same; the timer is on here too (use `https://YOUR_DOMAIN/sally/...`). For Step 7, run the copy from the repo root: `DB_SERVICE=postgres deploy/copy-db-from-neon.sh '<Vercel DATABASE_URL>'`, then `docker compose restart app`.
 
 ## Everyday commands
 
@@ -224,13 +222,12 @@ Copy a backup to your Mac with `scp root@YOUR_SERVER_IP:~/backup-*.sql.gz ~/Down
 ## Good to know
 
 - **The server survives reboots.** Every service has `restart: unless-stopped`, and Docker starts on boot.
-- **The dashboard is public**, same as on Vercel today: anyone who knows the address can change settings or press Reset (paper money only). If you ever want a password in front of it, replace `deploy/Caddyfile` with the version below and run `docker compose restart caddy`. The tick and health URLs stay open so cron-job.org keeps working.
-- **The tick URL is open.** There is no tick secret, so anyone who knows the address can trigger an extra engine pass. That's harmless (a pass only acts on closed candles and the lease stops overlaps), it just costs a little CPU.
+- **The dashboard is public**, same as on Vercel today: anyone who knows the address can change settings or press Reset (paper money only). If you ever want a password in front of it, replace `deploy/Caddyfile` with the version below and run `docker compose restart caddy`.
 
   ```
   {$DOMAIN} {
   	encode gzip
-  	@protected not path /sally/api/engine/tick /sally/api/health /api/engine/tick /api/health
+  	@protected not path /sally/api/health /api/health
   	basic_auth @protected {
   		joe <hash from: docker compose exec caddy caddy hash-password>
   	}
@@ -238,9 +235,9 @@ Copy a backup to your Mac with `scp root@YOUR_SERVER_IP:~/backup-*.sql.gz ~/Down
   }
   ```
 
-- **Built-in timer.** On a server the app could tick itself every minute without cron-job.org (`ENGINE_LOCAL_LOOP=on` in `deploy/.env`). It's off by default so cron-job.org remains the only scheduler. Never run both: they'd compete, and cron-job.org would see `409` answers and may disable the job.
+- **Built-in timer vs cron-job.org.** The timer is on by default (`ENGINE_LOCAL_LOOP=on`), and while it runs `POST /api/engine/tick` answers `404`. To drive the server from cron-job.org instead, set `ENGINE_LOCAL_LOOP=off` in `.env`, run `docker compose up -d`, and point a cron-job.org job (POST, minutes `1,6,11,...,56`) at `https://YOUR_DOMAIN/sally/api/engine/tick`. Only one of the two runs at a time.
 - **Keeping Neon instead of the server database.** Set `DATABASE_URL=` (the Neon address, format `postgresql://USER:PASSWORD@HOST:PORT/DATABASE?schema=SCHEMA&sslmode=require`; `?schema=` is optional) and `POSTGRES_SSL=true` in `deploy/.env`, skip Step 7, then `docker compose up -d`. The bundled Postgres still starts but sits unused.
-- **Vercel still works.** Nothing here breaks the Vercel deploy, so you can switch back by pointing cron-job.org at the Vercel URL again.
+- **Vercel still works.** Nothing here breaks the Vercel deploy (Vercel has no timer and keeps its tick URL), so you can switch back by turning the cron-job.org job on again.
 
 ## Troubleshooting
 
@@ -250,5 +247,6 @@ Copy a backup to your Mac with `scp root@YOUR_SERVER_IP:~/backup-*.sql.gz ~/Down
 | "Too many redirects" | If the domain is behind Cloudflare, set SSL/TLS mode to **Full** (not Flexible). Otherwise run `curl -sI https://YOUR_DOMAIN/sally/` and check the `Location:` header to see who redirects. |
 | `502 Bad Gateway` | The app isn't up. `docker compose logs app` shows why (usually a typo in `.env`). |
 | `/api/health` says `connected: false` | Database problem: check `POSTGRES_PASSWORD` / `DATABASE_URL` in `.env`. If you change `POSTGRES_PASSWORD` after the first start, it won't apply to the existing database; run `docker compose down -v` (wipes the server database) and start again. |
-| cron-job.org gives `409` | Another tick was still running (or the built-in timer is on too). It's harmless once; if it repeats, check `ENGINE_LOCAL_LOOP`. |
+| `lastTickAt` doesn't move | Check `docker compose logs app` for `[tick] built-in timer on`. If it says `off`, remove `ENGINE_LOCAL_LOOP=off` from `.env` and run `docker compose up -d`. |
+| cron-job.org gets `404` | Expected: the server ticks itself. Turn the job off (Step 8). |
 | Ticks run but every coin shows a Binance error | The server's region can't reach `data-api.binance.vision`; move to a Singapore/Tokyo server. |

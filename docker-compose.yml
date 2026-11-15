@@ -11,8 +11,8 @@
 #   APP_PORT=3300             host port of the web app
 #   APP_BIND=127.0.0.1        0.0.0.0 to open the port to other machines
 #   POSTGRES_PASSWORD=...     database password (change it on a server)
-#   ENGINE_LOCAL_LOOP=off     "on" = the app ticks itself; keep "off" when cron-job.org calls
-#                             POST <url>/sally/api/engine/tick
+#   ENGINE_LOCAL_LOOP=on      the app ticks itself every minute and POST /api/engine/tick is off;
+#                             "off" = drive it from cron-job.org (POST <url>/sally/api/engine/tick)
 #
 # A fresh server with nothing in front should use deploy/docker-compose.yml instead
 # (adds Caddy with automatic HTTPS). Guide: docs/DEPLOY-SERVER.md
@@ -26,7 +26,7 @@ services:
       BASE_PATH: ${BASE_PATH-/sally}
       DATABASE_URL: postgresql://postgres:${POSTGRES_PASSWORD:-HVj_T6YoUXbXD9w6LP-kYxgO}@postgres:5432/sallycryptobot
       POSTGRES_SSL: "false"
-      ENGINE_LOCAL_LOOP: ${ENGINE_LOCAL_LOOP:-off}
+      ENGINE_LOCAL_LOOP: ${ENGINE_LOCAL_LOOP:-on}
     ports:
       - "${APP_BIND:-127.0.0.1}:${APP_PORT:-3300}:3300"
     depends_on:

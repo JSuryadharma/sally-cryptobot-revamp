@@ -17,8 +17,8 @@ services:
       BASE_PATH: ${BASE_PATH-/sally}
       DATABASE_URL: ${DATABASE_URL:-postgresql://postgres:${POSTGRES_PASSWORD}@db:5432/sallycryptobot}
       POSTGRES_SSL: ${POSTGRES_SSL:-false}
-      # cron-job.org is the only scheduler; the built-in timer stays off.
-      ENGINE_LOCAL_LOOP: ${ENGINE_LOCAL_LOOP:-off}
+      # The app ticks itself; POST /api/engine/tick is off. "off" = use cron-job.org instead.
+      ENGINE_LOCAL_LOOP: ${ENGINE_LOCAL_LOOP:-on}
     depends_on:
       db:
         condition: service_healthy

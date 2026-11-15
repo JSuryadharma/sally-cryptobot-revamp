@@ -95,7 +95,7 @@ const endMs = START + BARS * TF_MS['15m'];
 // can be compared trade for trade.
 const PAPER_EXITS = { breakout: { stopAtr: 2 }, breakout55: { stopAtr: 2, targetR: 2 } };
 const loose = (o = {}) => resolveEngineCfg({
-  profileOverrides: PAPER_EXITS,
+  profileOverrides: PAPER_EXITS, breakoutEntry: 'close',
   minTradeQuoteVolumeUsdt: 0, slippagePct: 0, maxOpenPositions: 50, maxNewEntriesPerBar: 50, maxPortfolioRiskPct: 100,
   tradeAllocationPct: 0.05, maxConsecutiveLosses: 1000, dailyLossLimitPct: 100, drawdownHaltPct: 100, ...o
 });
@@ -120,8 +120,8 @@ test('an autopilot pause records signals but opens nothing', () => {
   assert.ok(out.signals.every((s) => s.skip === 'autopilot paused: both losing'));
 });
 
-test('advancing one day at a time trades the same as one pass', () => {
-  const cfg = loose();
+for (const breakoutEntry of ['close', 'hold:12', 'touch']) test(`advancing one day at a time trades the same as one pass (${breakoutEntry})`, () => {
+  const cfg = loose({ breakoutEntry, earlyTf: '15m', exitTf: '15m' });
   const once = advance(createEngineState(), createPortfolio(10_000_000), series, {
     nowMs: endMs, startMs, usdIdrRate: RATE, cfg, tradeSymbols: SYMBOLS, keepAllTransactions: true
   });

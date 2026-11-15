@@ -163,6 +163,16 @@ export const DEFAULT_ENGINE_CFG = {
   // trigger candle's close (see core.js).
   earlyEntry: false,
   earlyTf: '5m',
+  // When the daily breakout buys (core.js breakoutMode). 'touch:b0.75': on
+  // live prices, the first 5m close that clears the prior N-day high by 0.75
+  // daily ATR (a clean break), with no wait for the daily close.
+  // 37-month backtest (2023-10 to 2026-11, 15 coins, autopilot, 5m exits,
+  // 2% risk): +167%, max drawdown 12.0%, PF 2.54, vs +148% / 20.1% / 2.14
+  // buying the daily close and +189% / 21.8% / 2.08 buying the first touch.
+  // Any margin from 0.4 to 1 ATR kept the drawdown at 12-15.5% (returns
+  // +135% to +184%); a volume spike or a 15m/1h candle close did not help.
+  // 'close' restores the old rule, 'touch' buys the bare break.
+  breakoutEntry: 'touch:b0.75',
   // Open positions are checked on every closed exitTf candle: the stop and
   // target against its high/low, and breakeven/trail moves as soon as price
   // gets there. null = only at the 4h/daily close, as before.

@@ -87,6 +87,10 @@ function formingCandle(sub, k, tf) {
 // - 'nextClose': a daily close above the level, confirmed by the next daily
 //   close still above that same level; bought at the confirming close.
 // - 'touch': the first closed earlyTf (5m) candle above the level, mid-day.
+//   Optional price-action filters, comma-separated after 'touch:':
+//   b<x> the 5m close must clear the level by x daily ATRs; v<x> the breaking
+//   5m candle's volume must be x times its 24h average; k<m> buy at the close
+//   of an m-minute candle that closed above the level (e.g. k15, k60).
 // - 'hold:<hours>': live price has closed every earlyTf candle above the level
 //   for the last <hours>, bought at that moment.
 // - 'cont': yesterday closed as a breakout and live price trades above
@@ -94,7 +98,18 @@ function formingCandle(sub, k, tf) {
 export function breakoutMode(cfg) {
   const raw = String(cfg?.breakoutEntry || 'close');
   if (raw.startsWith('hold:')) return { kind: 'hold', holdMs: Number(raw.slice(5)) * 3_600_000 };
-  return { kind: ['nextClose', 'touch', 'cont'].includes(raw) ? raw : 'close', holdMs: 0 };
+  if (raw === 'touch' || raw.startsWith('touch:')) {
+    const mode = { kind: 'touch', holdMs: 0 };
+    for (const part of raw.slice(6).split(/[,+]/).filter(Boolean)) {
+      const value = Number(part.slice(1));
+      if (!Number.isFinite(value)) continue;
+      if (part[0] === 'b') mode.bufferAtr = value;
+      else if (part[0] === 'v') mode.volMult = value;
+      else if (part[0] === 'k') mode.candleMin = value;
+    }
+    return mode;
+  }
+  return { kind: ['nextClose', 'cont'].includes(raw) ? raw : 'close', holdMs: 0 };
 }
 
 // True when the breakout profile is bought on live (earlyTf) candles instead of a daily close.
@@ -135,6 +150,16 @@ function evaluateBreakoutLive(ctx, event, profile) {
     for (let q = event.i - bars + 1; q < event.i; q += 1) if (!(sub[q].close > level)) return null;
   } else if (mode.kind === 'cont') {
     if (!(d.close > priorHighOf(daily, ci - 1, n))) return null;
+  } else if (mode.kind === 'touch') {
+    if (mode.bufferAtr && !(price > level + mode.bufferAtr * d.atr14)) return null;
+    if (mode.candleMin && event.closeMs % (mode.candleMin * 60_000) !== 0) return null;
+    if (mode.volMult) {
+      const bars = Math.round(TF_MS['1d'] / TF_MS[cfg.earlyTf]);
+      if (event.i < bars) return null;
+      let sum = 0;
+      for (let q = event.i - bars; q < event.i; q += 1) sum += sub[q].volume || 0;
+      if (!((sub[event.i].volume || 0) >= mode.volMult * (sum / bars))) return null;
+    }
   }
   if (!btcAbove200d(series[BTC_SYMBOL]?.[profile.filterTf], d.time)) return null;
   if (quoteVolume24h(daily, ci, profile.barsPer24h) < cfg.minTradeQuoteVolumeUsdt) return null;

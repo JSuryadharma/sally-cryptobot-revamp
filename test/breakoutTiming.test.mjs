@@ -28,6 +28,8 @@ test('breakoutMode parses the timing setting', () => {
   assert.deepEqual(breakoutMode({}), { kind: 'close', holdMs: 0 });
   assert.deepEqual(breakoutMode({ breakoutEntry: 'hold:4' }), { kind: 'hold', holdMs: 4 * 3_600_000 });
   assert.equal(breakoutMode({ breakoutEntry: 'nonsense' }).kind, 'close');
+  assert.deepEqual(breakoutMode({ breakoutEntry: 'touch' }), { kind: 'touch', holdMs: 0 });
+  assert.deepEqual(breakoutMode({ breakoutEntry: 'touch:b0.25,v2,k15' }), { kind: 'touch', holdMs: 0, bufferAtr: 0.25, volMult: 2, candleMin: 15 });
 });
 
 test('daily-close timings buy on the close; live timings buy mid-day above the level', () => {
@@ -35,7 +37,7 @@ test('daily-close timings buy on the close; live timings buy mid-day above the l
   const next = run('nextClose');
   assert.ok(close.length > 0 && next.length > 0);
   for (const t of [...close, ...next]) assert.equal(Date.parse(t.createdAt) % dayMs, 0);
-  for (const mode of ['touch', 'hold:4']) {
+  for (const mode of ['touch', 'hold:4', 'touch:b0.25', 'touch:v1.5', 'touch:k60']) {
     const buys = run(mode);
     assert.ok(buys.length > 0, `${mode} buys`);
     assert.ok(buys.some((t) => Date.parse(t.createdAt) % dayMs !== 0), `${mode} buys mid-day`);

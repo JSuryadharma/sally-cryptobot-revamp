@@ -7,6 +7,7 @@ import { evaluateSetup, placeStop } from './setups.js';
 import { sizePosition } from './sizing.js';
 import { entryBlock } from './riskGuard.js';
 import { normalizePosition } from './ledger.js';
+import { breakoutMode } from './core.js';
 
 export const STAGE_RANK = { blocked: 0, watching: 1, 'setting-up': 2, ready: 3, holding: 4 };
 // Checklist per entry type: market gates first, then the setup itself.
@@ -21,7 +22,7 @@ const TF_NAME = { '5m': '5-minute', '15m': '15-minute', '1h': '1-hour', '4h': '4
 function roundPrice(v) { return Number.isFinite(v) && v !== 0 ? Number(v.toPrecision(8)) : v; }
 function round2(v) { return Math.round(v * 100) / 100; }
 
-function conditionText(key, profile) {
+function conditionText(key, profile, hold = null) {
   const trig = TF_NAME[profile.triggerTf];
   const filt = TF_NAME[profile.filterTf];
   return {
@@ -33,7 +34,10 @@ function conditionText(key, profile) {
     reclaim: { label: `This ${trig} candle closes above the previous high`, fail: 'the candle has not closed above the previous high' },
     noChase: { label: 'Not overextended (close near the EMA20)', fail: 'price is stretched too far above the EMA20' },
     btcRegime: { label: 'Bitcoin is above its 200-day average', fail: 'Bitcoin is below its 200-day average' },
-    breakout: {
+    breakout: hold ? {
+      label: hold.hours ? `Live price holds above the prior ${profile.breakoutLookback}-day high for ${hold.hours} hours` : `Live price trades above the prior ${profile.breakoutLookback}-day high`,
+      fail: `price is not above the ${profile.breakoutLookback}-day high`
+    } : {
       label: `This ${trig} candle closes above the prior ${profile.breakoutLookback}-day high`,
       fail: `price has not closed above the ${profile.breakoutLookback}-day high`
     }
@@ -76,10 +80,13 @@ function profilePrediction({ symbol, profile, series, live, cfg, portfolio, risk
 
   const spec = specFor(profile);
   const isBreakout = profile.entry === 'breakout';
+  const mode = breakoutMode(cfg);
+  // Live breakout timing: bought on 5m candles once price has held above the level.
+  const liveMode = isBreakout && (mode.kind === 'hold' || mode.kind === 'touch') && TF_MS[cfg.earlyTf] ? { hours: mode.holdMs / 3_600_000 } : null;
   const byKey = Object.fromEntries(evaluation.checklist.map((c) => [c.key, c]));
   for (const c of closedEvaluation.checklist) if (spec.gates.includes(c.key)) byKey[c.key] = c;
   const conditions = spec.conditions.map((key) => {
-    const text = conditionText(key, profile);
+    const text = conditionText(key, profile, liveMode);
     if (key === 'btcGate' && !cfg.btcGate) return { key, label: text.label, ok: true, na: true, detail: 'not used' };
     const item = byKey[key];
     return { key, label: text.label, ok: Boolean(item?.ok), detail: item?.detail || 'not enough data yet', failText: text.fail };
@@ -106,7 +113,21 @@ function profilePrediction({ symbol, profile, series, live, cfg, portfolio, risk
     stage = ok('breakout') ? 'ready' : Number.isFinite(atr) && price >= triggerPrice - atr ? 'setting-up' : 'watching';
   } else if (ok('tfTrend') && ok('pullback')) stage = ok('reclaim') && ok('noChase') ? 'ready' : 'setting-up';
   else stage = 'watching';
-  const decisionAt = forming.time * 1000 + TF_MS[profile.triggerTf];
+  let decisionAt = forming.time * 1000 + TF_MS[profile.triggerTf];
+  let liveHold = null;
+  if (liveMode) {
+    // When the hold would complete: the robot buys at the first 5m close
+    // after price has closed every 5m candle above the level for the hold.
+    const sub = series[symbol]?.[cfg.earlyTf] || [];
+    const subMs = TF_MS[cfg.earlyTf];
+    const nextCheck = Math.floor(nowMs / subMs) * subMs + subMs;
+    let heldFromMs = null;
+    for (let k = sub.length - 1; k >= 0 && sub[k].close > triggerPrice; k -= 1) heldFromMs = sub[k].time * 1000;
+    const above = price > triggerPrice;
+    const buyAt = above ? Math.max(nextCheck, (heldFromMs ?? nextCheck - subMs) + liveMode.hours * 3_600_000) : null;
+    liveHold = { hours: liveMode.hours, heldFromMs: above ? heldFromMs : null, buyAt, buyLabel: buyAt ? formatTime(buyAt, cfg.timeZone) : null };
+    decisionAt = buyAt ?? nextCheck;
+  }
 
   const touch = isBreakout ? null : lastTouchIndex(trig, i - 1, cfg);
   const pullbackValidFor = ok('pullback') && touch != null ? Math.max(0, touch + cfg.setup.pullbackLookback - (i - 1)) : 0;
@@ -161,6 +182,7 @@ function profilePrediction({ symbol, profile, series, live, cfg, portfolio, risk
     },
     decisionAt,
     decisionLabel: formatTime(decisionAt, cfg.timeZone),
+    liveHold,
     pullbackValidFor,
     score: evaluation.signal?.score ?? null,
     plan,
@@ -237,6 +259,16 @@ export function describePrediction(prediction, symbol) {
   if (prediction.stage === 'blocked') {
     const failing = prediction.conditions.filter((c) => GATE_KEYS.includes(c.key) && !c.ok && !c.na).map((c) => c.failText);
     return `Not in play: ${failing.slice(0, 2).join(' and ') || 'market conditions are not met'}.`;
+  }
+  const lh = prediction.liveHold;
+  const notYet = prediction.canFire ? '' : ` It won't fire yet: ${prediction.blockers[0]}`;
+  if (lh && prediction.stage === 'ready') {
+    return lh.hours
+      ? `Ready: price is above its breakout level ${prediction.trigger.price}; if it stays above, the robot buys around ${lh.buyLabel}.${notYet}`
+      : `Ready: price is above its breakout level ${prediction.trigger.price}; the robot buys on the next 5-minute check.${notYet}`;
+  }
+  if (lh) {
+    return `${prediction.stage === 'setting-up' ? 'Setting up' : 'Watching'}: buys once live price ${lh.hours ? `holds above ${prediction.trigger.price} for ${lh.hours} hours` : `trades above ${prediction.trigger.price}`} (${prediction.trigger.distancePct}% away).${prediction.stage === 'setting-up' ? notYet : ''}`;
   }
   if (prediction.stage === 'watching' && prediction.entry === 'breakout') {
     return `Watching: buys on a ${tf} close above ${prediction.trigger.price} (${prediction.trigger.distancePct}% away).`;

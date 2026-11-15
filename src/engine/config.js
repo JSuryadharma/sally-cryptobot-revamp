@@ -163,6 +163,16 @@ export const DEFAULT_ENGINE_CFG = {
   // trigger candle's close (see core.js).
   earlyEntry: false,
   earlyTf: '5m',
+  // When the daily breakout buys (core.js breakoutMode). 'hold:12': live
+  // price has to close every 5m candle above the prior N-day high for 12 hours,
+  // and the robot buys at that moment instead of waiting for the daily close.
+  // 37-month backtest (2023-10 to 2026-11, 15 coins, autopilot, 5m exits):
+  // at 2% risk +130% with a 11.8% max drawdown and PF 2.55, vs +148%, 20.1%
+  // and PF 2.14 buying the daily close; at 3% risk +173% / 15.0% vs +155% /
+  // 21.0%. Buying the first touch made more at 2% (+189%) but had the worst
+  // drawdown (21.8%, 26.5% at 0.3% cost) and fell behind at 3% risk; holds of
+  // 1h and 4h did worse than the daily close. 'close' restores the old rule.
+  breakoutEntry: 'hold:12',
   // Open positions are checked on every closed exitTf candle: the stop and
   // target against its high/low, and breakeven/trail moves as soon as price
   // gets there. null = only at the 4h/daily close, as before.

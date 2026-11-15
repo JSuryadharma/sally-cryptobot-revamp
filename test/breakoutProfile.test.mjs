@@ -10,7 +10,7 @@ import { syntheticSeries } from './helpers.mjs';
 
 const RATE = 16_000;
 const breakout = PROFILES.breakout;
-const cfg = resolveEngineCfg({ minTradeQuoteVolumeUsdt: 0 });
+const cfg = resolveEngineCfg({ minTradeQuoteVolumeUsdt: 0, breakoutEntry: 'close' });
 const position = (o = {}) => ({
   symbol: 'X', profile: 'breakout', quantity: 1, entryPrice: 100, stopPrice: 96, initialStop: 96,
   highWaterMark: 100, barsHeld: 0, partialTaken: false, mfeR: 0, investedIdr: 100 * RATE, ...o
@@ -60,7 +60,7 @@ test('engine breakout trades match the paper test trade for trade', () => {
   const endMs = START + BARS * TF_MS['15m'];
   // With the paper test's researched 2x ATR stop (the live profile uses 3x).
   const loose = resolveEngineCfg({
-    profileOverrides: { breakout: { stopAtr: 2 } },
+    profileOverrides: { breakout: { stopAtr: 2 } }, breakoutEntry: 'close',
     minTradeQuoteVolumeUsdt: 0, slippagePct: 0, maxOpenPositions: 50, maxNewEntriesPerBar: 50, maxPortfolioRiskPct: 100,
     tradeAllocationPct: 0.05, maxConsecutiveLosses: 1000, dailyLossLimitPct: 100, drawdownHaltPct: 100
   });

@@ -280,6 +280,37 @@ function renderDashboard() {
   renderPaper();
 }
 
+// Ring period: the hold length for live breakouts, else the candle length.
+function periodOf(h) {
+  return h?.liveHold ? (h.liveHold.buyAt ? (h.liveHold.hours || 1 / 12) * 3_600_000 : 5 * 60_000) : TF_MS[h.timeframe];
+}
+
+// Live breakout timing: the robot buys on 5m checks once price has held above
+// the level, so the card counts down to that instead of to a candle close.
+function renderLiveDecision(all, ring) {
+  const holding = all.filter((x) => x.h.liveHold?.buyAt).sort((a, b) => a.h.liveHold.buyAt - b.h.liveHold.buyAt);
+  const hours = all.find((x) => x.h.liveHold)?.h.liveHold.hours;
+  const rule = hours ? `holds above its breakout level for ${hours} hours` : 'trades above its breakout level';
+  let deadline;
+  let text;
+  if (holding.length) {
+    const first = holding[0];
+    deadline = first.h.liveHold.buyAt;
+    ring.dataset.period = String(periodOf(first.h));
+    const others = [...new Set(holding.slice(1).map((x) => base(x.coin.symbol)))].slice(0, 3);
+    text = `<b>${escapeHtml(base(first.coin.symbol))}</b> is above its breakout level. If it stays above, the robot buys at <b>${escapeHtml(fmtClock(deadline))}</b>.${others.length ? ` Also above: ${escapeHtml(others.join(', '))}.` : ''}`;
+  } else {
+    deadline = Math.min(...all.map((x) => x.h.decisionAt));
+    ring.dataset.period = String(5 * 60_000);
+    const closest = all.filter((x) => x.h.liveHold && x.h.stage !== 'blocked' && Number.isFinite(x.h.trigger?.distancePct)).sort((a, b) => a.h.trigger.distancePct - b.h.trigger.distancePct)[0];
+    text = `No coin is above its breakout level. The robot checks live prices every 5 minutes and buys once a coin ${rule}.${closest ? ` Closest: ${escapeHtml(base(closest.coin.symbol))}, ${closest.h.trigger.distancePct}% away.` : ''}`;
+  }
+  $('decisionCountdown').dataset.deadline = String(deadline);
+  ring.dataset.deadline = String(deadline);
+  ring.classList.toggle('signal', holding.length > 0);
+  $('decisionText').innerHTML = text;
+}
+
 function renderDecision() {
   // Every enabled strategy of every coin not held, not just each coin's
   // headline, so a 4h check with coins set up isn't hidden behind a daily one.
@@ -295,6 +326,7 @@ function renderDecision() {
     ring.dataset.deadline = '';
     return;
   }
+  if (all.some((x) => x.h.liveHold)) { renderLiveDecision(all.filter((x) => x.h.liveHold), ring); return; }
   pool.sort((a, b) => a.h.decisionAt - b.h.decisionAt);
   const next = pool[0].h;
   const atNext = inPlayOf(pool.filter((x) => x.h.decisionAt === next.decisionAt));
@@ -345,6 +377,10 @@ function segmentsHtml(h, key) {
 function triggerLine(coin, h) {
   if (!h) return 'Not enough data yet.';
   if (h.stage === 'holding') return `Stop at <b>${fmtPrice(h.stopPrice)}</b> (${h.distanceToStopPct}% away)`;
+  if (h.liveHold && h.stage === 'ready') return `Above <b>${fmtPrice(h.trigger.price)}</b>, buys at <b>${escapeHtml(fmtClock(h.liveHold.buyAt))}</b> if it stays above`;
+  if (h.liveHold && h.stage !== 'blocked') {
+    return `Buys once price ${h.liveHold.hours ? `holds above <b>${fmtPrice(h.trigger.price)}</b> for ${h.liveHold.hours}h` : `trades above <b>${fmtPrice(h.trigger.price)}</b>`} <span class="muted" data-dist="${coin.symbol}" data-trigger="${h.trigger.price}">${distanceText(h.trigger.price, livePrice(coin))}</span>`;
+  }
   if (h.stage === 'ready') return `Would buy near <b>${fmtPrice(h.plan?.entryPrice ?? livePrice(coin))}</b> if the candle closes like this`;
   if (h.stage === 'setting-up') {
     return `Buys if the ${TF_LABEL[h.timeframe]} candle closes above <b>${fmtPrice(h.trigger.price)}</b> <span class="muted" data-dist="${coin.symbol}" data-trigger="${h.trigger.price}">${distanceText(h.trigger.price, livePrice(coin))}</span>`;
@@ -394,7 +430,7 @@ function renderFiring() {
   }
   list.innerHTML = top.map((coin, i) => {
     const h = headline(coin);
-    const period = TF_MS[h.timeframe];
+    const period = periodOf(h);
     return `<div class="card fire-card enter" style="--i:${i}" data-open="${coin.symbol}">
       <div class="fire-head">
         <div class="coin-name"><span class="coin-dot">${escapeHtml(base(coin.symbol).slice(0, 4))}</span><div><b>${escapeHtml(base(coin.symbol))}</b><small>${escapeHtml(shortProfile(h))}</small></div></div>
@@ -443,7 +479,7 @@ function exitCheckText(exit) {
 function renderPositions() {
   const list = $('positionsList');
   const positions = Object.values(state.portfolio?.positions || {});
-  if (!positions.length) { list.innerHTML = '<div class="empty">No open positions. The robot buys when a coin on the radar reaches "Ready" and the candle closes.</div>'; return; }
+  if (!positions.length) { list.innerHTML = '<div class="empty">No open positions. The robot buys when a coin on the radar reaches "Ready" and its buy rule is met.</div>'; return; }
   list.innerHTML = positions.map((pos, i) => {
     const coin = coinBySymbol(pos.symbol);
     const exit = coin?.prediction?.exit;
@@ -705,15 +741,19 @@ function renderEntryPlan(coin, plan) {
   const sentence = plan.profile === headline(coin)?.profile ? coin.prediction.sentence : null;
   $('planSentence').textContent = sentence || triggerLine(coin, plan).replace(/<[^>]+>/g, '');
   $('planStepper').innerHTML = stepperHtml(plan);
-  const period = TF_MS[plan.timeframe];
-  const highlight = plan.stage === 'setting-up' || plan.stage === 'ready'
+  const period = periodOf(plan);
+  const lh = plan.liveHold;
+  const highlight = lh && (plan.stage === 'setting-up' || plan.stage === 'ready')
+    ? `<div><div class="muted">${plan.stage === 'ready' ? 'Above the breakout level, buys if it stays above' : `Buy trigger: ${lh.hours ? `hold above for ${lh.hours}h` : 'trade above'}`}</div><div class="big-number">${fmtPrice(plan.trigger.price)}</div>
+       <div class="muted" data-dist="${coin.symbol}" data-trigger="${plan.trigger.price}">${distanceText(plan.trigger.price, livePrice(coin))}</div></div>`
+    : plan.stage === 'setting-up' || plan.stage === 'ready'
     ? `<div><div class="muted">${plan.stage === 'ready' ? 'Buys at the candle close if it holds' : 'Buy trigger: close above'}</div><div class="big-number">${fmtPrice(plan.stage === 'ready' ? (plan.plan?.entryPrice ?? plan.trigger.livePrice) : plan.trigger.price)}</div>
        <div class="muted" data-dist="${coin.symbol}" data-trigger="${plan.trigger.price}">${distanceText(plan.trigger.price, livePrice(coin))}</div></div>`
-    : `<div><div class="muted">Next check</div><div class="big-number">${escapeHtml(plan.decisionLabel)}</div><div class="muted">${plan.stage !== 'watching' ? 'Not in play until the trend turns up.' : plan.entry === 'breakout' ? `Waiting for a close above ${fmtPrice(plan.trigger.price)}.` : 'Waiting for a pullback to the EMA20.'}</div></div>`;
+    : `<div><div class="muted">Next check</div><div class="big-number">${escapeHtml(plan.decisionLabel)}</div><div class="muted">${plan.stage !== 'watching' ? 'Not in play until the trend turns up.' : plan.entry === 'breakout' ? (lh ? `Waiting for live price to ${lh.hours ? `hold above ${fmtPrice(plan.trigger.price)} for ${lh.hours}h` : `trade above ${fmtPrice(plan.trigger.price)}`}.` : `Waiting for a close above ${fmtPrice(plan.trigger.price)}.`) : 'Waiting for a pullback to the EMA20.'}</div></div>`;
   $('planHighlight').innerHTML = `
     <svg class="ring" viewBox="0 0 44 44" aria-hidden="true"><circle class="ring-track" cx="22" cy="22" r="19"/><circle class="ring-fill ${plan.stage === 'ready' ? 'bull' : 'signal'}" data-deadline="${plan.decisionAt}" data-period="${period}" cx="22" cy="22" r="19"/></svg>
     ${highlight}
-    <div class="plan-countdown"><div class="muted">${TF_LABEL[plan.timeframe]} candle closes in</div><div class="big-number" data-deadline="${plan.decisionAt}">${fmtCountdown(plan.decisionAt - Date.now())}</div><div class="muted small">${escapeHtml(plan.decisionLabel)}, robot acts within ~5-15 min</div></div>`;
+    <div class="plan-countdown"><div class="muted">${lh ? (lh.buyAt ? 'Buys in' : 'Next live check in') : `${TF_LABEL[plan.timeframe]} candle closes in`}</div><div class="big-number" data-deadline="${plan.decisionAt}">${fmtCountdown(plan.decisionAt - Date.now())}</div><div class="muted small">${escapeHtml(plan.decisionLabel)}, robot acts within ~5-15 min</div></div>`;
   $('planBlockers').innerHTML = plan.blockers?.length && plan.stage !== 'blocked'
     ? `<div class="blockers">${plan.blockers.map((b) => `<div>${escapeHtml(b)}</div>`).join('')}</div>` : '';
   $('planChecklist').innerHTML = plan.conditions.map((c) => `<div class="check ${c.na ? '' : c.ok ? 'ok' : 'fail'}">

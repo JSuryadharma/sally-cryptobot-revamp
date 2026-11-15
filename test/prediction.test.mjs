@@ -116,8 +116,8 @@ function breakoutScenario({ formingClose, btcUp = true }) {
   };
 }
 
-function predictBreakout(s) {
-  const bcfg = resolveEngineCfg({ minTradeQuoteVolumeUsdt: 0 });
+function predictBreakout(s, o = {}) {
+  const bcfg = resolveEngineCfg({ minTradeQuoteVolumeUsdt: 0, breakoutEntry: 'close', ...o });
   return predictCoin({
     symbol: 'COINUSDT', ...s, cfg: bcfg, portfolio: createPortfolio(10_000_000), risk: createRiskState(), symbolState: null,
     autoTradeOn: true, usdIdrRate: RATE, nowMs: (START + 25.5 * 86_400) * 1000
@@ -135,6 +135,23 @@ test('breakout: watching below the 20-day high, setting up within 1 ATR, ready a
   const ready = predictBreakout(breakoutScenario({ formingClose: 102 }));
   assert.equal(ready.stage, 'ready');
   assert.equal(ready.plan.stopPrice, 96, 'stop 3x ATR below the close');
+});
+
+test('breakout with the 12h live hold: says when it buys if price stays above', () => {
+  const nowMs = (START + 25.5 * 86_400) * 1000;
+  const s = breakoutScenario({ formingClose: 102 });
+  // 5m closes above 101 for the last 3 hours.
+  s.series.COINUSDT['5m'] = Array.from({ length: 36 }, (_, k) => ({ time: nowMs / 1000 - (36 - k) * 300, open: 101.5, high: 102, low: 101.2, close: 101.6 }));
+  const ready = predictBreakout(s, { breakoutEntry: 'hold:12' });
+  assert.equal(ready.stage, 'ready');
+  assert.equal(ready.liveHold.heldFromMs, nowMs - 3 * 3_600_000);
+  assert.equal(ready.liveHold.buyAt, nowMs + 9 * 3_600_000);
+  assert.equal(ready.decisionAt, ready.liveHold.buyAt);
+  assert.match(ready.conditions.at(-1).label, /holds above the prior 20-day high for 12 hours/);
+  assert.match(describePrediction(ready, 'COINUSDT'), /if it stays above, the robot buys around/);
+  const far = predictBreakout(breakoutScenario({ formingClose: 97 }), { breakoutEntry: 'hold:12' });
+  assert.equal(far.liveHold.buyAt, null);
+  assert.match(describePrediction(far, 'COINUSDT'), /holds above 101 for 12 hours/);
 });
 
 test('breakout: blocked while BTC is below its 200-day average', () => {

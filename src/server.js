@@ -219,13 +219,15 @@ async function route(req, res) {
   return serveStatic(req, res, pathname);
 }
 
-// With BASE_PATH=/sally, "/sally/api/x" is routed as "/api/x". "/" and "/sally" return
-// null (redirect to "/sally/"). Unprefixed paths still work, so the container's health
-// check and an old cron-job.org URL keep working.
+// With BASE_PATH=/sally, "/sally/api/x" is routed as "/api/x" and only "/sally" returns
+// null (redirect to "/sally/"). Unprefixed paths, "/" included, are served as-is: a proxy
+// that strips the prefix (nginx `proxy_pass http://127.0.0.1:3300/;`, Caddy `handle_path`)
+// sends "/sally/" here as "/", and redirecting that back to "/sally/" loops forever.
+// The container's health check and an old cron-job.org URL keep working too.
 function stripBasePath(pathname) {
   const base = config.basePath;
   if (!base) return pathname;
-  if (pathname === '/' || pathname === base) return null;
+  if (pathname === base) return null;
   return pathname.startsWith(`${base}/`) ? pathname.slice(base.length) : pathname;
 }
 

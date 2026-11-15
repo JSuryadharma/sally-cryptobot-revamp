@@ -31,7 +31,7 @@ HTTPS needs a name, not a bare IP. Pick one:
 
 From now on this guide calls it `YOUR_DOMAIN`.
 
-The app lives under the path **`/sally`**, so the dashboard is at `https://YOUR_DOMAIN/sally/` (opening `https://YOUR_DOMAIN` redirects there). The path is the `BASE_PATH` setting in Step 5. Change it to anything you like, or leave it empty to serve the app at the root.
+The app lives under the path **`/sally`**, so the dashboard is at `https://YOUR_DOMAIN/sally/`. The path is the `BASE_PATH` setting in Step 5. Change it to anything you like, or leave it empty to serve the app at the root.
 
 ## Step 3. Log in and install Docker
 
@@ -178,7 +178,7 @@ location /sally/ {
 }
 ```
 
-`proxy_pass` has no path after the port, so nginx forwards `/sally/...` unchanged, which is what the app expects. Steps 7-10 work the same (use `https://YOUR_DOMAIN/sally/...`). For Step 7, run the copy from the repo root: `DB_SERVICE=postgres deploy/copy-db-from-neon.sh '<Vercel DATABASE_URL>'`, then `docker compose restart app`.
+`proxy_pass` has no path after the port, so nginx forwards `/sally/...` unchanged. A trailing slash (`http://127.0.0.1:3300/`), which strips `/sally`, works too. Steps 7-10 work the same (use `https://YOUR_DOMAIN/sally/...`). For Step 7, run the copy from the repo root: `DB_SERVICE=postgres deploy/copy-db-from-neon.sh '<Vercel DATABASE_URL>'`, then `docker compose restart app`.
 
 ## Everyday commands
 
@@ -247,6 +247,7 @@ Copy a backup to your Mac with `scp root@YOUR_SERVER_IP:~/backup-*.sql.gz ~/Down
 | Symptom | Fix |
 |---|---|
 | Browser shows a certificate error | DNS doesn't point at the server yet, or ports 80/443 are blocked. Check `docker compose logs caddy`. |
+| "Too many redirects" | If the domain is behind Cloudflare, set SSL/TLS mode to **Full** (not Flexible). Otherwise run `curl -sI https://YOUR_DOMAIN/sally/` and check the `Location:` header to see who redirects. |
 | `502 Bad Gateway` | The app isn't up. `docker compose logs app` shows why (usually a typo in `.env`). |
 | `/api/health` says `connected: false` | Database problem: check `POSTGRES_PASSWORD` / `DATABASE_URL` in `.env`. If you change `POSTGRES_PASSWORD` after the first start, it won't apply to the existing database; run `docker compose down -v` (wipes the server database) and start again. |
 | cron-job.org gives `409` | Another tick was still running (or the built-in timer is on too). It's harmless once; if it repeats, check `ENGINE_LOCAL_LOOP`. |

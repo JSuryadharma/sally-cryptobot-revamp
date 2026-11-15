@@ -61,6 +61,10 @@ async function route(req, res) {
     });
   }
 
+  // Only one scheduler at a time: while the built-in timer runs, the external tick URL is off.
+  if (pathname === '/api/engine/tick' && localLoopEnabled) {
+    return sendJson(res, 404, { error: 'Disabled: this server ticks itself (ENGINE_LOCAL_LOOP=on).' });
+  }
   if (pathname === '/api/engine/tick') {
     const { status, body } = await handleTickRequest(req);
     return sendJson(res, status, body);
@@ -285,8 +289,9 @@ function readBody(req) {
 
 // Local/persistent-host scheduler. On Vercel an external scheduler (cron-job.org) calls
 // /api/engine/tick instead, because serverless instances don't keep timers alive.
-// On a server driven by cron-job.org, ENGINE_LOCAL_LOOP=off turns this timer off so the
-// two never race for the engine lease (a busy lease answers cron-job.org with 409).
+// The timer and POST /api/engine/tick are mutually exclusive: with the timer on (the default
+// off-Vercel) the tick URL answers 404; ENGINE_LOCAL_LOOP=off switches back to an external
+// scheduler such as cron-job.org.
 const localLoopEnabled = !process.env.VERCEL && process.env.ENGINE_LOCAL_LOOP !== 'off';
 let tickTimer = null;
 
@@ -299,7 +304,7 @@ async function scheduleTick() {
 
 server.listen(config.port, () => {
   console.log(`robocrypto listening on http://localhost:${config.port}${config.basePath}/`);
-  console.log(localLoopEnabled ? '[tick] built-in timer on' : '[tick] built-in timer off - waiting for POST /api/engine/tick');
+  console.log(localLoopEnabled ? '[tick] built-in timer on - POST /api/engine/tick is disabled' : '[tick] built-in timer off - waiting for POST /api/engine/tick');
   if (localLoopEnabled) scheduleTick();
 });
 

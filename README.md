@@ -43,7 +43,7 @@ The server does no trading on its own timer on Vercel. An external scheduler ([c
 4. Sends Telegram alerts.
 5. Writes the dashboard's per-coin predictions.
 
-Opening the dashboard never trades. Running locally, `npm start` also ticks on a timer.
+Opening the dashboard never trades. Off Vercel (`npm start`, Docker, a VPS) the server ticks itself every minute instead, and `POST /api/engine/tick` is disabled while that timer runs; `ENGINE_LOCAL_LOOP=off` switches back to cron-job.org.
 
 The engine lives in `src/engine/`. `core.js` is pure and shared by the live tick and the backtester, so a backtest runs exactly the code that trades.
 

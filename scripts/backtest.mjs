@@ -16,6 +16,10 @@
 //   --exits          also compare exit-rule variants (EXIT_VARIANTS) on the test window
 //   --early          also compare early entry (5m and 15m checks) with close-only entry
 //   --buy-early      run everything with "Buy early" (5m checks) switched on
+//   --entry-timing   compare breakout entry timings (cfg.breakoutEntry: daily
+//                    close, next-close confirmation, live 5m price with or
+//                    without a hold), each under the autopilot, on the whole
+//                    window and on its first 2/3 and last 1/3
 //   --auto           also compare the autopilot (src/engine/autopilot.js),
 //                    replayed day by day from the paper results known each day,
 //                    with each breakout run on its own
@@ -90,6 +94,8 @@ function parseArgs(argv) {
     else if (flag === '--early') args.early = true;
     else if (flag === '--buy-early') args.buyEarly = true;
     else if (flag === '--auto') args.auto = true;
+    else if (flag === '--entry-timing') args.entryTiming = true;
+    else if (flag === '--timings') { args.timings = value.split(','); k += 1; }
   }
   return args;
 }
@@ -404,6 +410,28 @@ async function main() {
       }
       return { name: run.name, metrics: base, stressExpectancyR: costly.expectancyR, stressReturnPct: costly.totalReturnPct, verdict: verdictA };
     });
+  }
+
+  if (args.entryTiming) {
+    const timings = args.timings || ['close', 'nextClose', 'touch', 'hold:1', 'hold:4', 'hold:12', 'cont'];
+    const cut = startMs + Math.round((args.end - startMs) * 2 / 3);
+    const windows = [['all', startMs, args.end], ['A', startMs, cut], ['B', cut, args.end]];
+    console.log(`\nBreakout entry timing under the autopilot (A = first 2/3 to ${new Date(cut).toISOString().slice(0, 10)}, B = last 1/3):`);
+    report.entryTimingBreakout = [];
+    for (const breakoutEntry of timings) {
+      const row = { breakoutEntry };
+      for (const [name, from, to] of windows) {
+        const sim = simulate(series, { symbols: args.symbols, startMs: from, endMs: to, autopilot: true, cfg: resolveEngineCfg({ ...baseCfg, breakoutEntry }) });
+        row[name] = { ...sim.metrics, predictions: undefined, paperBreakout: undefined };
+        if (name === 'all') {
+          row.trades = [...sim.transactions].reverse().filter((t) => t.type === 'BUY' || (t.type === 'SELL' && !t.partial))
+            .map((t) => ({ at: t.createdAt, type: t.type, symbol: t.symbol, price: t.price, r: t.rMultiple ?? null, exit: t.exitKind ?? null }));
+        }
+        const m = sim.metrics;
+        console.log(`  ${breakoutEntry.padEnd(10)} ${name.padEnd(3)} ${fmtMetrics(m)}, PF ${m.profitFactor}, hold ${m.avgHoldHours}h`);
+      }
+      report.entryTimingBreakout.push(row);
+    }
   }
 
   const outDir = path.join(ROOT, 'benchmarks', `v2-${new Date().toISOString().replace(/[:.]/g, '-')}`);

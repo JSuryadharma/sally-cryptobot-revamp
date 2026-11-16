@@ -22,7 +22,9 @@
 // and the close reclaims the EMA20 with RSI above 40 ("reclaim"), or RSI14
 // simply closes back above 30 ("rsi").
 // Entry = that close. Stop = lowest low of the last 24 bars - 0.5 ATR.
-// Targets: gap bottom (first touch), gap middle, gap top (full fill), or +1.5R.
+// "Deep" rows keep only big gaps (fvg >= 1 ATR tall, drop candle >= 2.5 ATR).
+// Targets (sell): gap middle, gap top (full fill), above the gap (top + 25%
+// of the gap height), or a fixed +1.5R.
 // Time stop: 7 days. A bar that touches both stop and target counts as a stop.
 //
 // Flags: --months <n> (36)  --split <0..1> (0.6)  --symbols A,B
@@ -105,15 +107,16 @@ function lastClosed(s, ms) {
   return found;
 }
 
-function findGaps(s, kind) {
+// deep: only big gaps - fvg at least 1 ATR tall, drop candle at least 2.5 ATR.
+function findGaps(s, kind, deep = false) {
   const gaps = [];
   for (let k = 2; k < s.close.length; k += 1) {
     const atr = s.atr14[k - 1];
     if (!(atr > 0)) continue;
     if (kind === 'fvg') {
       const bottom = s.high[k], top = s.low[k - 2];
-      if (top - bottom >= 0.25 * atr && s.close[k] < s.open[k]) gaps.push({ k, bottom, top, formedMs: closeMs(s, k) });
-    } else if (s.open[k] - s.close[k] >= 1.5 * atr) {
+      if (top - bottom >= (deep ? 1 : 0.25) * atr && s.close[k] < s.open[k]) gaps.push({ k, bottom, top, formedMs: closeMs(s, k) });
+    } else if (s.open[k] - s.close[k] >= (deep ? 2.5 : 1.5) * atr) {
       gaps.push({ k, bottom: s.close[k], top: s.open[k], formedMs: closeMs(s, k) });
     }
   }
@@ -161,6 +164,7 @@ const TARGETS = {
   bottom: (g) => g.bottom,
   middle: (g) => (g.bottom + g.top) / 2,
   top: (g) => g.top,
+  above: (g) => g.top + 0.25 * (g.top - g.bottom),
   r15: (_g, p) => p.entry + 1.5 * (p.entry - p.stop)
 };
 
@@ -173,7 +177,7 @@ function scanVariant(data, v, symbols, { startMs, endMs, costPct, btcDaily }) {
     const maxBars = Math.round(7 * DAY / TF_MS[v.trigTf]);
     const liveBars = Math.round(10 * DAY / TF_MS[v.trigTf]);
     let busyUntil = -1;
-    const gaps = v.gapKind ? findGaps(g, v.gapKind) : null;
+    const gaps = v.gapKind ? findGaps(g, v.gapKind, v.deep) : null;
     if (gaps) {
       for (const gap of gaps) {
         if (gap.formedMs < startMs || gap.formedMs >= endMs) continue;
@@ -233,15 +237,16 @@ function stats(rs) {
 export function variants() {
   const out = [];
   for (const gapTf of ['1d', '4h']) for (const gapKind of ['fvg', 'drop']) for (const trigTf of ['1h', '15m'])
-    for (const trig of ['reclaim', 'rsi']) for (const target of Object.keys(TARGETS)) for (const btc of [false, true])
-      out.push({ gapTf, gapKind, trigTf, trig, target, btc });
+    for (const deep of [false, true]) for (const trig of ['reclaim', 'rsi'])
+      for (const target of ['middle', 'top', 'above', 'r15']) for (const btc of [false, true])
+        out.push({ gapTf, gapKind, deep, trigTf, trig, target, btc });
   for (const trigTf of ['1h', '15m']) for (const trig of ['reclaim', 'rsi']) for (const btc of [false, true])
     out.push({ gapTf: trigTf, gapKind: null, trigTf, trig, target: 'r15', btc });
   return out;
 }
 
 const trigName = (v) => (v.trig === 'rsi' ? 'RSI>30' : 'RSI+EMA20');
-const label = (v) => (v.gapKind ? `${v.gapKind} ${v.gapTf} -> ${v.trigTf} ${trigName(v)}, tgt ${v.target}` : `CONTROL no gap, ${v.trigTf} ${trigName(v)}, +1.5R`) + (v.btc ? ', BTC>200d' : '');
+const label = (v) => (v.gapKind ? `${v.deep ? 'DEEP ' : ''}${v.gapKind} ${v.gapTf} -> ${v.trigTf} ${trigName(v)}, tgt ${v.target}` : `CONTROL no gap, ${v.trigTf} ${trigName(v)}, +1.5R`) + (v.btc ? ', BTC>200d' : '');
 
 function parseArgs(argv) {
   const end = new Date(); end.setUTCHours(0, 0, 0, 0);
@@ -283,8 +288,8 @@ async function main() {
   }
   console.log(`\nTrain ${day(startMs)} -> ${day(splitMs)}, test ${day(splitMs)} -> ${day(args.end)}, ${args.cost}% round-trip cost in R, ${args.symbols.length} coins.\n`);
   const fmt = (s) => (s.n ? `${String(s.n).padStart(4)} ${String(s.winPct).padStart(3)}% ${String(s.avgR).padStart(6)}R t${String(s.t).padStart(5)}` : '   0').padEnd(27);
-  console.log(`${'variant'.padEnd(62)} ${'train n win avgR t'.padEnd(27)} ${'test n win avgR t'.padEnd(27)} all PF`);
-  for (const row of rows) console.log(`${row.name.padEnd(62)} ${fmt(row.train)} ${fmt(row.test)} ${row.all.pf}`);
+  console.log(`${'variant'.padEnd(66)} ${'train n win avgR t'.padEnd(27)} ${'test n win avgR t'.padEnd(27)} all PF`);
+  for (const row of rows) console.log(`${row.name.padEnd(66)} ${fmt(row.train)} ${fmt(row.test)} ${row.all.pf}`);
   const outDir = path.join(ROOT, 'benchmarks', `gap-research-${new Date().toISOString().replace(/[:.]/g, '-')}`);
   await fs.mkdir(outDir, { recursive: true });
   await fs.writeFile(path.join(outDir, 'report.json'), JSON.stringify({ args: { ...args, startMs, splitMs }, rows }, null, 2));

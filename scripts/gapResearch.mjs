@@ -30,6 +30,7 @@
 // Flags: --months <n> (36)  --split <0..1> (0.6)  --symbols A,B
 //        --end <ISO> (last UTC midnight)  --cost <pct> (0.25)  --no-cache
 //        --nostop  daily gaps only, with vs without the stop, 7 or 30 days
+//        --structure  CHoCH (market structure) entries, with/without volume spike
 //        --loss    what the deep losers have in common (volume, Fear & Greed,
 //                  BTC trend, gap size) + max-loss stops of 8-20%
 import fs from 'node:fs/promises';
@@ -135,7 +136,28 @@ function btcRiskOn(btcDaily, ms) {
 // reclaim: RSI14 was under 30 in the last 24 bars, this bar is the first close
 //          back above the EMA20 and RSI is back above 40.
 // rsi:     RSI14 closes back above 30 after being under it (no EMA check).
+// Market-structure triggers (no RSI, no EMA):
+// choch:    change of character - the latest low is the lowest of the last
+//           24 bars, and this bar is the first close above the lower high
+//           that came before that low (highest high of the 12 bars before it).
+// chochVol: the same, and this bar's volume is at least 1.5x its 20-bar average.
+function chochAt(t, i, needVol) {
+  if (i < 40) return false;
+  let L = i - 24;
+  for (let m = i - 24; m < i; m += 1) if (t.low[m] < t.low[L]) L = m;
+  if (L >= i - 1 || L < 13) return false;
+  let lh = -Infinity;
+  for (let m = L - 12; m < L; m += 1) lh = Math.max(lh, t.high[m]);
+  for (let m = L + 1; m < i; m += 1) if (t.close[m] > lh) return false; // already broken earlier
+  if (!(t.close[i] > lh)) return false;
+  if (!needVol) return true;
+  const base = avg(t.volume, i - 20, i - 1);
+  return base > 0 && t.volume[i] >= 1.5 * base;
+}
+
 export function triggerAt(t, i, { trig }) {
+  if (trig === 'choch') return chochAt(t, i, false);
+  if (trig === 'chochVol') return chochAt(t, i, true);
   if (i < 25 || t.rsi14[i] == null || t.ema20[i] == null || t.ema20[i - 1] == null || !(t.atr14[i] > 0)) return false;
   if (trig === 'rsi') return t.rsi14[i] > 30 && t.rsi14[i - 1] <= 30;
   if (!(t.close[i] > t.ema20[i] && t.close[i - 1] <= t.ema20[i - 1] && t.rsi14[i] > 40)) return false;
@@ -196,6 +218,10 @@ function scanVariant(data, v, symbols, { startMs, endMs, costPct, btcDaily }) {
     if (gaps) {
       for (const gap of gaps) {
         if (gap.formedMs < startMs || gap.formedMs >= endMs) continue;
+        if (v.minGapVol) { // gap-day volume vs the 20 bars before it (capitulation)
+          const base = avg(g.volume, gap.k - 23, gap.k - 4);
+          if (!(base > 0 && g.volume[gap.k] / base >= v.minGapVol)) continue;
+        }
         const i0 = lastClosed(t, gap.formedMs) + 1;
         for (let i = Math.max(i0, busyUntil + 1); i < Math.min(t.close.length, i0 + liveBars); i += 1) {
           if (closeMs(t, i) >= endMs) break;
@@ -225,7 +251,7 @@ function scanVariant(data, v, symbols, { startMs, endMs, costPct, btcDaily }) {
         if (v.btc && !btcRiskOn(btcDaily, ms)) continue;
         const plan = planAt(t, i);
         if (!plan) continue;
-        const res = outcome(t, i, { ...plan, target: TARGETS.r15(null, plan) }, { maxBars, costPct, noStop: v.noStop });
+        const res = outcome(t, i, { ...plan, target: TARGETS.r15(null, plan) }, { maxBars, costPct, noStop: v.noStop, catPct: v.catPct });
         if (!res) break;
         trades.push({ symbol, entryMs: ms, entry: plan.entry, stop: plan.stop, ...res });
         busyUntil = res.exitIndex;
@@ -269,6 +295,25 @@ async function loadFng(useCache) {
     } catch (err) { console.log(`  Fear & Greed unavailable: ${err.message}`); return null; }
   }
   return new Map(rows.map((r) => [day(Number(r.timestamp) * 1000), Number(r.value)]));
+}
+
+// --structure: market-structure (CHoCH) entries with and without a volume
+// spike, next to the RSI+EMA20 entry, so the two can be compared directly.
+export function structureVariants() {
+  const out = [];
+  // All with the normal stop capped at a 15% max loss; gap-day volume >= 2x or any.
+  const base = { target: 'r15', btc: false, maxDays: 7, catPct: 15 };
+  for (const gapKind of ['fvg', 'drop']) for (const deep of [false, true]) for (const trigTf of ['1h', '15m'])
+    for (const trig of ['choch', 'chochVol', 'reclaim']) for (const minGapVol of [0, 2])
+      out.push({ ...base, gapTf: '1d', gapKind, deep, trigTf, trig, minGapVol });
+  for (const gapKind of ['fvg', 'drop']) for (const trig of ['choch', 'chochVol'])
+    out.push({ ...base, gapTf: '4h', gapKind, deep: true, trigTf: '1h', trig, minGapVol: 2 });
+  // Best combo so far plus BTC > 200d.
+  for (const trig of ['choch', 'chochVol', 'reclaim'])
+    out.push({ ...base, gapTf: '1d', gapKind: 'fvg', deep: true, trigTf: '1h', trig, minGapVol: 2, btc: true });
+  for (const trigTf of ['1h', '15m']) for (const trig of ['choch', 'chochVol', 'reclaim'])
+    out.push({ ...base, gapTf: trigTf, gapKind: null, trigTf, trig });
+  return out;
 }
 
 // --loss: what separates the deep losers from the rest?
@@ -350,8 +395,8 @@ export function variants() {
   return out;
 }
 
-const trigName = (v) => (v.trig === 'rsi' ? 'RSI>30' : 'RSI+EMA20');
-const label = (v) => (v.gapKind ? `${v.deep ? 'DEEP ' : ''}${v.gapKind} ${v.gapTf} -> ${v.trigTf} ${trigName(v)}, tgt ${v.target}` : `CONTROL no gap, ${v.trigTf} ${trigName(v)}, +1.5R`) + (v.btc ? ', BTC>200d' : '') + (v.maxDays ? `, ${v.maxDays}d` : '') + (v.noStop ? ', NO STOP' : '') + (v.catPct ? `, max loss ${v.catPct}%` : '');
+const trigName = (v) => ({ rsi: 'RSI>30', choch: 'CHoCH', chochVol: 'CHoCH+vol' }[v.trig] || 'RSI+EMA20');
+const label = (v) => (v.gapKind ? `${v.deep ? 'DEEP ' : ''}${v.gapKind} ${v.gapTf} -> ${v.trigTf} ${trigName(v)}, tgt ${v.target}` : `CONTROL no gap, ${v.trigTf} ${trigName(v)}, +1.5R`) + (v.btc ? ', BTC>200d' : '') + (v.maxDays ? `, ${v.maxDays}d` : '') + (v.noStop ? ', NO STOP' : '') + (v.catPct ? `, max loss ${v.catPct}%` : '') + (v.minGapVol ? `, gapVol>=${v.minGapVol}x` : '');
 
 function parseArgs(argv) {
   const end = new Date(); end.setUTCHours(0, 0, 0, 0);
@@ -366,6 +411,7 @@ function parseArgs(argv) {
     else if (flag === '--no-cache') args.cache = false;
     else if (flag === '--nostop') args.nostop = true;
     else if (flag === '--loss') args.loss = true;
+    else if (flag === '--structure') args.structure = true;
   }
   return args;
 }
@@ -386,7 +432,7 @@ async function main() {
   const btcDaily = data[BTC_SYMBOL]['1d'];
   if (args.loss) FNG = await loadFng(args.cache);
   const rows = [];
-  const list = args.loss ? lossVariants() : args.nostop ? noStopVariants() : variants();
+  const list = args.structure ? structureVariants() : args.loss ? lossVariants() : args.nostop ? noStopVariants() : variants();
   for (const v of list) {
     const all = scanVariant(data, v, args.symbols, { startMs, endMs: args.end, costPct: args.cost, btcDaily });
     const train = all.filter((x) => x.entryMs < splitMs).map((x) => x.r);
@@ -396,7 +442,7 @@ async function main() {
     const pcts = (xs) => (xs.length ? r2(xs.reduce((a, x) => a + x.pct, 0) / xs.length) : null);
     const allPct = pcts(all), worstDip = all.length ? r2(Math.min(...all.map((x) => x.maePct))) : null;
     rows.push({ name: label(v), variant: v, all: { ...stats(all.map((x) => x.r)), avgPct: allPct, worstDipPct: worstDip, testAvgPct: pcts(all.filter((x) => x.entryMs >= splitMs)) }, train: stats(train), test: stats(test), recent,
-      buckets: args.loss ? bucketReport(all, splitMs) : undefined,
+      buckets: (args.loss || args.structure) ? bucketReport(all, splitMs) : undefined,
       worstTrades: args.loss ? [...all].sort((a, b) => a.maePct - b.maePct).slice(0, 8).map((x) => ({ symbol: x.symbol, entry: day(x.entryMs), dipPct: r2(x.maePct), r: r2(x.r), why: x.why, f: Object.fromEntries(Object.entries(x.f || {}).map(([a, b]) => [a, r2(b)])) })) : undefined });
   }
   console.log(`\nTrain ${day(startMs)} -> ${day(splitMs)}, test ${day(splitMs)} -> ${day(args.end)}, ${args.cost}% round-trip cost in R, ${args.symbols.length} coins.\n`);

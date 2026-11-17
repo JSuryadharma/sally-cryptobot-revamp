@@ -30,6 +30,8 @@
 // Flags: --months <n> (36)  --split <0..1> (0.6)  --symbols A,B
 //        --end <ISO> (last UTC midnight)  --cost <pct> (0.25)  --no-cache
 //        --nostop  daily gaps only, with vs without the stop, 7 or 30 days
+//        --loss    what the deep losers have in common (volume, Fear & Greed,
+//                  BTC trend, gap size) + max-loss stops of 8-20%
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -90,6 +92,7 @@ export function pack(raw, tf) {
   return {
     tf,
     openMs: bars.map((b) => b.time * 1000),
+    volume: bars.map((b) => b.volume || 0),
     open: bars.map((b) => b.open), high: bars.map((b) => b.high), low: bars.map((b) => b.low), close,
     ema20: ema(close, 20), ema50: ema(close, 50), rsi14: rsi(close, 14), atr14: atrArr(bars),
     sma200: tf === '1d' ? smaArr(close, 200) : null
@@ -152,7 +155,7 @@ function planAt(t, i) {
 // noStop: never sell at the stop; only the target or the time limit closes
 // the trade. R is still measured against the planned stop distance so rows
 // compare, and pct / maePct give the plain % result and the worst dip held.
-function outcome(t, i, { entry, stop, target }, { maxBars, costPct, noStop = false }) {
+function outcome(t, i, { entry, stop, target }, { maxBars, costPct, noStop = false, catPct = null }) {
   const risk = entry - stop;
   const costR = (entry * costPct / 100) / risk;
   const last = Math.min(t.close.length - 1, i + maxBars);
@@ -163,6 +166,8 @@ function outcome(t, i, { entry, stop, target }, { maxBars, costPct, noStop = fal
   });
   for (let k = i + 1; k <= last; k += 1) {
     if (!noStop && t.low[k] <= stop) { low = Math.min(low, stop); return done(Math.min(stop, t.open[k]), k, 'stop'); }
+    const cat = catPct ? entry * (1 - catPct / 100) : null; // max-loss stop, in % below entry
+    if (cat != null && t.low[k] <= cat) { low = Math.min(low, cat); return done(Math.min(cat, t.open[k]), k, 'maxloss'); }
     low = Math.min(low, t.low[k]);
     if (t.high[k] >= target) return done(Math.max(target, t.open[k]), k, 'target');
   }
@@ -203,9 +208,9 @@ function scanVariant(data, v, symbols, { startMs, endMs, costPct, btcDaily }) {
           const target = TARGETS[v.target](gap, plan);
           if (!(target > plan.entry)) continue;
           if (v.minRR && (target - plan.entry) / (plan.entry - plan.stop) < v.minRR) continue;
-          const res = outcome(t, i, { ...plan, target }, { maxBars, costPct, noStop: v.noStop });
+          const res = outcome(t, i, { ...plan, target }, { maxBars, costPct, noStop: v.noStop, catPct: v.catPct });
           if (!res) break;
-          trades.push({ symbol, entryMs: closeMs(t, i), gapMs: gap.formedMs, entry: plan.entry, stop: plan.stop, target, ...res });
+          trades.push({ symbol, entryMs: closeMs(t, i), gapMs: gap.formedMs, entry: plan.entry, stop: plan.stop, target, ...res, f: features(data, symbol, v, g, gap, t, i, btcDaily) });
           busyUntil = res.exitIndex;
           break; // one trade per gap
         }
@@ -228,6 +233,85 @@ function scanVariant(data, v, symbols, { startMs, endMs, costPct, btcDaily }) {
     }
   }
   return trades.sort((a, b) => a.entryMs - b.entryMs);
+}
+
+// Entry-time features for the loss analysis (bars closed by the entry only).
+let FNG = null; // date -> Fear & Greed value
+const avg = (arr, a, b) => { let sum = 0, n = 0; for (let m = Math.max(0, a); m <= b; m += 1) { sum += arr[m]; n += 1; } return n ? sum / n : null; };
+function features(data, symbol, v, g, gap, t, i, btcDaily) {
+  const k = gap.k;
+  const gVolBase = avg(g.volume, k - 23, k - 4);
+  const d = data[symbol]['1d'];
+  const j = lastClosed(d, closeMs(t, i));
+  const entryDay = day(closeMs(t, i) - DAY);
+  return {
+    gapVolX: gVolBase ? g.volume[k] / gVolBase : null, // volume of the gap candle
+    preVolX: gVolBase ? avg(g.volume, k - 3, k - 1) / gVolBase : null, // volume in the 3 bars BEFORE the drop
+    trigVolX: avg(t.volume, i - 20, i - 1) ? t.volume[i] / avg(t.volume, i - 20, i - 1) : null,
+    gapPct: (gap.top - gap.bottom) / gap.bottom * 100,
+    belowEma50Pct: j >= 0 && d.ema50[j] ? (d.close[j] / d.ema50[j] - 1) * 100 : null,
+    stopPct: (t.close[i] - planAt(t, i).stop) / t.close[i] * 100,
+    btcUp: btcRiskOn(btcDaily, closeMs(t, i)) ? 1 : 0,
+    fng: FNG?.get(entryDay) ?? null
+  };
+}
+
+async function loadFng(useCache) {
+  const file = path.join(ROOT, 'benchmarks', '.cache', 'fng.json');
+  let rows = null;
+  if (useCache) { try { rows = JSON.parse(await fs.readFile(file, 'utf8')); } catch { /* fetch */ } }
+  if (!rows) {
+    try {
+      const res = await fetch('https://api.alternative.me/fng/?limit=0&format=json');
+      rows = (await res.json()).data;
+      await fs.mkdir(path.dirname(file), { recursive: true });
+      await fs.writeFile(file, JSON.stringify(rows));
+    } catch (err) { console.log(`  Fear & Greed unavailable: ${err.message}`); return null; }
+  }
+  return new Map(rows.map((r) => [day(Number(r.timestamp) * 1000), Number(r.value)]));
+}
+
+// --loss: what separates the deep losers from the rest?
+export function lossVariants() {
+  const base = { gapTf: '1d', trigTf: '1h', trig: 'reclaim', target: 'r15', btc: false, maxDays: 7 };
+  const out = [
+    { ...base, gapKind: 'fvg', deep: true },
+    { ...base, gapKind: 'fvg', deep: true, noStop: true },
+    { ...base, gapKind: 'fvg', deep: false },
+    { ...base, gapKind: 'fvg', deep: false, noStop: true },
+    { ...base, gapKind: 'drop', deep: false },
+    { ...base, gapKind: 'drop', deep: true }
+  ];
+  for (const catPct of [8, 10, 15, 20]) {
+    out.push({ ...base, gapKind: 'fvg', deep: true, noStop: true, catPct });
+    out.push({ ...base, gapKind: 'fvg', deep: false, noStop: true, catPct });
+    out.push({ ...base, gapKind: 'fvg', deep: true, catPct }); // normal stop, capped at catPct
+  }
+  return out;
+}
+
+function bucketReport(trades, splitMs) {
+  const keys = ['gapVolX', 'preVolX', 'trigVolX', 'gapPct', 'belowEma50Pct', 'stopPct', 'btcUp', 'fng'];
+  const out = {};
+  for (const key of keys) {
+    const xs = trades.filter((x) => x.f?.[key] != null);
+    if (xs.length < 9) continue;
+    let groups;
+    if (key === 'btcUp') groups = [['BTC<200d', xs.filter((x) => !x.f.btcUp)], ['BTC>200d', xs.filter((x) => x.f.btcUp)]];
+    else if (key === 'fng') groups = [['fear <25', xs.filter((x) => x.f.fng < 25)], ['25-50', xs.filter((x) => x.f.fng >= 25 && x.f.fng < 50)], ['>=50', xs.filter((x) => x.f.fng >= 50)]];
+    else {
+      const sorted = xs.map((x) => x.f[key]).sort((a, b) => a - b);
+      const c1 = sorted[Math.floor(sorted.length / 3)], c2 = sorted[Math.floor(sorted.length * 2 / 3)];
+      groups = [[`low <${r2(c1)}`, xs.filter((x) => x.f[key] < c1)], [`mid`, xs.filter((x) => x.f[key] >= c1 && x.f[key] < c2)], [`high >=${r2(c2)}`, xs.filter((x) => x.f[key] >= c2)]];
+    }
+    out[key] = groups.map(([name, g]) => ({
+      bucket: name, n: g.length, avgR: stats(g.map((x) => x.r)).avgR, winPct: stats(g.map((x) => x.r)).winPct,
+      testAvgR: stats(g.filter((x) => x.entryMs >= splitMs).map((x) => x.r)).avgR ?? null,
+      deepLossPct: g.length ? Math.round(g.filter((x) => x.maePct <= -15).length / g.length * 100) : null,
+      worstDip: g.length ? r2(Math.min(...g.map((x) => x.maePct))) : null
+    }));
+  }
+  return out;
 }
 
 function stats(rs) {
@@ -267,7 +351,7 @@ export function variants() {
 }
 
 const trigName = (v) => (v.trig === 'rsi' ? 'RSI>30' : 'RSI+EMA20');
-const label = (v) => (v.gapKind ? `${v.deep ? 'DEEP ' : ''}${v.gapKind} ${v.gapTf} -> ${v.trigTf} ${trigName(v)}, tgt ${v.target}` : `CONTROL no gap, ${v.trigTf} ${trigName(v)}, +1.5R`) + (v.btc ? ', BTC>200d' : '') + (v.maxDays ? `, ${v.maxDays}d` : '') + (v.noStop ? ', NO STOP' : '');
+const label = (v) => (v.gapKind ? `${v.deep ? 'DEEP ' : ''}${v.gapKind} ${v.gapTf} -> ${v.trigTf} ${trigName(v)}, tgt ${v.target}` : `CONTROL no gap, ${v.trigTf} ${trigName(v)}, +1.5R`) + (v.btc ? ', BTC>200d' : '') + (v.maxDays ? `, ${v.maxDays}d` : '') + (v.noStop ? ', NO STOP' : '') + (v.catPct ? `, max loss ${v.catPct}%` : '');
 
 function parseArgs(argv) {
   const end = new Date(); end.setUTCHours(0, 0, 0, 0);
@@ -281,6 +365,7 @@ function parseArgs(argv) {
     else if (flag === '--cost') { args.cost = Number(value); k += 1; }
     else if (flag === '--no-cache') args.cache = false;
     else if (flag === '--nostop') args.nostop = true;
+    else if (flag === '--loss') args.loss = true;
   }
   return args;
 }
@@ -299,8 +384,10 @@ async function main() {
     }
   }
   const btcDaily = data[BTC_SYMBOL]['1d'];
+  if (args.loss) FNG = await loadFng(args.cache);
   const rows = [];
-  for (const v of (args.nostop ? noStopVariants() : variants())) {
+  const list = args.loss ? lossVariants() : args.nostop ? noStopVariants() : variants();
+  for (const v of list) {
     const all = scanVariant(data, v, args.symbols, { startMs, endMs: args.end, costPct: args.cost, btcDaily });
     const train = all.filter((x) => x.entryMs < splitMs).map((x) => x.r);
     const test = all.filter((x) => x.entryMs >= splitMs).map((x) => x.r);
@@ -308,12 +395,23 @@ async function main() {
       .map((x) => ({ symbol: x.symbol, entry: day(x.entryMs), price: x.entry, r: r2(x.r), why: x.why }));
     const pcts = (xs) => (xs.length ? r2(xs.reduce((a, x) => a + x.pct, 0) / xs.length) : null);
     const allPct = pcts(all), worstDip = all.length ? r2(Math.min(...all.map((x) => x.maePct))) : null;
-    rows.push({ name: label(v), variant: v, all: { ...stats(all.map((x) => x.r)), avgPct: allPct, worstDipPct: worstDip, testAvgPct: pcts(all.filter((x) => x.entryMs >= splitMs)) }, train: stats(train), test: stats(test), recent });
+    rows.push({ name: label(v), variant: v, all: { ...stats(all.map((x) => x.r)), avgPct: allPct, worstDipPct: worstDip, testAvgPct: pcts(all.filter((x) => x.entryMs >= splitMs)) }, train: stats(train), test: stats(test), recent,
+      buckets: args.loss ? bucketReport(all, splitMs) : undefined,
+      worstTrades: args.loss ? [...all].sort((a, b) => a.maePct - b.maePct).slice(0, 8).map((x) => ({ symbol: x.symbol, entry: day(x.entryMs), dipPct: r2(x.maePct), r: r2(x.r), why: x.why, f: Object.fromEntries(Object.entries(x.f || {}).map(([a, b]) => [a, r2(b)])) })) : undefined });
   }
   console.log(`\nTrain ${day(startMs)} -> ${day(splitMs)}, test ${day(splitMs)} -> ${day(args.end)}, ${args.cost}% round-trip cost in R, ${args.symbols.length} coins.\n`);
   const fmt = (s) => (s.n ? `${String(s.n).padStart(4)} ${String(s.winPct).padStart(3)}% ${String(s.avgR).padStart(6)}R t${String(s.t).padStart(5)}` : '   0').padEnd(27);
   console.log(`${'variant'.padEnd(80)} ${'train n win avgR t'.padEnd(27)} ${'test n win avgR t'.padEnd(27)} all PF  avg%  test avg%  worst dip%  maxDD(R)`);
   for (const row of rows) console.log(`${row.name.padEnd(80)} ${fmt(row.train)} ${fmt(row.test)} ${String(row.all.pf).padEnd(5)} ${String(row.all.avgPct).padStart(5)} ${String(row.all.testAvgPct).padStart(8)} ${String(row.all.worstDipPct).padStart(10)} ${String(row.all.maxDdR).padStart(8)}`);
+  if (args.loss) {
+    for (const row of rows.filter((r) => r.buckets && !r.variant.catPct)) {
+      console.log(`\n=== ${row.name}  (all ${row.all.n} trades, avg ${row.all.avgR}R)`);
+      console.log(`${'feature'.padEnd(14)} ${'bucket'.padEnd(14)} ${'n'.padStart(4)} ${'win%'.padStart(5)} ${'avgR'.padStart(6)} ${'testR'.padStart(6)} ${'dip<-15%'.padStart(9)} ${'worst'.padStart(7)}`);
+      for (const [key, groups] of Object.entries(row.buckets)) for (const b of groups)
+        console.log(`${key.padEnd(14)} ${b.bucket.padEnd(14)} ${String(b.n).padStart(4)} ${String(b.winPct ?? '').padStart(5)} ${String(b.avgR ?? '').padStart(6)} ${String(b.testAvgR ?? '').padStart(6)} ${String(b.deepLossPct ?? '').padStart(8)}% ${String(b.worstDip ?? '').padStart(7)}`);
+      console.log('worst trades:', row.worstTrades.map((w) => `${w.symbol} ${w.entry} dip ${w.dipPct}% ${w.r}R gapVol ${w.f.gapVolX} preVol ${w.f.preVolX} fng ${w.f.fng} btcUp ${w.f.btcUp}`).join(' | '));
+    }
+  }
   const outDir = path.join(ROOT, 'benchmarks', `gap-research-${new Date().toISOString().replace(/[:.]/g, '-')}`);
   await fs.mkdir(outDir, { recursive: true });
   await fs.writeFile(path.join(outDir, 'report.json'), JSON.stringify({ args: { ...args, startMs, splitMs }, rows }, null, 2));

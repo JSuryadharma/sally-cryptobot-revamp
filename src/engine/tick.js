@@ -17,6 +17,7 @@ import { predictCoin } from './prediction.js';
 import { signalRecords, updateJournal, summarizeOutcomes } from './outcomes.js';
 import { updatePaperJournal, summarizePaper, paperCostPct, paperResults } from './paperBreakout.js';
 import { decideStrategy, decisionChanged } from './autopilot.js';
+import { updateGapJournal, summarizeGap } from './paperGap.js';
 
 const LEASE_NAME = 'engine';
 const LEASE_TTL_MS = 120_000;
@@ -25,6 +26,7 @@ export const ENGINE_STATE_KEY = 'engine-state.json';
 export const SIGNAL_JOURNAL_KEY = 'signal-journal.json';
 export const PAPER_JOURNAL_KEY = 'paper-breakout-journal.json';
 export const AUTOPILOT_KEY = 'autopilot.json';
+export const GAP_JOURNAL_KEY = 'paper-gap-journal.json';
 const AUTOPILOT_CHANGES_MAX = 20;
 const TICK_LOG_MAX = 300;
 const STALE_AFTER_MS = 20 * 60_000;
@@ -111,6 +113,14 @@ export async function readPaperBreakout() {
   return { ...summarizePaper(journal, { costPct: paperCostPct(cfg) }), recent: journal.slice(0, 20) };
 }
 
+// Paper test of the gap-rebound entry (paperGap.js). Recorded on every pass
+// next to the live engine; it never trades.
+export async function readPaperGap() {
+  const [journal, settings] = await Promise.all([readJson(GAP_JOURNAL_KEY, []), readSettings()]);
+  const cfg = resolveEngineCfg(engineCfgFromSettings(settings));
+  return { ...summarizeGap(journal, { costPct: paperCostPct(cfg) }), recent: journal.slice(0, 20) };
+}
+
 async function notifyResults(notifications, out, cfg) {
   const labels = profilesFor(cfg);
   for (const tx of out.transactions) {
@@ -153,9 +163,10 @@ async function enginePass({ notifications = new NotificationCenter() } = {}) {
   const out = advance(engineState, portfolio, series, { nowMs: startedAt, live: true, usdIdrRate, cfg, tradeSymbols });
   portfolio.updatedAt = new Date().toISOString();
   const journal = updateJournal(await readSignalJournal(), signalRecords(out.signals, cfg), series);
+  const gapJournal = updateGapJournal(await readJson(GAP_JOURNAL_KEY, []), series, settings.watchlist);
   await writeJsonMany({
     [PORTFOLIO_KEY]: portfolio, [ENGINE_STATE_KEY]: engineState, [SIGNAL_JOURNAL_KEY]: journal,
-    [PAPER_JOURNAL_KEY]: paperJournal, [AUTOPILOT_KEY]: autopilot
+    [PAPER_JOURNAL_KEY]: paperJournal, [AUTOPILOT_KEY]: autopilot, [GAP_JOURNAL_KEY]: gapJournal
   });
   await notifyResults(notifications, out, cfg);
   if (changed) {

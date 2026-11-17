@@ -29,6 +29,7 @@
 //
 // Flags: --months <n> (36)  --split <0..1> (0.6)  --symbols A,B
 //        --end <ISO> (last UTC midnight)  --cost <pct> (0.25)  --no-cache
+//        --nostop  daily gaps only, with vs without the stop, 7 or 30 days
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -148,16 +149,25 @@ function planAt(t, i) {
 }
 
 // Walks forward on the trigger bars. Returns { r, exitIndex, why } net of costs.
-function outcome(t, i, { entry, stop, target }, { maxBars, costPct }) {
+// noStop: never sell at the stop; only the target or the time limit closes
+// the trade. R is still measured against the planned stop distance so rows
+// compare, and pct / maePct give the plain % result and the worst dip held.
+function outcome(t, i, { entry, stop, target }, { maxBars, costPct, noStop = false }) {
   const risk = entry - stop;
   const costR = (entry * costPct / 100) / risk;
   const last = Math.min(t.close.length - 1, i + maxBars);
+  let low = entry;
+  const done = (exit, k, why) => ({
+    r: (exit - entry) / risk - costR, pct: ((exit / entry) - 1) * 100 - costPct,
+    maePct: ((Math.min(low, exit) / entry) - 1) * 100, exitIndex: k, why
+  });
   for (let k = i + 1; k <= last; k += 1) {
-    if (t.low[k] <= stop) return { r: (Math.min(stop, t.open[k]) - entry) / risk - costR, exitIndex: k, why: 'stop' };
-    if (t.high[k] >= target) return { r: (Math.max(target, t.open[k]) - entry) / risk - costR, exitIndex: k, why: 'target' };
+    if (!noStop && t.low[k] <= stop) { low = Math.min(low, stop); return done(Math.min(stop, t.open[k]), k, 'stop'); }
+    low = Math.min(low, t.low[k]);
+    if (t.high[k] >= target) return done(Math.max(target, t.open[k]), k, 'target');
   }
   if (last < i + maxBars) return null; // data ends first
-  return { r: (t.close[last] - entry) / risk - costR, exitIndex: last, why: 'time' };
+  return done(t.close[last], last, 'time');
 }
 
 const TARGETS = {
@@ -174,7 +184,7 @@ function scanVariant(data, v, symbols, { startMs, endMs, costPct, btcDaily }) {
     const t = data[symbol][v.trigTf];
     const g = data[symbol][v.gapTf];
     if (!t || !g) continue;
-    const maxBars = Math.round(7 * DAY / TF_MS[v.trigTf]);
+    const maxBars = Math.round((v.maxDays || 7) * DAY / TF_MS[v.trigTf]);
     const liveBars = Math.round(10 * DAY / TF_MS[v.trigTf]);
     let busyUntil = -1;
     const gaps = v.gapKind ? findGaps(g, v.gapKind, v.deep) : null;
@@ -193,7 +203,7 @@ function scanVariant(data, v, symbols, { startMs, endMs, costPct, btcDaily }) {
           const target = TARGETS[v.target](gap, plan);
           if (!(target > plan.entry)) continue;
           if (v.minRR && (target - plan.entry) / (plan.entry - plan.stop) < v.minRR) continue;
-          const res = outcome(t, i, { ...plan, target }, { maxBars, costPct });
+          const res = outcome(t, i, { ...plan, target }, { maxBars, costPct, noStop: v.noStop });
           if (!res) break;
           trades.push({ symbol, entryMs: closeMs(t, i), gapMs: gap.formedMs, entry: plan.entry, stop: plan.stop, target, ...res });
           busyUntil = res.exitIndex;
@@ -210,7 +220,7 @@ function scanVariant(data, v, symbols, { startMs, endMs, costPct, btcDaily }) {
         if (v.btc && !btcRiskOn(btcDaily, ms)) continue;
         const plan = planAt(t, i);
         if (!plan) continue;
-        const res = outcome(t, i, { ...plan, target: TARGETS.r15(null, plan) }, { maxBars, costPct });
+        const res = outcome(t, i, { ...plan, target: TARGETS.r15(null, plan) }, { maxBars, costPct, noStop: v.noStop });
         if (!res) break;
         trades.push({ symbol, entryMs: ms, entry: plan.entry, stop: plan.stop, ...res });
         busyUntil = res.exitIndex;
@@ -234,6 +244,17 @@ function stats(rs) {
   return { n, winPct: Math.round(win.length / n * 100), avgR: r2(mean), totalR: r2(mean * n), pf: loss > 0 ? r2(gain / loss) : null, t: sd > 0 ? r2(mean / (sd / Math.sqrt(n))) : null, maxDdR: r2(dd) };
 }
 
+// --nostop: daily gaps only, each with the stop vs without it, 7 or 30 days.
+export function noStopVariants() {
+  const out = [];
+  for (const gapKind of ['fvg', 'drop']) for (const deep of [false, true]) for (const trigTf of ['1h', '15m'])
+    for (const target of ['middle', 'top', 'above', 'r15']) for (const maxDays of [7, 30]) for (const noStop of [false, true])
+      out.push({ gapTf: '1d', gapKind, deep, trigTf, trig: 'reclaim', target, btc: false, maxDays, noStop });
+  for (const trigTf of ['1h', '15m']) for (const maxDays of [7, 30]) for (const noStop of [false, true])
+    out.push({ gapTf: trigTf, gapKind: null, trigTf, trig: 'reclaim', target: 'r15', btc: false, maxDays, noStop });
+  return out;
+}
+
 export function variants() {
   const out = [];
   for (const gapTf of ['1d', '4h']) for (const gapKind of ['fvg', 'drop']) for (const trigTf of ['1h', '15m'])
@@ -246,7 +267,7 @@ export function variants() {
 }
 
 const trigName = (v) => (v.trig === 'rsi' ? 'RSI>30' : 'RSI+EMA20');
-const label = (v) => (v.gapKind ? `${v.deep ? 'DEEP ' : ''}${v.gapKind} ${v.gapTf} -> ${v.trigTf} ${trigName(v)}, tgt ${v.target}` : `CONTROL no gap, ${v.trigTf} ${trigName(v)}, +1.5R`) + (v.btc ? ', BTC>200d' : '');
+const label = (v) => (v.gapKind ? `${v.deep ? 'DEEP ' : ''}${v.gapKind} ${v.gapTf} -> ${v.trigTf} ${trigName(v)}, tgt ${v.target}` : `CONTROL no gap, ${v.trigTf} ${trigName(v)}, +1.5R`) + (v.btc ? ', BTC>200d' : '') + (v.maxDays ? `, ${v.maxDays}d` : '') + (v.noStop ? ', NO STOP' : '');
 
 function parseArgs(argv) {
   const end = new Date(); end.setUTCHours(0, 0, 0, 0);
@@ -259,6 +280,7 @@ function parseArgs(argv) {
     else if (flag === '--end') { args.end = Date.parse(value); k += 1; }
     else if (flag === '--cost') { args.cost = Number(value); k += 1; }
     else if (flag === '--no-cache') args.cache = false;
+    else if (flag === '--nostop') args.nostop = true;
   }
   return args;
 }
@@ -278,18 +300,20 @@ async function main() {
   }
   const btcDaily = data[BTC_SYMBOL]['1d'];
   const rows = [];
-  for (const v of variants()) {
+  for (const v of (args.nostop ? noStopVariants() : variants())) {
     const all = scanVariant(data, v, args.symbols, { startMs, endMs: args.end, costPct: args.cost, btcDaily });
     const train = all.filter((x) => x.entryMs < splitMs).map((x) => x.r);
     const test = all.filter((x) => x.entryMs >= splitMs).map((x) => x.r);
     const recent = all.filter((x) => x.entryMs >= args.end - 30 * DAY)
       .map((x) => ({ symbol: x.symbol, entry: day(x.entryMs), price: x.entry, r: r2(x.r), why: x.why }));
-    rows.push({ name: label(v), variant: v, all: stats(all.map((x) => x.r)), train: stats(train), test: stats(test), recent });
+    const pcts = (xs) => (xs.length ? r2(xs.reduce((a, x) => a + x.pct, 0) / xs.length) : null);
+    const allPct = pcts(all), worstDip = all.length ? r2(Math.min(...all.map((x) => x.maePct))) : null;
+    rows.push({ name: label(v), variant: v, all: { ...stats(all.map((x) => x.r)), avgPct: allPct, worstDipPct: worstDip, testAvgPct: pcts(all.filter((x) => x.entryMs >= splitMs)) }, train: stats(train), test: stats(test), recent });
   }
   console.log(`\nTrain ${day(startMs)} -> ${day(splitMs)}, test ${day(splitMs)} -> ${day(args.end)}, ${args.cost}% round-trip cost in R, ${args.symbols.length} coins.\n`);
   const fmt = (s) => (s.n ? `${String(s.n).padStart(4)} ${String(s.winPct).padStart(3)}% ${String(s.avgR).padStart(6)}R t${String(s.t).padStart(5)}` : '   0').padEnd(27);
-  console.log(`${'variant'.padEnd(66)} ${'train n win avgR t'.padEnd(27)} ${'test n win avgR t'.padEnd(27)} all PF`);
-  for (const row of rows) console.log(`${row.name.padEnd(66)} ${fmt(row.train)} ${fmt(row.test)} ${row.all.pf}`);
+  console.log(`${'variant'.padEnd(80)} ${'train n win avgR t'.padEnd(27)} ${'test n win avgR t'.padEnd(27)} all PF  avg%  test avg%  worst dip%  maxDD(R)`);
+  for (const row of rows) console.log(`${row.name.padEnd(80)} ${fmt(row.train)} ${fmt(row.test)} ${String(row.all.pf).padEnd(5)} ${String(row.all.avgPct).padStart(5)} ${String(row.all.testAvgPct).padStart(8)} ${String(row.all.worstDipPct).padStart(10)} ${String(row.all.maxDdR).padStart(8)}`);
   const outDir = path.join(ROOT, 'benchmarks', `gap-research-${new Date().toISOString().replace(/[:.]/g, '-')}`);
   await fs.mkdir(outDir, { recursive: true });
   await fs.writeFile(path.join(outDir, 'report.json'), JSON.stringify({ args: { ...args, startMs, splitMs }, rows }, null, 2));

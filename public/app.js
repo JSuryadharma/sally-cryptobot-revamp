@@ -1033,6 +1033,7 @@ function renderSettings() {
   const s = state.settings;
   if (!s) return;
   $('autoTradeToggle').checked = s.autoTrade.enabled;
+  $('gapSleeveToggle').checked = s.gapSleeve?.enabled !== false;
   renderAutopilot();
   $('setRiskPerTrade').value = s.riskPerTradePct;
   $('setMaxPositions').value = s.maxOpenPositions;
@@ -1096,6 +1097,10 @@ $('resetData').addEventListener('click', async () => {
     note('resetNote', 'Reset done. The robot starts fresh on its next check.', 'good');
     loadCore();
   } catch (e) { note('resetNote', e.message, 'bad'); }
+});
+$('gapSleeveToggle').addEventListener('change', async (e) => {
+  try { await saveSettings({ gapSleeve: { enabled: e.target.checked } }); note('tradingNote', e.target.checked ? 'Gap rebound trades are on.' : 'Gap rebound trades are off. The paper test keeps recording them.', 'good'); loadCore(); }
+  catch (error) { e.target.checked = !e.target.checked; note('tradingNote', error.message, 'bad'); }
 });
 $('autoTradeToggle').addEventListener('change', async (e) => {
   try { await saveSettings({ autoTrade: { enabled: e.target.checked } }); note('tradingNote', e.target.checked ? 'Auto-trading is on.' : 'Auto-trading is off. The robot only watches.', 'good'); loadCore(); }

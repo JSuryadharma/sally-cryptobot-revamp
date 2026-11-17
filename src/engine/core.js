@@ -13,6 +13,7 @@ import { sizePosition, bookEquityIdr } from './sizing.js';
 import { openPositionQty, sellPosition, normalizePosition } from './ledger.js';
 import { createRiskState, updateRisk, recordTradeResult, entryBlock } from './riskGuard.js';
 import { enrichCandles } from '../indicators.js';
+import { gapAt, reboundAt, reboundPlan, GAP_RULE } from './paperGap.js';
 
 // Early entry: between trigger-candle closes, every closed cfg.earlyTf candle
 // (5m by default) re-checks the setup against the trigger candle formed so
@@ -179,6 +180,47 @@ function evaluateBreakoutLive(ctx, event, profile) {
     armedLevel: roundPx(level),
     barTime: formingTime
   };
+}
+
+// Gap rebound check at a closed 1h candle (paperGap.js has the rule). The
+// oldest daily gap from the last 10 days that price has not filled and that
+// has not been traded yet, with price still below it and a 1h rebound now.
+function evaluateGap(ctx, event, profile) {
+  const { series, state } = ctx;
+  const hourly = series[event.symbol][profile.triggerTf];
+  const daily = series[event.symbol][profile.filterTf];
+  if (!hourly || !daily) return null;
+  const sState = symbolState(state, event.symbol);
+  const used = sState.gapsTraded || {};
+  const ci = lastClosedIndex(daily, profile.filterTf, event.closeMs);
+  if (ci < 0) return null;
+  // Gaps older than the 10-day window can't trade again; keep the stored state small.
+  for (const t of Object.keys(used)) if (Number(t) < daily[ci].time - 30 * 86_400) delete used[t];
+  const liveBars = Math.round(GAP_RULE.liveDays * TF_MS['1d'] / TF_MS[profile.triggerTf]);
+  const base = { signal: null, checklist: [] };
+  if (!reboundAt(hourly, event.i)) return base;
+  for (let k = Math.max(24, ci - GAP_RULE.liveDays); k <= ci; k += 1) {
+    if (used[daily[k].time]) continue;
+    const gap = gapAt(daily, k);
+    if (!gap) continue;
+    const i0 = firstAfter(hourly, daily[k].time + TF_MS['1d'] / 1000 - 1);
+    if (i0 < 0 || event.i < i0 || event.i >= i0 + liveBars) continue;
+    let filled = false;
+    for (let m = i0; m <= event.i; m += 1) if (hourly[m].high >= gap.top) { filled = true; break; }
+    if (filled || !(hourly[event.i].close < gap.bottom)) continue;
+    const plan = reboundPlan(hourly, event.i);
+    if (!plan || !(plan.target > plan.entry)) continue;
+    return {
+      ...base,
+      gapTime: daily[k].time,
+      signal: {
+        setup: 'gap', entryPrice: plan.entry, stopPrice: roundPx(plan.exitStop), targetPrice: roundPx(plan.target),
+        score: Math.min(100, Math.round(gap.volX * 10)),
+        reason: `1h rebound under the ${daily[k].date} daily gap ${roundPx(gap.bottom)}-${roundPx(gap.top)} (gap-day volume ${Math.round(gap.volX * 10) / 10}x): RSI back from under 30, close above EMA20. Target ${roundPx(plan.target)}.`
+      }
+    };
+  }
+  return base;
 }
 
 function enabledProfiles(cfg) {
@@ -354,6 +396,7 @@ function evaluate(ctx, event, profile) {
     const btcFilt = series[BTC_SYMBOL][profile.filterTf];
     btc = { filt: btcFilt, j: lastClosedIndex(btcFilt, profile.filterTf, event.closeMs) };
   }
+  if (profile.entry === 'gap') return evaluateGap(ctx, event, profile);
   const evaluation = evaluateSetup({ trig, i: event.i, filt, j: j < 0 ? null : j, profile, cfg, btc });
   if (profile.entry !== 'breakout') return evaluation;
   const mode = breakoutMode(cfg);
@@ -448,10 +491,10 @@ export function advance(state, portfolio, series, opts) {
         else if (live && nowMs - closeMs > maxDelayMs) skip = 'missed-late: tick ran too long after the bar closed';
         else if (signal.score < cfg.minConfidencePct) skip = `score ${signal.score} below ${cfg.minConfidencePct}`;
         else if (blocked) skip = `entries paused: ${blocked}`;
-        else if (cfg.autopilotPause) skip = `autopilot paused: ${cfg.autopilotPause}`;
+        else if (cfg.autopilotPause && profile.entry !== 'gap') skip = `autopilot paused: ${cfg.autopilotPause}`;
         else if (cooldownUntil && closeMs < cooldownUntil) skip = profile.cooldownAfterAnyExit ? 'cooldown: the last trade closed on this candle' : 'cooldown after stop-out';
         if (skip) { out.signals.push({ ...base, taken: false, skip }); continue; }
-        candidates.push({ ...base, signal, event, profile, early });
+        candidates.push({ ...base, signal, event, profile, early, gapTime: evaluation.gapTime });
       }
     }
 
@@ -465,7 +508,9 @@ export function advance(state, portfolio, series, opts) {
       const entryPrice = c.signal.entryPrice * (1 + cfg.slippagePct / 100);
       let sized = null;
       if (!skip) {
-        sized = sizePosition({ portfolio, entryPrice, stopPrice: c.signal.stopPrice, usdIdrRate, cfg });
+        // A profile can set its own risk per trade (the gap sleeve: 1%).
+        const sizeCfg = c.profile.riskPct ? { ...cfg, riskPerTradePct: Math.min(cfg.riskPerTradePct, c.profile.riskPct) } : cfg;
+        sized = sizePosition({ portfolio, entryPrice, stopPrice: c.signal.stopPrice, usdIdrRate, cfg: sizeCfg });
         if (!(sized.qty > 0)) skip = sized.reason;
       }
       if (skip) { out.signals.push({ ...signalFields(c), taken: false, skip }); continue; }
@@ -480,6 +525,8 @@ export function advance(state, portfolio, series, opts) {
       out.signals.push({ ...signalFields(c), taken: Boolean(transaction), skip: transaction ? null : note });
       if (transaction) {
         if (c.early) portfolio.positions[c.symbol].filledAtMs = closeMs;
+        if (c.signal.targetPrice) portfolio.positions[c.symbol].targetPrice = c.signal.targetPrice;
+        if (c.gapTime != null) (symbolState(state, c.symbol).gapsTraded ||= {})[c.gapTime] = true;
         out.transactions.push(transaction);
         opened += 1;
       }

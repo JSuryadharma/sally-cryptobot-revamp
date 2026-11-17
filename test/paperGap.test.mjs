@@ -1,6 +1,9 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { enrichCandles } from '../src/indicators.js';
+import { resolveEngineCfg } from '../src/engine/config.js';
+import { advance, createEngineState } from '../src/engine/core.js';
+import { createPortfolio } from '../src/engine/ledger.js';
 import { gapAt, reboundAt, reboundPlan, followGapTrade, updateGapJournal, gapResult, summarizeGap } from '../src/engine/paperGap.js';
 
 const DAY = 86_400;
@@ -92,4 +95,38 @@ test('updateGapJournal: records one paper trade per gap, follows it, and scores 
   const summary = summarizeGap(journal, { costPct: 0.3 });
   assert.equal(summary.closed, 1);
   assert.equal(summary.signals, 1);
+});
+
+test('engine gap sleeve: buys the same rebound as the paper test at 1% risk and sells at its target', () => {
+  const d = dailyWithGap();
+  const h = hourlyAfter(d);
+  const series = { AAAUSDT: { '1d': d, '1h': h } };
+  const [paper] = updateGapJournal([], series, ['AAAUSDT']);
+  const cfg = resolveEngineCfg({ profiles: { breakout: false, gap: true }, slippagePct: 0 });
+  const portfolio = createPortfolio(10_000_000);
+  const out = advance(createEngineState(), portfolio, series, {
+    nowMs: (h.at(-1).time + HOUR) * 1000, startMs: d[40].time * 1000, usdIdrRate: 16_000, cfg, tradeSymbols: ['AAAUSDT'], keepAllTransactions: true
+  });
+  const buys = out.transactions.filter((t) => t.type === 'BUY');
+  const sells = out.transactions.filter((t) => t.type === 'SELL');
+  assert.equal(buys.length, 1);
+  assert.equal(buys[0].profile, 'gap');
+  assert.equal(buys[0].price, paper.entry);
+  // 1% of equity at most; here the 30%-of-equity position cap binds first (tight stop).
+  assert.ok(buys[0].riskIdr > 0 && buys[0].riskIdr <= 100_000 + 1, `risk ${buys[0].riskIdr}`);
+  assert.equal(sells.length, 1);
+  assert.equal(sells[0].exitKind ?? 'target', paper.status === 'target' ? 'target' : sells[0].exitKind);
+  assert.ok(Math.abs(sells[0].price - paper.exitPrice) < 1e-6, `sell ${sells[0].price} vs paper ${paper.exitPrice}`);
+});
+
+test('engine gap sleeve: off when the profile is off, and ignores the autopilot pause', () => {
+  const d = dailyWithGap();
+  const h = hourlyAfter(d);
+  const series = { AAAUSDT: { '1d': d, '1h': h } };
+  const run = (extra) => advance(createEngineState(), createPortfolio(10_000_000), series, {
+    nowMs: (h.at(-1).time + HOUR) * 1000, startMs: d[40].time * 1000, usdIdrRate: 16_000,
+    cfg: resolveEngineCfg({ slippagePct: 0, ...extra }), tradeSymbols: ['AAAUSDT'], keepAllTransactions: true
+  }).transactions.filter((t) => t.type === 'BUY').length;
+  assert.equal(run({ profiles: { breakout: false, gap: false } }), 0);
+  assert.equal(run({ profiles: { breakout: false, gap: true }, autopilotPause: 'every breakout is losing' }), 1);
 });

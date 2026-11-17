@@ -24,7 +24,7 @@ export function onBar(position, bar, profile, cfg, { priceExits = true } = {}) {
   }
   updates.stopPrice = Number(nextStop.toPrecision(8));
 
-  if (cfg.trendExit !== false && Number.isFinite(bar.ema50) && bar.close < bar.ema50) {
+  if (cfg.trendExit !== false && profile.trendExit !== false && Number.isFinite(bar.ema50) && bar.close < bar.ema50) {
     fills.push({ fraction: 1, price: bar.close * (1 - slip), exitKind: 'trend', reason: `Trend break: ${profile.triggerTf} close ${bar.close} below EMA50 ${bar.ema50.toPrecision(8)}.` });
   } else if (updates.barsHeld >= profileTimeStopBars(profile, cfg) && updates.mfeR < profileTimeStopMinR(profile, cfg)) {
     const minR = profileTimeStopMinR(profile, cfg);
@@ -91,12 +91,15 @@ function priceStep(position, bar, profile, cfg, fills) {
   }
 
   const targetR = profileTargetR(profile, cfg);
-  const targetPrice = targetR ? position.entryPrice + targetR * riskPerUnit : null;
+  // A position can carry its own target (the gap sleeve's +1.5R from the planned, uncapped stop).
+  const targetPrice = position.targetPrice ?? (targetR ? position.entryPrice + targetR * riskPerUnit : null);
   if (targetPrice && riskPerUnit > 0 && bar.high >= targetPrice) {
     // A bar that opened above the target fills at its open.
     const price = Math.max(targetPrice, bar.open);
-    fills.push({ fraction: 1, price, exitKind: 'target', reason: `Target +${targetR}R hit at ${price.toPrecision(8)}.` });
+    fills.push({ fraction: 1, price, exitKind: 'target', reason: position.targetPrice ? `Target ${roundTarget(position.targetPrice)} hit at ${price.toPrecision(8)}.` : `Target +${targetR}R hit at ${price.toPrecision(8)}.` });
     updates.done = true;
   }
   return updates;
 }
+
+function roundTarget(v) { return Number(v.toPrecision(8)); }

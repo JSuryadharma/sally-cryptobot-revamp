@@ -23,6 +23,8 @@ function defaultSettings() {
     // Which strategy trades is not a setting: the autopilot
     // (engine/autopilot.js) picks it on every tick from the paper results.
     autoTrade: { enabled: true },
+    // The gap-rebound sleeve (engine/config.js PROFILES.gap), next to the breakouts.
+    gapSleeve: { enabled: true },
     riskPerTradePct: DEFAULT_ENGINE_CFG.riskPerTradePct,
     maxPortfolioRiskPct: DEFAULT_ENGINE_CFG.maxPortfolioRiskPct,
     dailyLossLimitPct: DEFAULT_ENGINE_CFG.dailyLossLimitPct,
@@ -107,6 +109,7 @@ export function normalize(input, watchlistFallback) {
     // The strategy switches, "Buy early" and the minimum setup score that used
     // to live here are gone: stored values are dropped on the next save.
     autoTrade: { enabled: raw.autoTrade?.enabled !== false },
+    gapSleeve: { enabled: raw.gapSleeve?.enabled !== false },
     riskPerTradePct: boundedNumber(raw.riskPerTradePct, base.riskPerTradePct, 0.1, 5),
     maxPortfolioRiskPct: boundedNumber(raw.maxPortfolioRiskPct, base.maxPortfolioRiskPct, 0.5, 20),
     dailyLossLimitPct: boundedNumber(raw.dailyLossLimitPct, base.dailyLossLimitPct, 0.5, 20),
@@ -148,6 +151,7 @@ export async function readSettings() {
     ...base,
     ...stored,
     autoTrade: { ...base.autoTrade, ...stored.autoTrade },
+    gapSleeve: { ...base.gapSleeve, ...stored.gapSleeve },
     telegram: { ...base.telegram, ...stored.telegram }
   });
 }
@@ -158,6 +162,7 @@ export async function updateSettings(patch) {
     ...current,
     ...patch,
     autoTrade: { ...current.autoTrade, ...(patch.autoTrade || {}) },
+    gapSleeve: { ...current.gapSleeve, ...(patch.gapSleeve || {}) },
     telegram: { ...current.telegram, ...(patch.telegram || {}) }
   };
   const next = normalize(merged, current.watchlist);
@@ -170,6 +175,7 @@ export function publicSettings(settings) {
   return {
     watchlist: settings.watchlist,
     autoTrade: settings.autoTrade,
+    gapSleeve: settings.gapSleeve,
     telegram: {
       enabled: settings.telegram.enabled,
       configured: Boolean(settings.telegram.botToken && settings.telegram.chatId),
@@ -213,7 +219,7 @@ export function engineCfgFromSettings(settings, autopilot = null) {
     drawdownHaltPct: settings.drawdownHaltPct,
     timeZone: settings.timeZone,
     earlyEntry: false,
-    profiles: autopilot?.profiles ? { ...autopilot.profiles } : { ...DEFAULT_ENGINE_CFG.profiles },
+    profiles: { ...(autopilot?.profiles || DEFAULT_ENGINE_CFG.profiles), gap: settings.gapSleeve?.enabled !== false },
     autopilotPause: autopilot?.paused ? autopilot.pauseReason : null
   };
 }

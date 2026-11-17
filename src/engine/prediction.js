@@ -230,7 +230,7 @@ function exitPrediction({ position: raw, series, live, cfg, nowMs }) {
     distanceToStopPct: round2(((price - position.stopPrice) / price) * 100),
     rNow: riskPerUnit > 0 ? round2((price - position.entryPrice) / riskPerUnit) : null,
     breakevenArmPrice: !profileBreakeven(profile, cfg) || position.partialTaken || !(riskPerUnit > 0) ? null : roundPrice(position.entryPrice + cfg.partialAtR * riskPerUnit),
-    targetPrice: targetR && riskPerUnit > 0 ? roundPrice(position.entryPrice + targetR * riskPerUnit) : null,
+    targetPrice: position.targetPrice ? roundPrice(position.targetPrice) : targetR && riskPerUnit > 0 ? roundPrice(position.entryPrice + targetR * riskPerUnit) : null,
     timeStopAt: timeStopActive ? position.openedBarTime * 1000 + tfMs * (1 + timeStopBars) : null,
     // The stop and target are checked on every exit candle (5m) when exit checks are on.
     checkTf,
@@ -248,7 +248,7 @@ export function predictCoin({ symbol, series, live, cfg, portfolio, risk, symbol
   }
   const byProfile = {};
   for (const profile of Object.values(profilesFor(cfg))) {
-    if (!cfg.profiles?.[profile.key]) continue;
+    if (!cfg.profiles?.[profile.key] || profile.entry === 'gap') continue;
     const prediction = profilePrediction({ symbol, profile, series, live, cfg, portfolio, risk, symbolState, autoTradeOn, usdIdrRate, nowMs });
     if (prediction) byProfile[profile.key] = prediction;
   }

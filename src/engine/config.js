@@ -91,6 +91,35 @@ export const PROFILES = {
     cooldownAfterAnyExit: true,
     cooldownBars: 1,
     barsPer24h: 1
+  },
+  // Gap rebound (paperGap.js has the rule; scripts/gapResearch.mjs the
+  // research). Runs next to the breakouts, not chosen by the autopilot, and
+  // has its own on/off switch in Settings. Buys a 1h rebound (RSI back from
+  // under 30, first close above EMA20) under a daily gap that formed on at
+  // least 2x volume; stop under the 24h low, never more than 15% away;
+  // +1.5R from the planned stop; sells after 7 days otherwise. 1% risk.
+  // 3-year backtest (2023-12 to 2026-11, 16 coins): with the breakouts on one
+  // account +139.8% vs +130.0% for the breakouts alone, max drawdown 20.8% vs
+  // 18.9%; last 14 months +38.2% vs +28.6%. On its own it only broke even in
+  // the first two years.
+  gap: {
+    key: 'gap',
+    label: 'Gap rebound (daily gap on 2x volume, 1h rebound)',
+    entry: 'gap',
+    triggerTf: '1h',
+    filterTf: '1d',
+    riskPct: 1,
+    targetR: 1.5,
+    timeStopBars: 168,
+    timeStopMinR: Infinity,
+    trailAtrMult: null,
+    breakeven: false,
+    earlyEntry: false,
+    // Bought below the EMA50 by design, so the trend-break exit is off.
+    trendExit: false,
+    cooldownAfterAnyExit: true,
+    cooldownBars: 1,
+    barsPer24h: 24
   }
 };
 
@@ -185,7 +214,7 @@ export const DEFAULT_ENGINE_CFG = {
   // The 4h/daily pullback (swing, trend) lost money on the test period of the
   // entry research, so breakout is the only strategy on by default. Live, the
   // autopilot (autopilot.js) picks the profiles on every tick.
-  profiles: { scalping: false, swing: false, trend: false, breakout: true, breakout55: false },
+  profiles: { scalping: false, swing: false, trend: false, breakout: true, breakout55: false, gap: true },
   // Set by the autopilot when every candidate strategy is losing in the paper
   // test: signals are still recorded, but no new position is opened.
   autopilotPause: null,
@@ -250,6 +279,19 @@ export function describeProfile(profileKey, cfg = DEFAULT_ENGINE_CFG) {
   const profile = PROFILES[profileKey];
   if (!profile) return null;
   const hours = (profileTimeStopBars(profile, cfg) * TF_MS[profile.triggerTf]) / 3_600_000;
+  if (profile.entry === 'gap') {
+    return {
+      mode: profileKey,
+      label: profile.label,
+      emaCrossLabel: 'daily gap on 2x volume, then 1h close back above EMA20',
+      rsiLabel: 'RSI14 (1h)',
+      rsiRangeLabel: 'under 30 in the last 24h, back above 40',
+      slAtrMult: 0.5,
+      tpAtrMult: null,
+      maxHoldBars: profileTimeStopBars(profile, cfg),
+      holdLabel: `sell at +${profile.targetR}R, max loss 15%, otherwise after 7 days`
+    };
+  }
   if (profile.entry === 'breakout') {
     return {
       mode: profileKey,

@@ -17,8 +17,8 @@ const position = (o = {}) => ({
 });
 const bar = (o) => ({ time: 0, open: 101, high: 102, low: 99, close: 101, atr14: 2, ema50: 90, ...o });
 
-test('breakout is the only strategy on by default', () => {
-  assert.deepEqual(cfg.profiles, { scalping: false, swing: false, trend: false, breakout: true, breakout55: false });
+test('breakout plus the gap sleeve are on by default', () => {
+  assert.deepEqual(cfg.profiles, { scalping: false, swing: false, trend: false, breakout: true, breakout55: false, gap: true });
 });
 
 test('strategy switches are no longer settings: the autopilot decision sets the profiles', () => {
@@ -31,8 +31,10 @@ test('strategy switches are no longer settings: the autopilot decision sets the 
   assert.equal(none.earlyEntry, false);
   assert.equal(none.minConfidencePct, 0);
   const picked = engineCfgFromSettings(old, { profiles: { breakout: false, breakout55: true }, paused: true, pauseReason: 'losing' });
-  assert.deepEqual(picked.profiles, { breakout: false, breakout55: true });
+  assert.deepEqual(picked.profiles, { breakout: false, breakout55: true, gap: true });
   assert.equal(picked.autopilotPause, 'losing');
+  const gapOff = engineCfgFromSettings(normalize({ gapSleeve: { enabled: false } }), { profiles: { breakout: true } });
+  assert.deepEqual(gapOff.profiles, { breakout: true, gap: false });
 });
 
 test('breakout exits: sells at +1R, no breakeven move or trail', () => {

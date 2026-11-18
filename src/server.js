@@ -12,7 +12,7 @@ import { readJson } from './storage.js';
 import { runAndStoreBacktest, VERDICT_KEY } from './backtestRunner.js';
 import { readCoinsCache } from './coinsCache.js';
 import { checkConnection } from './pgClient.js';
-import { handleTickRequest, readEngineStatus, readPredictionAccuracy, readPaperBreakout, runTick, runTickIfDue, runManualTrade, readAutopilot } from './engine/tick.js';
+import { handleTickRequest, readEngineStatus, readPredictionAccuracy, readPaperBreakout, readPaperGap, runTick, runTickIfDue, runManualTrade, readAutopilot } from './engine/tick.js';
 import { loadChartCandles } from './engine/candles.js';
 import { resetData } from './engine/reset.js';
 
@@ -87,6 +87,10 @@ async function route(req, res) {
 
   if (pathname === '/api/paper/breakout' && method === 'GET') {
     return sendJson(res, 200, await readPaperBreakout());
+  }
+
+  if (pathname === '/api/paper/gap' && method === 'GET') {
+    return sendJson(res, 200, await readPaperGap());
   }
 
   if (pathname === '/api/coins' && method === 'GET') {

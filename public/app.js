@@ -16,6 +16,7 @@ const state = {
   verdict: null,
   accuracy: null,
   paper: null,
+  gap: null,
   prices: {},
   movers: [],
   moversError: null,
@@ -215,12 +216,14 @@ async function loadVerdict() {
 }
 
 async function loadAccuracy() {
-  [state.accuracy, state.paper] = await Promise.all([
+  [state.accuracy, state.paper, state.gap] = await Promise.all([
     api('/api/predictions/accuracy').catch(() => null),
-    api('/api/paper/breakout').catch(() => null)
+    api('/api/paper/breakout').catch(() => null),
+    api('/api/paper/gap').catch(() => null)
   ]);
   renderAccuracy();
   renderPaper();
+  renderGap();
 }
 
 function renderCurrentView() {
@@ -571,6 +574,29 @@ function renderPaper() {
   $('paperRules').innerHTML = rules.map((r) =>
     `<div class="activity-item"><span class="icon">+${r.targetR}R</span><div>${escapeHtml(r.label)}<small>${r.closed ? `${r.closed} closed, ${r.winPct}% wins, avg ${r.avgR}R per trade` : 'no closed trades yet'}${r.open ? `, ${r.open} open` : ''}</small></div></div>`
   ).join('');
+}
+
+// Paper-only gap rebound (src/engine/paperGap.js): buys nothing, records what
+// each signal would have made with its stop (max 15% loss) and +1.5R target.
+const GAP_EXIT_TEXT = { target: 'hit +1.5R', stop: 'stopped', maxloss: 'max loss 15%', time: '7-day limit', open: 'open' };
+function renderGap() {
+  const g = state.gap;
+  const badge = $('gapBadge');
+  const intro = 'Paper only, no trades placed. Records a buy when a coin leaves a daily gap on at least 2x volume, then rebounds on the 1h chart (RSI back from oversold, close above EMA20) while still below the gap.';
+  if (!g?.closed) {
+    badge.className = 'pill';
+    badge.textContent = g?.open ? `${g.open} open` : 'Watching';
+    $('gapMeta').textContent = `${intro} ${g?.signals ? `${g.signals} signal${g.signals === 1 ? '' : 's'} so far.` : 'None yet.'}`;
+  } else {
+    badge.className = `pill ${g.totalR > 0 ? 'good' : g.totalR < 0 ? 'bad' : 'warn'}`;
+    badge.textContent = `${g.totalR > 0 ? '+' : ''}${g.totalR}R`;
+    $('gapMeta').textContent = `${intro} ${g.closed} closed, ${g.winPct}% wins, avg ${g.avgR}R (${g.avgPct}%) per trade, ${g.open} open, after ${g.costPct}% costs.`;
+  }
+  $('gapTrades').innerHTML = (g?.recent || []).slice(0, 8).map((r) => {
+    const when = new Date(r.entryTime * 1000).toISOString().slice(0, 16).replace('T', ' ');
+    const pct = r.exitPrice != null ? ` (${(((r.exitPrice / r.entry) - 1) * 100).toFixed(1)}%)` : '';
+    return `<div class="activity-item"><span class="icon">${escapeHtml(base(r.symbol))}</span><div>${escapeHtml(GAP_EXIT_TEXT[r.status] || r.status)}${pct}<small>Bought ${when} UTC at ${r.entry}, stop ${Number(r.exitStop.toPrecision(6))}, target ${Number(r.target.toPrecision(6))}, gap volume ${r.gapVolX}x</small></div></div>`;
+  }).join('');
 }
 
 document.querySelectorAll('#backtestMonthsRow button').forEach((btn) => btn.addEventListener('click', () => {
@@ -1007,6 +1033,7 @@ function renderSettings() {
   const s = state.settings;
   if (!s) return;
   $('autoTradeToggle').checked = s.autoTrade.enabled;
+  $('gapSleeveToggle').checked = s.gapSleeve?.enabled !== false;
   renderAutopilot();
   $('setRiskPerTrade').value = s.riskPerTradePct;
   $('setMaxPositions').value = s.maxOpenPositions;
@@ -1070,6 +1097,10 @@ $('resetData').addEventListener('click', async () => {
     note('resetNote', 'Reset done. The robot starts fresh on its next check.', 'good');
     loadCore();
   } catch (e) { note('resetNote', e.message, 'bad'); }
+});
+$('gapSleeveToggle').addEventListener('change', async (e) => {
+  try { await saveSettings({ gapSleeve: { enabled: e.target.checked } }); note('tradingNote', e.target.checked ? 'Gap rebound trades are on.' : 'Gap rebound trades are off. The paper test keeps recording them.', 'good'); loadCore(); }
+  catch (error) { e.target.checked = !e.target.checked; note('tradingNote', error.message, 'bad'); }
 });
 $('autoTradeToggle').addEventListener('change', async (e) => {
   try { await saveSettings({ autoTrade: { enabled: e.target.checked } }); note('tradingNote', e.target.checked ? 'Auto-trading is on.' : 'Auto-trading is off. The robot only watches.', 'good'); loadCore(); }

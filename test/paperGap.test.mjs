@@ -97,7 +97,7 @@ test('updateGapJournal: records one paper trade per gap, follows it, and scores 
   assert.equal(summary.signals, 1);
 });
 
-test('engine gap sleeve: buys the same rebound as the paper test at 1% risk and sells at its target', () => {
+test('engine gap sleeve: buys the same rebound as the paper test at 0.5% risk and sells at its target', () => {
   const d = dailyWithGap();
   const h = hourlyAfter(d);
   const series = { AAAUSDT: { '1d': d, '1h': h } };
@@ -112,8 +112,8 @@ test('engine gap sleeve: buys the same rebound as the paper test at 1% risk and 
   assert.equal(buys.length, 1);
   assert.equal(buys[0].profile, 'gap');
   assert.equal(buys[0].price, paper.entry);
-  // 1% of equity at most; here the 30%-of-equity position cap binds first (tight stop).
-  assert.ok(buys[0].riskIdr > 0 && buys[0].riskIdr <= 100_000 + 1, `risk ${buys[0].riskIdr}`);
+  // 0.5% of equity at most.
+  assert.ok(buys[0].riskIdr > 0 && buys[0].riskIdr <= 50_000 + 1, `risk ${buys[0].riskIdr}`);
   assert.equal(sells.length, 1);
   assert.equal(sells[0].exitKind ?? 'target', paper.status === 'target' ? 'target' : sells[0].exitKind);
   assert.ok(Math.abs(sells[0].price - paper.exitPrice) < 1e-6, `sell ${sells[0].price} vs paper ${paper.exitPrice}`);

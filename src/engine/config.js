@@ -97,18 +97,19 @@ export const PROFILES = {
   // has its own on/off switch in Settings. Buys a 1h rebound (RSI back from
   // under 30, first close above EMA20) under a daily gap that formed on at
   // least 2x volume; stop under the 24h low, never more than 15% away;
-  // +1.5R from the planned stop; sells after 7 days otherwise. 1% risk.
-  // 3-year backtest (2023-12 to 2026-11, 16 coins): with the breakouts on one
-  // account +139.8% vs +130.0% for the breakouts alone, max drawdown 20.8% vs
-  // 18.9%; last 14 months +38.2% vs +28.6%. On its own it only broke even in
-  // the first two years.
+  // +1.5R from the planned stop; sells after 7 days otherwise. 0.5% risk.
+  // 3-year engine backtest (2023-12 to 2026-11, 16 coins, one account with the
+  // breakouts): 0.5% risk +143.4% / max DD 21.3%, 1% risk +155.8% / DD 24.4%,
+  // breakouts alone +130.0% / DD 18.9%. Last 14 months at 0.5%: +33.8% vs
+  // +28.6% at the same 12.3% drawdown. A BTC-above-200d filter made it worse.
+  // On its own it only broke even in the first two years.
   gap: {
     key: 'gap',
     label: 'Gap rebound (daily gap on 2x volume, 1h rebound)',
     entry: 'gap',
     triggerTf: '1h',
     filterTf: '1d',
-    riskPct: 1,
+    riskPct: 0.5,
     targetR: 1.5,
     timeStopBars: 168,
     timeStopMinR: Infinity,

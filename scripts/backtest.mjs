@@ -108,7 +108,7 @@ function parseArgs(argv) {
 // It must stay opt-in: the API route (src/backtestRunner.js) runs this on
 // Vercel, whose deployed filesystem is read-only outside /tmp, so writing a
 // cache file there fails every call.
-async function loadRaw({ baseUrl, symbol, tf, startMs, endMs, useCache }) {
+export async function loadRaw({ baseUrl, symbol, tf, startMs, endMs, useCache }) {
   if (!useCache) return fetchKlinesRange(baseUrl, symbol, tf, startMs, endMs);
   const cacheDir = path.join(ROOT, 'benchmarks', '.cache');
   const file = path.join(cacheDir, `${symbol}_${tf}_${startMs}_${endMs}.json`);

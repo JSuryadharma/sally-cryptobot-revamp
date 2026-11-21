@@ -44,7 +44,7 @@ function atr(bars, n = 14) {
 const priorMax = (v, n) => { const o = Array(v.length).fill(null); for (let k = n; k < v.length; k += 1) { let m = -Infinity; for (let j = k - n; j < k; j += 1) if (v[j] > m) m = v[j]; o[k] = m; } return o; };
 const priorMin = (v, n) => { const o = Array(v.length).fill(null); for (let k = n; k < v.length; k += 1) { let m = Infinity; for (let j = k - n; j < k; j += 1) if (v[j] < m) m = v[j]; o[k] = m; } return o; };
 
-function enrich(bars, tf) {
+export function enrich(bars, tf) {
   const c = bars.map((b) => b.close);
   const v = bars.map((b) => b.volume || 0);
   return {
@@ -61,11 +61,11 @@ function enrich(bars, tf) {
 }
 
 // Latest index whose bar closed at or before ms (binary search).
-function idxAt(s, ms) { let lo = 0, hi = s.closeMs.length - 1, f = -1; while (lo <= hi) { const m = (lo + hi) >> 1; if (s.closeMs[m] <= ms) { f = m; lo = m + 1; } else hi = m - 1; } return f; }
+export function idxAt(s, ms) { let lo = 0, hi = s.closeMs.length - 1, f = -1; while (lo <= hi) { const m = (lo + hi) >> 1; if (s.closeMs[m] <= ms) { f = m; lo = m + 1; } else hi = m - 1; } return f; }
 
 // ---------- strategies ----------
 // signal(ctx, sym, k) -> { stop, target?, maxBars, exit?(s, k, pos) } | null; entry at bar k's close.
-function regimeOn(ctx, ms) { const d = ctx.regime; const j = idxAt(d, ms); return j >= 0 && d.sma200[j] != null && d.c[j] > d.sma200[j]; }
+export function regimeOn(ctx, ms) { const d = ctx.regime; const j = idxAt(d, ms); return j >= 0 && d.sma200[j] != null && d.c[j] > d.sma200[j]; }
 function dailyOf(ctx, sym, ms) { const d = ctx.data[sym]['1d']; const j = idxAt(d, ms); return j >= 0 ? { d, j } : null; }
 
 export function strategies(market) {
@@ -178,14 +178,15 @@ export function simulateRule(rule, ctx, { startMs, endMs, risk = 0.02, maxPos = 
       for (const [s, ser, k] of barsNow) {
         const p = pos.get(s); if (!p) continue;
         const b = ser.bars[k]; let exit = null;
-        if (b.open <= p.stop) exit = b.open; else if (b.low <= p.stop) exit = p.stop;
-        else if (p.target && b.open >= p.target) exit = b.open; else if (p.target && b.high >= p.target) exit = p.target;
-        else if (p.exitFn && p.exitFn(ser, k)) exit = b.close;
-        else if (k - p.k >= p.maxBars) exit = b.close;
+        let why = null;
+        if (b.open <= p.stop) { exit = b.open; why = 'stop'; } else if (b.low <= p.stop) { exit = p.stop; why = 'stop'; }
+        else if (p.target && b.open >= p.target) { exit = b.open; why = 'target'; } else if (p.target && b.high >= p.target) { exit = p.target; why = 'target'; }
+        else if (p.exitFn && p.exitFn(ser, k)) { exit = b.close; why = 'signal'; }
+        else if (k - p.k >= p.maxBars) { exit = b.close; why = 'time'; }
         p.last = b.close;
         if (exit != null) {
           cash += p.units * exit - p.units * p.entry * cost;
-          trades.push({ sym: s, entryT: p.t, exitT: t, r: (exit - p.entry) / (p.entry - p.stop) - (p.entry * cost) / (p.entry - p.stop), pct: exit / p.entry - 1 - cost });
+          trades.push({ sym: s, entryT: p.t, exitT: t, r: (exit - p.entry) / (p.entry - p.stop) - (p.entry * cost) / (p.entry - p.stop), pct: exit / p.entry - 1 - cost, entry: p.entry, exit, why, value: p.value, pnl: p.units * exit - p.units * p.entry * (1 + cost) });
           pos.delete(s);
         }
       }
@@ -203,7 +204,7 @@ export function simulateRule(rule, ctx, { startMs, endMs, risk = 0.02, maxPos = 
         const value = Math.min((eq * risk) / (dist / entry), eq * maxFrac, cash);
         if (value < eq * 0.01) continue;
         cash -= value;
-        pos.set(s, { units: value / entry, entry, stop: sig.stop, target: sig.targetR ? entry + sig.targetR * dist : null, maxBars: sig.maxBars, exitFn: sig.exit, k, t, last: entry });
+        pos.set(s, { value, units: value / entry, entry, stop: sig.stop, target: sig.targetR ? entry + sig.targetR * dist : null, maxBars: sig.maxBars, exitFn: sig.exit, k, t, last: entry });
       }
     }
     const dayKey = Math.floor(t / DAY);
@@ -267,7 +268,7 @@ export function summarize(name, equity, trades, range) {
 }
 
 // ---------- data ----------
-async function loadCtx(market, symbols) {
+export async function loadCtx(market, symbols) {
   const data = {};
   if (market === 'crypto') {
     for (const s of symbols) {

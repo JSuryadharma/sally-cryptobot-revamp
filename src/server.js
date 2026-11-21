@@ -20,7 +20,7 @@ import { correlateNews, NEWS_JOURNAL_KEY, PRICE_HISTORY_KEY } from './news/servi
 import { NEWS_STATE_KEY } from './engine/tick.js';
 import { loadChartCandles } from './engine/candles.js';
 import { resetData } from './engine/reset.js';
-import { brokerStatus, testBinance } from './brokers/execution.js';
+import { brokerStatus, testBroker } from './brokers/execution.js';
 
 const notifications = new NotificationCenter();
 const CHART_TFS = ['15m', '1h', '4h', '1d'];
@@ -271,7 +271,7 @@ async function route(req, res) {
     return sendJson(res, 200, await brokerStatus({ settings: await readSettings() }));
   }
   if (pathname === '/api/broker/test' && method === 'POST') {
-    const result = await testBinance();
+    const result = await testBroker();
     return sendJson(res, result.ok ? 200 : 400, result.ok ? result : { ...result, error: result.message });
   }
   if (pathname === '/api/telegram/test' && method === 'POST') {

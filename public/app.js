@@ -1172,14 +1172,16 @@ async function loadBroker() {
   try {
     const b = await api('/api/broker/status');
     const c = b.crypto;
-    const where = c.mode === 'paper' ? 'Paper only: the server is not set up for Binance (see docs/LIVE-TRADING.md).'
-      : !c.hasKeys ? `Server is set to Binance ${c.network}, but the API keys are missing.`
-        : `Binance ${c.network === 'live' ? 'LIVE (real money)' : 'testnet (fake money)'}, max ${c.maxOrderUsdt} USDT per order${c.armed ? `, copying buys since ${new Date(c.armedSince).toLocaleString()}` : ', buys switched off'}.`;
+    const venue = c.venue === 'ajaib' ? 'Ajaib Coin' : 'Binance';
+    const where = c.mode === 'paper' ? 'Paper only: the server is not set up for real trading (see docs/LIVE-TRADING.md).'
+      : !c.hasKeys ? `Server is set to ${venue} ${c.network}, but the API keys are missing.`
+        : `${venue} ${c.network === 'live' ? 'LIVE (real money)' : 'testnet (fake money)'}, max ${Number(c.maxOrder).toLocaleString()} ${c.quote} per order${c.armed ? `, copying buys since ${new Date(c.armedSince).toLocaleString()}` : ', buys switched off'}.`;
     $('brokerSummary').textContent = `${where} ${c.openPositions.length ? `Real coins held: ${c.openPositions.map((p) => p.symbol.replace('USDT', '')).join(', ')}.` : ''}`;
+    $('brokerCryptoLabel').textContent = `Copy crypto buys to ${c.venue === 'binance' ? 'Binance' : 'Ajaib'}`;
     $('brokerCryptoToggle').checked = c.enabled;
     $('brokerCryptoToggle').disabled = c.mode === 'paper' || !c.hasKeys;
     $('brokerIdxToggle').checked = b.idx.tickets;
-    $('brokerLog').innerHTML = b.log.slice(0, 8).map((l) => `<li>${new Date(l.at).toLocaleString()} · ${l.market} ${l.kind} ${l.symbol || ''} ${l.usdt != null ? `${Number(l.usdt).toFixed(2)} USDT` : l.lots != null ? `${l.lots} lot` : ''} ${l.message ? `(${escapeHtml(l.message)})` : ''}</li>`).join('');
+    $('brokerLog').innerHTML = b.log.slice(0, 8).map((l) => `<li>${new Date(l.at).toLocaleString()} · ${l.market} ${l.kind} ${l.symbol || ''} ${l.amount != null ? `${Number(l.amount).toLocaleString(undefined, { maximumFractionDigits: 2 })} ${l.quote || ''}` : l.lots != null ? `${l.lots} lot` : ''} ${l.message ? `(${escapeHtml(l.message)})` : ''}</li>`).join('');
   } catch (e) { $('brokerSummary').textContent = `Could not read the real-trading status: ${e.message}`; }
 }
 $('brokerCryptoToggle').addEventListener('change', async (e) => {

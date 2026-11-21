@@ -371,10 +371,10 @@
           <div class="card">
             <h2>Real trading</h2>
             <p class="muted small" id="brokerSummary">Checking the server setup...</p>
-            <label class="switch-row"><span><b>Copy crypto buys to Binance</b><small>Real orders for new robot buys. Off stops new buys; open real coins are still sold by the robot.</small></span><input type="checkbox" id="brokerCryptoToggle" role="switch" /></label>
-            <label class="switch-row"><span><b>Ajaib order tickets for IDX</b><small>Ajaib has no stock trading API, so the robot sends what to buy or sell for you to place in the app.</small></span><input type="checkbox" id="brokerIdxToggle" role="switch" /></label>
+            <label class="switch-row"><span><b id="brokerCryptoLabel">Copy crypto buys to Ajaib</b><small>Real orders for new robot buys. Off stops new buys; open real coins are still sold by the robot.</small></span><input type="checkbox" id="brokerCryptoToggle" role="switch" /></label>
+            <label class="switch-row"><span><b>Ajaib order tickets for IDX</b><small>Ajaib has no API for stocks, so the robot sends what to buy or sell for you to place in the Ajaib app.</small></span><input type="checkbox" id="brokerIdxToggle" role="switch" /></label>
             <div class="button-row">
-              <button id="brokerTest" class="btn btn-secondary">Test Binance connection</button>
+              <button id="brokerTest" class="btn btn-secondary">Test connection</button>
             </div>
             <div class="form-note" id="brokerNote"></div>
             <ul class="broker-log muted small" id="brokerLog"></ul>

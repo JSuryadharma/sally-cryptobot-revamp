@@ -49,8 +49,8 @@ function sparkSvg(values, { w = 120, h = 36, stroke } = {}) {
   const lo = Math.min(...v), hi = Math.max(...v);
   const span = hi - lo || 1;
   const pts = v.map((x, i) => `${((i / (v.length - 1)) * w).toFixed(1)},${(h - 2 - ((x - lo) / span) * (h - 4)).toFixed(1)}`).join(' ');
-  const color = stroke || (v.at(-1) >= v[0] ? MK_COLORS.up : MK_COLORS.down);
-  return `<svg class="spark" viewBox="0 0 ${w} ${h}" width="${w}" height="${h}" aria-hidden="true" preserveAspectRatio="none"><polyline fill="none" stroke="${color}" stroke-width="1.6" stroke-linejoin="round" points="${pts}"/></svg>`;
+  const color = stroke || (v.at(-1) >= v[0] ? 'var(--bull)' : 'var(--bear)');
+  return `<svg class="spark" viewBox="0 0 ${w} ${h}" width="${w}" height="${h}" aria-hidden="true" preserveAspectRatio="none"><polyline fill="none" style="stroke:${color}" stroke-width="1.6" stroke-linejoin="round" points="${pts}"/></svg>`;
 }
 
 // Time-machine odds (src/tools/timeMachine.js) as a three-part bar.
@@ -271,6 +271,8 @@ function renderStock() {
 }
 
 function drawStockChart() {
+  const tc = themeColors();
+  Object.assign(MK_COLORS, { up: tc.up, down: tc.down, grid: tc.grid, text: tc.text, ema20: tc.ema20, ema50: tc.ema50, cross: tc.cross, signal: tc.signal });
   const canvas = $('stockChart');
   const candles = mk.stockCandles;
   const rect = canvas.getBoundingClientRect();
@@ -289,7 +291,7 @@ function drawStockChart() {
     levels.push({ price: held.entryPrice, color: MK_COLORS.text, dash: [], label: `Entry ${fmtRp(held.entryPrice)}` });
     levels.push({ price: held.stopPrice, color: MK_COLORS.down, dash: [6, 4], label: `Stop ${fmtRp(held.stopPrice)}`, below: true });
   } else if (x0?.plan) {
-    levels.push({ price: x0.plan.level, color: '#C98A10', dash: [6, 4], label: `20-day high ${fmtRp(x0.plan.level)}` });
+    levels.push({ price: x0.plan.level, color: MK_COLORS.signal, dash: [6, 4], label: `20-day high ${fmtRp(x0.plan.level)}` });
   }
   ctx.font = '600 11px Inter, sans-serif';
   const pad = { l: 8, r: Math.ceil(ctx.measureText(fmtRp(Math.max(...candles.map((c) => c.high)))).width) + 14, t: 12, b: 22 };
@@ -338,7 +340,7 @@ function drawStockChart() {
   ctx.textAlign = 'right'; ctx.fillText(candles.at(-1).date, w - pad.r, h - 6);
   ctx.textAlign = 'left';
   if (mk.stockHighlight != null && candles[mk.stockHighlight]) {
-    ctx.strokeStyle = 'rgba(29,28,26,0.35)'; ctx.setLineDash([3, 3]);
+    ctx.strokeStyle = MK_COLORS.cross; ctx.setLineDash([3, 3]);
     ctx.beginPath(); ctx.moveTo(x(mk.stockHighlight), pad.t); ctx.lineTo(x(mk.stockHighlight), pad.t + plotH); ctx.stroke();
     ctx.setLineDash([]);
   }

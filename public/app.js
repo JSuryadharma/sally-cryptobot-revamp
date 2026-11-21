@@ -893,7 +893,18 @@ function renderTfRow() {
 
 const CHART = { up: '#1A8F5A', down: '#D1433F', ema20: '#1F6FEB', ema50: '#9A988F', grid: '#EEEDE8', text: '#6B6A64', signal: '#C98A10', signalSoft: 'rgba(201,138,16,0.10)', stop: '#D1433F', entry: '#6B6A64' };
 
+// Chart colors follow the theme (CSS tokens in styles.css).
+function themeColors() {
+  const css = getComputedStyle(document.documentElement);
+  const v = (name) => css.getPropertyValue(name).trim();
+  return {
+    up: v('--bull'), down: v('--bear'), ema20: v('--accent'), ema50: v('--chart-ema50'), grid: v('--chart-grid'), text: v('--chart-text'),
+    signal: v('--signal'), stop: v('--bear'), entry: v('--chart-text'), cross: v('--chart-cross'), labelOn: v('--chart-label-on')
+  };
+}
+
 function drawChart() {
+  Object.assign(CHART, themeColors());
   const canvas = $('coinChart');
   const candles = state.chartCandles;
   const rect = canvas.getBoundingClientRect();
@@ -987,7 +998,7 @@ function drawChart() {
   const last = candles.at(-1);
   ctx.fillStyle = last.close >= last.open ? CHART.up : CHART.down;
   ctx.fillRect(w - pad.r + 2, y(last.close) - 9, pad.r - 4, 18);
-  ctx.fillStyle = '#fff'; ctx.font = '600 11px Inter, sans-serif';
+  ctx.fillStyle = CHART.labelOn; ctx.font = '600 11px Inter, sans-serif';
   ctx.fillText(fmtPrice(last.close), w - pad.r + 6, y(last.close) + 4);
 
   ctx.fillStyle = CHART.text; ctx.font = '11px Inter, sans-serif';
@@ -996,7 +1007,7 @@ function drawChart() {
 
   if (state.chartHighlight != null && candles[state.chartHighlight]) {
     const i = state.chartHighlight;
-    ctx.strokeStyle = 'rgba(29,28,26,0.35)'; ctx.setLineDash([3, 3]);
+    ctx.strokeStyle = CHART.cross; ctx.setLineDash([3, 3]);
     ctx.beginPath(); ctx.moveTo(x(i), pad.t); ctx.lineTo(x(i), pad.t + plotH); ctx.stroke();
     ctx.setLineDash([]);
   }
@@ -1186,6 +1197,26 @@ function tickClock() {
     }
   });
 }
+
+// Theme: follow the device, or a fixed light/dark picked with the top-bar button.
+const THEME_NEXT = { auto: 'dark', dark: 'light', light: 'auto' };
+const THEME_LABEL = { auto: 'Theme: follow device', dark: 'Theme: dark', light: 'Theme: light' };
+function applyTheme(mode) {
+  if (mode === 'auto') delete document.documentElement.dataset.theme; else document.documentElement.dataset.theme = mode;
+  try { if (mode === 'auto') localStorage.removeItem('sally-theme'); else localStorage.setItem('sally-theme', mode); } catch {}
+  const btn = $('themeBtn');
+  btn.dataset.mode = mode;
+  btn.title = THEME_LABEL[mode];
+  btn.setAttribute('aria-label', THEME_LABEL[mode]);
+  redrawCharts();
+}
+function redrawCharts() {
+  if (state.view === 'coin' && state.chartCandles.length) drawChart();
+  if (state.view === 'stock') drawStockChart();
+}
+$('themeBtn').addEventListener('click', () => applyTheme(THEME_NEXT[$('themeBtn').dataset.mode] || 'auto'));
+$('themeBtn').dataset.mode = document.documentElement.dataset.theme || 'auto';
+window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', redrawCharts);
 
 async function bootstrap() {
   const [config, settings] = await Promise.all([api('/api/config'), api('/api/settings')]);

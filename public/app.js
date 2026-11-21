@@ -161,8 +161,8 @@ function livePrice(coin) {
 function liveChange(coin) { return state.prices[coin.symbol]?.changePct ?? coin.latest?.changePct ?? 0; }
 function headline(coin) { return coin?.prediction?.headline || null; }
 const STRATEGY_NOTES = {
-  breakout: 'Buys a daily close above the 20-day high while Bitcoin is above its 200-day average. Sells at +1R, otherwise after 30 days.',
-  breakout55: 'Buys a daily close above the 55-day high while Bitcoin is above its 200-day average. Sells at +3R, otherwise after 30 days.'
+  breakout: 'Buys a daily close above the 20-day high while Bitcoin or the coin itself is above its 200-day average. Sells at +1R, otherwise after 30 days.',
+  breakout55: 'Buys a daily close above the 55-day high while Bitcoin or the coin itself is above its 200-day average. Sells at +3R, otherwise after 30 days.'
 };
 const AUTOPILOT_STATUS = {
   ok: ['good', 'Measured'],
@@ -1087,7 +1087,7 @@ function renderAutopilot() {
   }
   const r = (v) => (v == null ? '-' : `${v >= 0 ? '+' : ''}${v}R`);
   const regime = a.regime?.known
-    ? `<span class="pill ${a.regime.btcAbove200d ? 'good' : 'warn'}">BTC ${a.regime.btcAbove200d ? 'above' : 'below'} its 200-day average</span>`
+    ? `<span class="pill ${a.regime.btcAbove200d ? 'good' : 'warn'}">${a.regime.btcAbove200d ? 'BTC above its 200-day average' : 'BTC below its 200-day average: only coins above their own'}</span>`
     : '<span class="pill">BTC trend not known yet</span>';
   const rows = a.candidates.map((c) => {
     const [cls, word] = AUTOPILOT_STATUS[c.status] || ['', c.status];

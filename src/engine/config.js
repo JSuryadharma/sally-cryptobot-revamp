@@ -205,6 +205,11 @@ export const DEFAULT_ENGINE_CFG = {
   // 4 positions and 1 entry per close returned +6.8%, drawdown 9.5%. Raising
   // risk alone (still 1 entry per close) mostly raised the drawdown.
   riskPerTradePct: 2,
+  // Breakout market filter (paperBreakout.regimeAllows). 'either': BTC or the
+  // coin itself above its 200-day average (Joe, 2026-11-21; engine backtest to
+  // 2026-11-14: 3y +188% vs +165%, last year +33.5% vs +20.2%, same 18.1% max
+  // drawdown as BTC-only). IDX keeps the IHSG-only rule ('btc200').
+  regimeMode: 'either',
   maxPortfolioRiskPct: 10,
   maxOpenPositions: 6,
   tradeAllocationPct: 0.3,

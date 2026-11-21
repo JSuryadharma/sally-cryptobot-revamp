@@ -41,6 +41,14 @@ export function btcAbove200d(btcDaily, time) {
 // 'btc200' (default) the regime symbol (BTC / IHSG) above its 200-day average;
 // 'coin200' the coin itself above its own 200-day average; 'either' one of the
 // two; 'off' no filter.
+export function regimeNote(cfg, label) {
+  const mode = cfg?.regimeMode || 'btc200';
+  if (mode === 'off') return 'no market filter';
+  if (mode === 'coin200') return 'coin above its 200-day average';
+  if (mode === 'either') return `${label} or the coin above its 200-day average`;
+  return `${label} above its 200-day average`;
+}
+
 export function regimeAllows(cfg, regimeDaily, coinDaily, time) {
   const mode = cfg?.regimeMode || 'btc200';
   if (mode === 'off') return true;

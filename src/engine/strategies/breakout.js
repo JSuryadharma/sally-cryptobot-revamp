@@ -18,7 +18,7 @@
 import { scanSetups } from '../../tools/scanner.js';
 import { TF_MS, regimeSymbolOf, regimeLabelOf } from '../config.js';
 import { evaluateSetup, quoteVolume24h } from '../setups.js';
-import { regimeAllows } from '../paperBreakout.js';
+import { regimeAllows, regimeNote } from '../paperBreakout.js';
 import { lastClosedIndex, priorHighOf, roundPx } from '../bars.js';
 
 export function breakoutMode(cfg) {
@@ -94,7 +94,7 @@ function evaluateIntrabar(ctx, event, profile) {
     signal: {
       setup: 'breakout', entryPrice: price, stopPrice: stop,
       score: Math.round(Math.max(0, Math.min(1, (price - level) / d.atr14)) * 100),
-      reason: `Live price ${roundPx(price)} ${what}, ${regimeLabelOf(cfg)} above its 200-day average.`
+      reason: `Live price ${roundPx(price)} ${what}, ${regimeNote(cfg, regimeLabelOf(cfg))}.`
     },
     checklist: [],
     armedLevel: roundPx(level),
@@ -133,7 +133,7 @@ function evaluateClose(ctx, event, profile) {
     if (stop > 0) {
       signal = {
         ...prev.signal, entryPrice: c.close, stopPrice: stop,
-        reason: `Daily close ${roundPx(c.close)} still above the ${profile.breakoutLookback}-day high ${prev.armedLevel} it broke yesterday, ${regimeLabelOf(cfg)} above its 200-day average.`
+        reason: `Daily close ${roundPx(c.close)} still above the ${profile.breakoutLookback}-day high ${prev.armedLevel} it broke yesterday, ${regimeNote(cfg, regimeLabelOf(cfg))}.`
       };
     }
   }

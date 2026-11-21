@@ -255,7 +255,7 @@ function renderHeader() {
   const pill = $('enginePill');
   pill.className = `engine-pill ${status.cls}`;
   $('enginePillText').textContent = state.status?.stale ? 'Engine stale' : state.status ? `Checked ${fmtAgo(state.status.ageMs)}` : 'Engine';
-  pill.title = status.sub;
+  pill.title = status.sub ? `${status.title} · ${status.sub}` : status.title;
   const p = state.portfolio;
   if (p) $('headerBalance').textContent = fmtIdr(p.equityIdr ?? p.balanceIdr);
 }

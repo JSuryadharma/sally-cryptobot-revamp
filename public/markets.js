@@ -119,7 +119,7 @@ function renderHome() {
   const status = robotStatus();
   const auto = state.status?.autopilot;
   $('homeCrypto').innerHTML = `
-    <div class="market-head"><span class="market-badge crypto">Crypto</span><span class="pill ${status.cls === 'ok' ? 'good' : status.cls === 'bad' ? 'bad' : 'warn'}">${escapeHtml(status.title)}</span></div>
+    <div class="market-head"><span class="market-badge crypto">Crypto</span></div>
     <div class="market-num">${fmtIdrShort(c.marketValueIdr)}<small class="${c.unrealizedProfitIdr >= 0 ? 'up' : 'down'}">${fmtSigned(c.unrealizedProfitIdr)} open</small></div>
     <div class="mini-stats"><div><span>Positions</span><b>${c.openPositions}/${state.settings?.maxOpenPositions ?? '-'}</b></div><div><span>Realized</span><b class="${c.realizedProfitIdr >= 0 ? 'up' : 'down'}">${fmtSigned(c.realizedProfitIdr)}</b></div><div><span>Strategy</span><b>${escapeHtml(auto?.paused ? 'Paused' : PROFILE_SHORT[auto?.chosen] || '-')}</b></div></div>`;
   const ihsg = mk.idx?.ihsg;

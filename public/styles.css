@@ -103,7 +103,7 @@ b { font-weight: 600; }
 .page-title { font: 700 22px/1.2 var(--font-display); margin: 0; letter-spacing: -0.01em; }
 .topbar-right { display: flex; align-items: center; gap: 10px; }
 .balance-chip { font: 700 14px var(--font-display); font-variant-numeric: tabular-nums; white-space: nowrap; }
-@media (max-width: 440px) { #enginePillText { display: none; } .engine-pill { padding: 8px; } }
+
 
 .nav { position: fixed; left: 0; right: 0; bottom: 0; z-index: 10; display: flex; justify-content: space-around; background: var(--nav-bg); backdrop-filter: blur(12px); border-top: 1px solid var(--border); padding: 6px 8px calc(6px + env(safe-area-inset-bottom, 0px)); }
 .nav-brand { display: none; }
@@ -570,3 +570,8 @@ body { letter-spacing: -0.005em; }
   .nav-tab.active { background: var(--btn-grad); color: #fff; box-shadow: 0 10px 22px -12px var(--accent); }
 }
 .brand-mark { background: var(--btn-grad); border-radius: 12px; }
+
+/* one status dot in the header; the text lives in the tooltip */
+.sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+.engine-pill { padding: 0; width: 36px; height: 36px; justify-content: center; border: 0; box-shadow: var(--shadow); }
+@media (min-width: 960px) { .nav { padding-top: 28px; } }

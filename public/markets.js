@@ -32,6 +32,7 @@ async function loadMarkets() {
   if (idx.status === 'fulfilled') mk.idx = idx.value;
   if (news.status === 'fulfilled') mk.news = news.value;
   if (insights.status === 'fulfilled') mk.insights = insights.value;
+  renderOrderLists();
   renderCurrentView();
 }
 
@@ -169,6 +170,7 @@ function bindPositionCards(root) {
 
 // --- Saham IDX ---------------------------------------------------------------------
 function renderIdx() {
+  renderOrderLists();
   const d = mk.idx;
   const s = mk.account?.markets?.idx;
   if (!d) return;
@@ -446,4 +448,43 @@ function initMarkets() {
     $('idxAddInput').value = '';
     saveIdx({ watchlist: [...state.settings.idx.watchlist, sym] }, `${sym} added. It appears after the next IDX check.`);
   });
+}
+
+
+// --- order list (src/engine/orderPlans.js) ---------------------------------------------
+function orderPx(market, v) { return v == null ? '-' : market === 'idx' ? fmtRp(v) : `$${Number(v).toLocaleString('en-US', { maximumSignificantDigits: 6 })}`; }
+function orderSize(market, o) {
+  if (market === 'idx') return `${o.lots} lot${o.valueIdr ? ` · ${fmtIdr(o.valueIdr)}` : ''}`;
+  return o.valueUsdt != null ? `${o.valueUsdt.toLocaleString('en-US')} USDT · ${fmtIdr(o.valueIdr)}` : `${o.units}`;
+}
+function orderOdds(o) { return o.odds?.pTarget != null ? `<span class="pill pill-soft" title="Share of past price paths that reached the target before the stop">Target first ${Math.round(o.odds.pTarget * 100)}%</span>` : ''; }
+function orderListHtml(orders, market) {
+  const name = (s) => (market === 'idx' ? s.replace('.JK', '') : s.replace('USDT', ''));
+  const head = market === 'idx'
+    ? '<h2>Order list · Saham IDX</h2><span class="muted small">Place these in Ajaib. Prices follow the IDX tick table; sizes risk 2% of your account per stock.</span>'
+    : '<h2>Order list · Crypto</h2><span class="muted small">The robot buys these itself (and on Binance when real trading is on). Shown so you can follow along.</span>';
+  if (!orders) return `<div class="order-head">${head}</div><div class="empty">The list appears after the next robot check.</div>`;
+  const when = market === 'idx' ? 'Buy if today closes ≥' : 'Buy when price breaks';
+  const row = (o, kind) => `<div class="order-row ${kind}">
+      <div class="order-sym"><b>${name(o.symbol)}</b><span class="order-tag ${kind}">${kind === 'now' ? 'BUY NOW' : kind === 'prep' ? `${o.distancePct}% below trigger` : 'HOLDING'}</span></div>
+      <div class="order-grid">
+        ${kind === 'hold'
+          ? `<div><span>Entry</span><b>${orderPx(market, o.entry)}</b></div><div><span>Now</span><b class="${(o.changePct ?? 0) >= 0 ? 'up' : 'down'}">${orderPx(market, o.price)}${o.changePct != null ? ` (${o.changePct > 0 ? '+' : ''}${o.changePct}%)` : ''}</b></div>`
+          : `<div><span>${kind === 'now' ? 'Buy up to' : when}</span><b>${orderPx(market, kind === 'now' ? o.maxEntry : o.entry)}</b></div><div><span>Size</span><b>${orderSize(market, o)}</b></div>`}
+        <div><span>Take profit</span><b class="up">${orderPx(market, o.target)}</b></div>
+        <div><span>Stop-loss</span><b class="down">${orderPx(market, o.stop)}</b></div>
+        ${kind === 'hold' ? `<div><span>Sell by</span><b>${o.sellBy || '-'}</b></div>` : `<div><span>Max loss</span><b>${fmtIdr(o.riskIdr)}</b></div>`}
+      </div>
+      ${kind !== 'hold' ? `<div class="order-foot">${orderOdds(o)}<span class="muted small">${kind === 'now' ? `Broke the 55-day high ${orderPx(market, o.level)}; now ${orderPx(market, o.price)}.` : `Now ${orderPx(market, o.price)}; 55-day high ${orderPx(market, o.level)}.`}</span></div>` : ''}
+    </div>`;
+  const section = (title, list, kind, empty) => `<div class="order-section"><div class="order-title">${title}</div>${list.length ? list.map((o) => row(o, kind)).join('') : `<div class="muted small">${empty}</div>`}</div>`;
+  return `<div class="order-head">${head}</div>
+    ${section('Buy now', orders.buyNow || [], 'now', 'Nothing to buy right now.')}
+    ${section('Prepare: buy on breakout', orders.prepare || [], 'prep', `Nothing within 8% of its 55-day high.`)}
+    ${section('Sell plan for open positions', orders.sell || [], 'hold', 'No open positions.')}
+    <div class="muted small">Updated ${orders.updatedAt ? fmtAgo(Date.now() - Date.parse(orders.updatedAt)) : '-'}${market === 'idx' ? ' · Yahoo prices are about 15 minutes delayed' : ''}.</div>`;
+}
+function renderOrderLists() {
+  if ($('idxOrders')) $('idxOrders').innerHTML = orderListHtml(mk.idx?.orders, 'idx');
+  if ($('cryptoOrders')) $('cryptoOrders').innerHTML = orderListHtml(mk.insights?.orders, 'crypto');
 }

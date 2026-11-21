@@ -7,6 +7,7 @@ import { advance, createEngineState } from './core.js';
 import { bookView } from '../account.js';
 import { loadIdxSeries, idxEngineCfg, idxSessionOpen, IDX_REGIME_SYMBOL, IDX_NAMES } from '../markets/idx.js';
 import { btcAbove200d, regimeAllows } from './paperBreakout.js';
+import { buildOrderList } from './orderPlans.js';
 import { positionOdds, breakoutPlans, scannerFor } from './insights.js';
 import { quoteVolume24h } from './setups.js';
 
@@ -96,8 +97,15 @@ export async function idxPass({ settings, portfolio, nowMs, stored, loader = loa
     const nowBar = live[IDX_REGIME_SYMBOL]?.['1d'] || last;
     ihsg = { close: nowBar.close, date: nowBar.date, sma200: round(sma200), abovePct: round((last.close / sma200 - 1) * 100), regimeOk, sparkline: regime.slice(-60).map((c) => c.close) };
   }
+  const prices = Object.fromEntries(Object.keys(stockSeries).map((s) => [s, live?.[s]?.['1d']?.close ?? series[s]['1d'].at(-1)?.close]));
+  const equityIdr = portfolio.balanceIdr + [...Object.values(portfolio.positions || {}), ...Object.values(view.positions || {})].reduce((t, p) => t + (p.investedIdr || 0), 0);
+  const orders = buildOrderList({
+    market: 'idx', plans, prices, positions: view.positions, cfg, equityIdr, cashIdr: portfolio.balanceIdr, nowMs,
+    allowed: (s) => { const d = series[s]?.['1d']; return Boolean(d?.length) && regimeAllows(cfg, regime, d, d.at(-1).time); }
+  });
   const cache = {
     updatedAt: new Date(nowMs).toISOString(),
+    orders,
     sessionOpen: idxSessionOpen(nowMs),
     ihsg, stocks, scanner: scan.slice(0, 20),
     odds: positionOdds({ positions: view.positions, series, live, cfg }),

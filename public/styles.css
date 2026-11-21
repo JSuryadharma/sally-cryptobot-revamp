@@ -575,3 +575,19 @@ body { letter-spacing: -0.005em; }
 .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
 .engine-pill { padding: 0; width: 36px; height: 36px; justify-content: center; border: 0; box-shadow: var(--shadow); }
 @media (min-width: 960px) { .nav { padding-top: 28px; } }
+
+/* ---------- order list ---------- */
+.order-card { display: grid; gap: 14px; }
+.order-head { display: grid; gap: 2px; }
+.order-head h2 { margin: 0; }
+.order-section { display: grid; gap: 8px; }
+.order-title { font-size: 12px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); }
+.order-row { border: 1px solid var(--card-border); border-radius: var(--radius-sm); padding: 12px; display: grid; gap: 8px; }
+.order-row.now { border-color: var(--accent); background: var(--accent-soft); }
+.order-sym { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.order-tag { font-size: 11px; font-weight: 700; padding: 2px 8px; border-radius: 999px; background: var(--accent-soft); color: var(--accent-ink); }
+.order-tag.now { background: var(--accent); color: #fff; }
+.order-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(118px, 1fr)); gap: 8px; }
+.order-grid span { display: block; font-size: 11.5px; color: var(--muted); }
+.order-grid b { font-variant-numeric: tabular-nums; }
+.order-foot { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }

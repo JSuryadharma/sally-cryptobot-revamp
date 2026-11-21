@@ -5,6 +5,8 @@ import { readSettings, engineCfgFromSettings } from '../settings.js';
 import { getPortfolio, PORTFOLIO_KEY } from '../tradingRobot.js';
 import { syncStartingBalance } from './deposit.js';
 import { reconcileBrokers } from '../brokers/execution.js';
+import { buildOrderList } from './orderPlans.js';
+import { regimeAllows } from './paperBreakout.js';
 import { resolveUsdIdrRate } from '../binanceData.js';
 import { NotificationCenter } from '../notifications.js';
 import { resolveEngineCfg, profilesFor, BTC_SYMBOL } from './config.js';
@@ -199,6 +201,14 @@ async function enginePass({ notifications = new NotificationCenter(), forceIdx =
     odds: positionOdds({ positions: cryptoBook.positions, series, live, cfg }),
     plans: breakoutPlans({ symbols: settings.watchlist, series, live, cfg, profileKey: activeProfile })
   };
+  {
+    const prices = Object.fromEntries(Object.keys(series).map((s) => [s, live?.[s]?.['5m']?.close ?? live?.[s]?.['1d']?.close ?? series[s]['1d']?.at(-1)?.close]));
+    const equityIdr = portfolio.balanceIdr + [...Object.values(portfolio.positions || {}), ...Object.values(portfolio.books?.idx?.positions || {})].reduce((t, p) => t + (p.investedIdr || 0), 0);
+    cryptoInsights.orders = buildOrderList({
+      market: 'crypto', plans: cryptoInsights.plans, prices, positions: cryptoBook.positions, cfg, equityIdr, cashIdr: portfolio.balanceIdr, usdIdrRate, nowMs: startedAt,
+      allowed: (s) => { const d = series[s]?.['1d']; return Boolean(d?.length) && regimeAllows(cfg, series[BTC_SYMBOL]?.['1d'], d, d.at(-1).time); }
+    });
+  }
 
   // Daily closes for the news correlation, and the news itself every 15 minutes.
   const previousHistory = await readJson(PRICE_HISTORY_KEY, {});

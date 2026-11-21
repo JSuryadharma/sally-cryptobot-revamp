@@ -1,4 +1,4 @@
-import { btcAbove200d } from './paperBreakout.js';
+import { btcAbove200d, regimeAllows } from './paperBreakout.js';
 import { regimeLabelOf } from './config.js';
 
 // Long-only entry setups. Pure: works on enriched candle arrays plus an index,
@@ -171,7 +171,7 @@ function evaluateDailyBreakout(ctx) {
 
   const btcDaily = ctx.btc?.filt;
   const regime = regimeLabelOf(cfg);
-  const btcOk = check(checklist, 'btcRegime', `${regime} above its 200-day average`, btcAbove200d(btcDaily, c.time),
+  const btcOk = check(checklist, 'btcRegime', `${regime} above its 200-day average`, regimeAllows(cfg, btcDaily, trig, c.time),
     btcDaily?.length ? `${regime} ${roundPrice(btcDaily[Math.min(ctx.btc.j ?? btcDaily.length - 1, btcDaily.length - 1)]?.close)}` : `no ${regime} data`);
 
   const volUsdt = quoteVolume24h(trig, i, profile.barsPer24h);

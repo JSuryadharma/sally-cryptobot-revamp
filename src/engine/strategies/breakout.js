@@ -18,7 +18,7 @@
 import { scanSetups } from '../../tools/scanner.js';
 import { TF_MS, regimeSymbolOf, regimeLabelOf } from '../config.js';
 import { evaluateSetup, quoteVolume24h } from '../setups.js';
-import { btcAbove200d } from '../paperBreakout.js';
+import { regimeAllows } from '../paperBreakout.js';
 import { lastClosedIndex, priorHighOf, roundPx } from '../bars.js';
 
 export function breakoutMode(cfg) {
@@ -82,7 +82,7 @@ function evaluateIntrabar(ctx, event, profile) {
       if (!((sub[event.i].volume || 0) >= mode.volMult * (sum / bars))) return null;
     }
   }
-  if (!btcAbove200d(series[regimeSymbolOf(cfg)]?.[profile.filterTf], d.time)) return null;
+  if (!regimeAllows(cfg, series[regimeSymbolOf(cfg)]?.[profile.filterTf], daily, d.time)) return null;
   if (quoteVolume24h(daily, ci, profile.barsPer24h) < cfg.minTradeQuoteVolumeUsdt) return null;
   const stop = roundPx(price - profile.stopAtr * d.atr14);
   if (!(stop > 0)) return null;

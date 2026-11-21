@@ -80,6 +80,10 @@ export const COMBOS = [
   { key: 'robot_atr', group: 'Robot + indikator', name: 'Robot + ATR tenang sebelum breakout (ATR14 ≤ 1,2× ATR50)', tf: '1d', signal: robotWith(f.regime, f.atrQuiet) },
   { key: 'robot_all', group: 'Robot + indikator', name: 'Robot + RSI + EMA + F&G + ATR sekaligus', tf: '1d', signal: robotWith(f.regime, f.rsi, f.ema, f.fngOk, f.atrQuiet) },
   { key: 'robot_fng_noregime', group: 'Robot + indikator', name: 'Breakout 55 hari tanpa filter BTC, ganti F&G 40-79', tf: '1d', signal: robotWith(f.ema, (ctx, s, k) => s.fng[k] != null && s.fng[k] >= 40 && s.fng[k] < 80) },
+  { key: 'noregime', group: 'Tanpa filter BTC > 200d', name: 'Breakout 55 hari tanpa filter apa pun (stop 3 ATR, +3R)', tf: '1d', signal: robotWith() },
+  { key: 'noregime_coin200', group: 'Tanpa filter BTC > 200d', name: 'Tanpa filter BTC, ganti: koin itu sendiri di atas rata-rata 200 hari', tf: '1d', signal: robotWith((ctx, s, k) => s.sma200[k] != null && s.c[k] > s.sma200[k]) },
+  { key: 'noregime_btc50', group: 'Tanpa filter BTC > 200d', name: 'Tanpa filter BTC 200d, ganti: BTC di atas rata-rata 50 hari', tf: '1d', signal: robotWith((ctx, s, k) => { const d = ctx.regime; const j = idxAt(d, s.closeMs[k]); return j >= 0 && d.sma50[j] != null && d.c[j] > d.sma50[j]; }) },
+  { key: 'noregime_half', group: 'Tanpa filter BTC > 200d', name: 'BTC > 200d risiko penuh; BTC di bawah 200d tetap beli tapi koin harus > 200d sendiri', tf: '1d', signal: robotWith((ctx, s, k) => f.regime(ctx, s, k) || (s.sma200[k] != null && s.c[k] > s.sma200[k])) },
   { key: 'robot_hl', group: 'Robot + market structure', name: 'Robot + struktur higher low (swing low terakhir > sebelumnya)', tf: '1d', signal: robotWith(f.regime, f.hl) },
   {
     key: 'bos_daily', group: 'Market structure', name: 'BOS harian: tutup di atas swing high terakhir setelah higher low, BTC > 200d, stop di bawah swing low (maks 3 ATR), +3R', tf: '1d',

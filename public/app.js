@@ -1177,7 +1177,7 @@ async function loadBroker() {
       : !c.hasKeys ? `Server is set to ${venue} ${c.network}, but the API keys are missing.`
         : `${venue} ${c.network === 'live' ? 'LIVE (real money)' : 'testnet (fake money)'}, max ${Number(c.maxOrder).toLocaleString()} ${c.quote} per order${c.armed ? `, copying buys since ${new Date(c.armedSince).toLocaleString()}` : ', buys switched off'}.`;
     $('brokerSummary').textContent = `${where} ${c.openPositions.length ? `Real coins held: ${c.openPositions.map((p) => p.symbol.replace('USDT', '')).join(', ')}.` : ''}`;
-    $('brokerCryptoLabel').textContent = `Copy crypto buys to ${c.venue === 'binance' ? 'Binance' : 'Ajaib'}`;
+    $('brokerCryptoLabel').textContent = `Copy crypto buys to ${c.venue === 'ajaib' ? 'Ajaib' : 'Binance'}`;
     $('brokerCryptoToggle').checked = c.enabled;
     $('brokerCryptoToggle').disabled = c.mode === 'paper' || !c.hasKeys;
     $('brokerIdxToggle').checked = b.idx.tickets;

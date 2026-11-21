@@ -43,7 +43,7 @@ A 24/7 crypto paper-trading robot and dashboard for Binance USDT pairs. It reads
 
 ## Real trading (2026-11-21)
 
-Off by default. `src/brokers/` copies the robot's crypto positions to Ajaib Coin Exchange (or Binance Spot), testnet or live, and sends Ajaib order tickets for IDX (Ajaib has no stock API). Setup guide: [docs/LIVE-TRADING.md](docs/LIVE-TRADING.md).
+Off by default. `src/brokers/` copies the robot's crypto positions to Binance Spot with market orders (testnet or live; Ajaib Coin limit-only adapter kept as a fallback) and sends Ajaib order tickets for IDX (Ajaib has no stock API). Setup guide: [docs/LIVE-TRADING.md](docs/LIVE-TRADING.md).
 
 ## Skill risk gate (2026-11-21)
 

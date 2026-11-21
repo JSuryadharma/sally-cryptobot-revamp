@@ -8,7 +8,8 @@
 // Reconciling instead of replaying transactions means nothing is bought twice
 // after a crash and every exit path is covered.
 //
-// Crypto: Ajaib Coin Exchange API (default, Joe 2026-11-21) or Binance Spot.
+// Crypto: Binance Spot (market orders; Joe 2026-11-21). Ajaib Coin Exchange is
+// kept as an option but only accepts limit orders.
 // IDX: Ajaib has no public stock trading API, so the robot sends an order
 // ticket (notification + Telegram) for you to place in the Ajaib app.
 //
@@ -202,7 +203,7 @@ export async function brokerStatus({ settings, env = process.env, client = null 
 // which places nothing). Ajaib has no test-order endpoint, so nothing is sent.
 export async function testBroker({ env = process.env, client = null } = {}) {
   const cfg = brokerEnv(env);
-  if (cfg.cryptoMode === 'paper') return { ok: false, message: 'BROKER_CRYPTO is "paper" on the server. Set it to ajaib-testnet (or ajaib-live).' };
+  if (cfg.cryptoMode === 'paper') return { ok: false, message: 'BROKER_CRYPTO is "paper" on the server. Set it to binance-testnet (or binance-live).' };
   if (!cfg.hasKeys) return { ok: false, message: cfg.venue === 'ajaib' ? 'AJAIB_API_KEY / AJAIB_PRIVATE_KEY are not set on the server.' : 'BINANCE_API_KEY / BINANCE_API_SECRET are not set on the server.' };
   try {
     const r = await createVenue(cfg, env, client).test();

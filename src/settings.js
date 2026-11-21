@@ -39,7 +39,7 @@ function defaultSettings() {
     binanceBaseUrl: 'https://data-api.binance.vision',
     timeZone: 'Asia/Jakarta',
     // Paper trading only - this never sends a real order to Binance.
-    initialBalanceIdr: 10_000_000,
+    initialBalanceIdr: 20_000_000,
     usdIdrRate: 16800,
     tradeAllocationPct: DEFAULT_ENGINE_CFG.tradeAllocationPct,
     maxOpenPositions: DEFAULT_ENGINE_CFG.maxOpenPositions,
@@ -105,6 +105,10 @@ const SIZING_VERSION = 2;
 // move to DEFAULT_WATCHLIST once - a fresh database started on the old 5-coin
 // default. Later edits on the Settings page stick.
 const WATCHLIST_VERSION = 2;
+// Settings saved before 2026-11-21 (no balanceVersion 2) move to the Rp 20M
+// starting balance once (Joe's ask); the engine adds the difference to cash
+// (engine/deposit.js). Later edits on the Settings page stick.
+const BALANCE_VERSION = 2;
 const SIZING_KEYS = ['riskPerTradePct', 'maxPortfolioRiskPct', 'maxOpenPositions', 'dailyLossLimitPct', 'drawdownHaltPct'];
 
 export function normalize(input, watchlistFallback) {
@@ -112,7 +116,8 @@ export function normalize(input, watchlistFallback) {
   const sized = input.sizingVersion === SIZING_VERSION
     ? input
     : { ...input, ...Object.fromEntries(SIZING_KEYS.map((key) => [key, base[key]])) };
-  const raw = sized.watchlistVersion === WATCHLIST_VERSION ? sized : { ...sized, watchlist: base.watchlist };
+  const listed = sized.watchlistVersion === WATCHLIST_VERSION ? sized : { ...sized, watchlist: base.watchlist };
+  const raw = listed.balanceVersion === BALANCE_VERSION ? listed : { ...listed, initialBalanceIdr: base.initialBalanceIdr };
   return {
     watchlist: boundedList(raw.watchlist, watchlistFallback || base.watchlist),
     // The strategy switches, "Buy early" and the minimum setup score that used
@@ -154,7 +159,8 @@ export function normalize(input, watchlistFallback) {
     topMoversCount: boundedNumber(raw.topMoversCount, base.topMoversCount, 1, 20),
     minQuoteVolumeUsdt: boundedNumber(raw.minQuoteVolumeUsdt, base.minQuoteVolumeUsdt, 0, 1_000_000_000),
     sizingVersion: SIZING_VERSION,
-    watchlistVersion: WATCHLIST_VERSION
+    watchlistVersion: WATCHLIST_VERSION,
+    balanceVersion: BALANCE_VERSION
   };
 }
 

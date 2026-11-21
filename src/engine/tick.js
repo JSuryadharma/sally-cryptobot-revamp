@@ -3,6 +3,7 @@ import { readJson, writeJson, writeJsonMany, tryAcquireLease, releaseLease } fro
 import { readCoinsCache, writeCoinsCache } from '../coinsCache.js';
 import { readSettings, engineCfgFromSettings } from '../settings.js';
 import { getPortfolio, PORTFOLIO_KEY } from '../tradingRobot.js';
+import { syncStartingBalance } from './deposit.js';
 import { resolveUsdIdrRate } from '../binanceData.js';
 import { NotificationCenter } from '../notifications.js';
 import { resolveEngineCfg, profilesFor, BTC_SYMBOL } from './config.js';
@@ -158,6 +159,8 @@ async function enginePass({ notifications = new NotificationCenter(), forceIdx =
   const startedAt = Date.now();
   const context = await loadContext();
   const { settings, portfolio, engineState, usdIdrRate } = context;
+  const deposit = syncStartingBalance(portfolio, settings.initialBalanceIdr, [engineState.risk, context.idxState?.engine?.risk]);
+  if (deposit) await notifications.notify({ title: `Starting balance set to Rp ${settings.initialBalanceIdr.toLocaleString('id-ID')}`, message: `Cash ${deposit > 0 ? '+' : ''}${deposit.toLocaleString('id-ID')} IDR. Open positions unchanged.`, level: 'info', category: 'system' });
   // Crypto trades its own book; cash is shared with the IDX book (account.js).
   const cryptoBook = bookView(portfolio, 'crypto');
   const held = Object.keys(portfolio.positions || {});
@@ -205,6 +208,7 @@ async function enginePass({ notifications = new NotificationCenter(), forceIdx =
     [PORTFOLIO_KEY]: portfolio, [ENGINE_STATE_KEY]: engineState, [SIGNAL_JOURNAL_KEY]: journal,
     [PAPER_JOURNAL_KEY]: paperJournal, [AUTOPILOT_KEY]: autopilot, [GAP_JOURNAL_KEY]: gapJournal,
     [CRYPTO_INSIGHTS_KEY]: cryptoInsights, [PRICE_HISTORY_KEY]: priceHistory,
+    ...(deposit && context.idxState ? { [IDX_STATE_KEY]: context.idxState } : {}),
     ...(idx?.writes || {}), ...newsWrites
   });
   await notifyResults(notifications, out, cfg);

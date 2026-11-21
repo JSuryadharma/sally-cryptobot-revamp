@@ -44,7 +44,7 @@ export const DEFAULT_SYMBOLS = ['BTCUSDT', 'ETHUSDT', 'BNBUSDT', 'SOLUSDT', 'XRP
 const DEFAULT_BASE_URL = 'https://data-api.binance.vision';
 const MONTH_MS = 30 * 86_400_000;
 const USD_IDR = 16_800;
-const INITIAL_IDR = 10_000_000;
+const INITIAL_IDR = Number(process.env.INITIAL_IDR) || 10_000_000;
 
 // Only used with --train > 0. Kept small: every extra knob raises the odds of
 // fitting noise.

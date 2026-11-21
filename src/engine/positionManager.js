@@ -8,7 +8,7 @@ import { profileTimeStopBars, profileTrailAtr, profileTargetR, profileTimeStopMi
 // (breakeven, trail) only apply from the next bar. Stops model resting exchange
 // orders, filling at the stop price (or the open, if the bar gapped below it)
 // no matter how late the engine processes the bar.
-export function onBar(position, bar, profile, cfg, { priceExits = true } = {}) {
+export function onBar(position, bar, profile, cfg, { priceExits = true, channelLow = null } = {}) {
   const fills = [];
   const slip = cfg.slippagePct / 100;
   const updates = priceExits
@@ -24,7 +24,9 @@ export function onBar(position, bar, profile, cfg, { priceExits = true } = {}) {
   }
   updates.stopPrice = Number(nextStop.toPrecision(8));
 
-  if (cfg.trendExit !== false && profile.trendExit !== false && Number.isFinite(bar.ema50) && bar.close < bar.ema50) {
+  if (profile.channelExitBars && Number.isFinite(channelLow) && bar.close < channelLow) {
+    fills.push({ fraction: 1, price: bar.close * (1 - slip), exitKind: 'channel', reason: `Channel exit: ${profile.triggerTf} close ${bar.close} below the ${profile.channelExitBars}-bar low ${channelLow}.` });
+  } else if (cfg.trendExit !== false && profile.trendExit !== false && Number.isFinite(bar.ema50) && bar.close < bar.ema50) {
     fills.push({ fraction: 1, price: bar.close * (1 - slip), exitKind: 'trend', reason: `Trend break: ${profile.triggerTf} close ${bar.close} below EMA50 ${bar.ema50.toPrecision(8)}.` });
   } else if (updates.barsHeld >= profileTimeStopBars(profile, cfg) && updates.mfeR < profileTimeStopMinR(profile, cfg)) {
     const minR = profileTimeStopMinR(profile, cfg);

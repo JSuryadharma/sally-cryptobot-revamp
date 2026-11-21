@@ -94,7 +94,7 @@ const endMs = START + BARS * TF_MS['15m'];
 // profiles trade 3x ATR / +3R. Give the engine the paper exits so the two
 // can be compared trade for trade.
 const PAPER_EXITS = { breakout: { stopAtr: 2 }, breakout55: { stopAtr: 2, targetR: 2 } };
-const loose = (o = {}) => resolveEngineCfg({
+const loose = (o = {}) => resolveEngineCfg({ preTrade: null,
   profileOverrides: PAPER_EXITS, breakoutEntry: 'close',
   minTradeQuoteVolumeUsdt: 0, slippagePct: 0, maxOpenPositions: 50, maxNewEntriesPerBar: 50, maxPortfolioRiskPct: 100,
   tradeAllocationPct: 0.05, maxConsecutiveLosses: 1000, dailyLossLimitPct: 100, drawdownHaltPct: 100, ...o
@@ -139,7 +139,7 @@ for (const breakoutEntry of ['close', 'hold:12', 'touch']) test(`advancing one d
 
 test('paperResults: each closed paper trade is dated at its exit candle close', () => {
   const journal = updatePaperJournal([], series, SYMBOLS, { window: { startMs: 0, endMs } });
-  const results = paperResults(journal, series, { costPct: paperCostPct(resolveEngineCfg()) });
+  const results = paperResults(journal, series, { costPct: paperCostPct(resolveEngineCfg({ preTrade: null })) });
   assert.ok(results.length > 0);
   for (const x of results) {
     const record = journal.find((r) => r.symbol === x.symbol && r.profile === x.rule && r.barTime === x.barTime);

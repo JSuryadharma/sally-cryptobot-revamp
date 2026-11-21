@@ -1,5 +1,6 @@
 import { readJson, writeJson } from './storage.js';
 import { DEFAULT_ENGINE_CFG } from './engine/config.js';
+import { DEFAULT_IDX_WATCHLIST, normalizeIdxSymbol } from './markets/idx.js';
 
 export const SETTINGS_FILE = 'settings.json';
 
@@ -25,6 +26,8 @@ function defaultSettings() {
     autoTrade: { enabled: true },
     // The gap-rebound sleeve (engine/config.js PROFILES.gap), next to the breakouts.
     gapSleeve: { enabled: true },
+    // IDX stocks (markets/idx.js): a second book on the same cash pool.
+    idx: { enabled: true, autoTrade: true, watchlist: [...DEFAULT_IDX_WATCHLIST], maxOpenPositions: 4 },
     riskPerTradePct: DEFAULT_ENGINE_CFG.riskPerTradePct,
     maxPortfolioRiskPct: DEFAULT_ENGINE_CFG.maxPortfolioRiskPct,
     dailyLossLimitPct: DEFAULT_ENGINE_CFG.dailyLossLimitPct,
@@ -33,10 +36,13 @@ function defaultSettings() {
     slippagePct: DEFAULT_ENGINE_CFG.slippagePct,
     minTradeQuoteVolumeUsdt: DEFAULT_ENGINE_CFG.minTradeQuoteVolumeUsdt,
     telegram: { enabled: true, botToken: '', chatId: '', categories: ['trade', 'ai-review'] },
+    // Real-money switches (src/brokers/execution.js). Real orders also need the
+    // server env (BROKER_CRYPTO + Binance keys); see docs/LIVE-TRADING.md.
+    liveTrading: { cryptoEnabled: false, cryptoEnabledAt: null, idxTickets: false, idxTicketsAt: null },
     binanceBaseUrl: 'https://data-api.binance.vision',
     timeZone: 'Asia/Jakarta',
     // Paper trading only - this never sends a real order to Binance.
-    initialBalanceIdr: 10_000_000,
+    initialBalanceIdr: 20_000_000,
     usdIdrRate: 16800,
     tradeAllocationPct: DEFAULT_ENGINE_CFG.tradeAllocationPct,
     maxOpenPositions: DEFAULT_ENGINE_CFG.maxOpenPositions,
@@ -74,6 +80,12 @@ function boundedList(value, fallback) {
   return cleaned.length ? cleaned.slice(0, 20) : fallback;
 }
 
+function idxList(value, fallback) {
+  if (!Array.isArray(value)) return fallback;
+  const cleaned = [...new Set(value.map(normalizeIdxSymbol).filter(Boolean))];
+  return cleaned.length ? cleaned.slice(0, 30) : fallback;
+}
+
 function boundedNumber(value, fallback, min, max) {
   const n = Number(value);
   return Number.isFinite(n) ? Math.min(max, Math.max(min, n)) : fallback;
@@ -96,6 +108,10 @@ const SIZING_VERSION = 2;
 // move to DEFAULT_WATCHLIST once - a fresh database started on the old 5-coin
 // default. Later edits on the Settings page stick.
 const WATCHLIST_VERSION = 2;
+// Settings saved before 2026-11-21 (no balanceVersion 2) move to the Rp 20M
+// starting balance once (Joe's ask); the engine adds the difference to cash
+// (engine/deposit.js). Later edits on the Settings page stick.
+const BALANCE_VERSION = 2;
 const SIZING_KEYS = ['riskPerTradePct', 'maxPortfolioRiskPct', 'maxOpenPositions', 'dailyLossLimitPct', 'drawdownHaltPct'];
 
 export function normalize(input, watchlistFallback) {
@@ -103,13 +119,20 @@ export function normalize(input, watchlistFallback) {
   const sized = input.sizingVersion === SIZING_VERSION
     ? input
     : { ...input, ...Object.fromEntries(SIZING_KEYS.map((key) => [key, base[key]])) };
-  const raw = sized.watchlistVersion === WATCHLIST_VERSION ? sized : { ...sized, watchlist: base.watchlist };
+  const listed = sized.watchlistVersion === WATCHLIST_VERSION ? sized : { ...sized, watchlist: base.watchlist };
+  const raw = listed.balanceVersion === BALANCE_VERSION ? listed : { ...listed, initialBalanceIdr: base.initialBalanceIdr };
   return {
     watchlist: boundedList(raw.watchlist, watchlistFallback || base.watchlist),
     // The strategy switches, "Buy early" and the minimum setup score that used
     // to live here are gone: stored values are dropped on the next save.
     autoTrade: { enabled: raw.autoTrade?.enabled !== false },
     gapSleeve: { enabled: raw.gapSleeve?.enabled !== false },
+    idx: {
+      enabled: raw.idx?.enabled !== false,
+      autoTrade: raw.idx?.autoTrade !== false,
+      watchlist: idxList(raw.idx?.watchlist, base.idx.watchlist),
+      maxOpenPositions: Math.round(boundedNumber(raw.idx?.maxOpenPositions, base.idx.maxOpenPositions, 1, 10))
+    },
     riskPerTradePct: boundedNumber(raw.riskPerTradePct, base.riskPerTradePct, 0.1, 5),
     maxPortfolioRiskPct: boundedNumber(raw.maxPortfolioRiskPct, base.maxPortfolioRiskPct, 0.5, 20),
     dailyLossLimitPct: boundedNumber(raw.dailyLossLimitPct, base.dailyLossLimitPct, 0.5, 20),
@@ -128,6 +151,12 @@ export function normalize(input, watchlistFallback) {
         ? raw.telegram.categories.filter((c) => typeof c === 'string')
         : base.telegram.categories
     },
+    liveTrading: {
+      cryptoEnabled: raw.liveTrading?.cryptoEnabled === true,
+      cryptoEnabledAt: raw.liveTrading?.cryptoEnabled === true ? (raw.liveTrading?.cryptoEnabledAt || null) : null,
+      idxTickets: raw.liveTrading?.idxTickets === true,
+      idxTicketsAt: raw.liveTrading?.idxTickets === true ? (raw.liveTrading?.idxTicketsAt || null) : null
+    },
     binanceBaseUrl: isHttpUrl(raw.binanceBaseUrl) ? raw.binanceBaseUrl : base.binanceBaseUrl,
     timeZone: typeof raw.timeZone === 'string' && raw.timeZone.trim() ? raw.timeZone.trim() : base.timeZone,
     initialBalanceIdr: boundedNumber(raw.initialBalanceIdr, base.initialBalanceIdr, 100_000, 10_000_000_000),
@@ -139,7 +168,8 @@ export function normalize(input, watchlistFallback) {
     topMoversCount: boundedNumber(raw.topMoversCount, base.topMoversCount, 1, 20),
     minQuoteVolumeUsdt: boundedNumber(raw.minQuoteVolumeUsdt, base.minQuoteVolumeUsdt, 0, 1_000_000_000),
     sizingVersion: SIZING_VERSION,
-    watchlistVersion: WATCHLIST_VERSION
+    watchlistVersion: WATCHLIST_VERSION,
+    balanceVersion: BALANCE_VERSION
   };
 }
 
@@ -152,7 +182,9 @@ export async function readSettings() {
     ...stored,
     autoTrade: { ...base.autoTrade, ...stored.autoTrade },
     gapSleeve: { ...base.gapSleeve, ...stored.gapSleeve },
-    telegram: { ...base.telegram, ...stored.telegram }
+    idx: { ...base.idx, ...stored.idx },
+    telegram: { ...base.telegram, ...stored.telegram },
+    liveTrading: { ...base.liveTrading, ...stored.liveTrading }
   });
 }
 
@@ -163,8 +195,14 @@ export async function updateSettings(patch) {
     ...patch,
     autoTrade: { ...current.autoTrade, ...(patch.autoTrade || {}) },
     gapSleeve: { ...current.gapSleeve, ...(patch.gapSleeve || {}) },
-    telegram: { ...current.telegram, ...(patch.telegram || {}) }
+    idx: { ...current.idx, ...(patch.idx || {}) },
+    telegram: { ...current.telegram, ...(patch.telegram || {}) },
+    liveTrading: { ...current.liveTrading, ...(patch.liveTrading || {}) }
   };
+  // Switching real trading on stamps the time: only paper buys after it are copied.
+  const now = new Date().toISOString();
+  if (merged.liveTrading.cryptoEnabled === true && !current.liveTrading?.cryptoEnabled) merged.liveTrading.cryptoEnabledAt = now;
+  if (merged.liveTrading.idxTickets === true && !current.liveTrading?.idxTickets) merged.liveTrading.idxTicketsAt = now;
   const next = normalize(merged, current.watchlist);
   await writeJson(SETTINGS_FILE, next);
   return next;
@@ -176,11 +214,13 @@ export function publicSettings(settings) {
     watchlist: settings.watchlist,
     autoTrade: settings.autoTrade,
     gapSleeve: settings.gapSleeve,
+    idx: settings.idx,
     telegram: {
       enabled: settings.telegram.enabled,
       configured: Boolean(settings.telegram.botToken && settings.telegram.chatId),
       categories: settings.telegram.categories
     },
+    liveTrading: settings.liveTrading,
     binanceBaseUrl: settings.binanceBaseUrl,
     timeZone: settings.timeZone,
     initialBalanceIdr: settings.initialBalanceIdr,

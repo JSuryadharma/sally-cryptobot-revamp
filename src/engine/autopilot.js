@@ -101,12 +101,12 @@ export function decideStrategy({ results, btcDaily, nowMs, params = AUTOPILOT_PA
   const paused = !chosen;
   const active = chosen || candidates[0];
   // The gap sleeve has its own switch (settings.gapSleeve), so it is left out here.
-  const profiles = Object.fromEntries(Object.keys(PROFILES).filter((key) => PROFILES[key].entry !== 'gap').map((key) => [key, key === active.profile]));
+  const profiles = Object.fromEntries(Object.keys(PROFILES).filter((key) => PROFILES[key].entry !== 'gap' && !PROFILES[key].market).map((key) => [key, key === active.profile]));
   const regime = regimeAt(btcDaily, nowMs);
 
   let summary;
   if (paused) summary = `New buys are paused: ${why}. The paper test keeps running and buying resumes once a breakout recovers.`;
-  else if (regime.known && !regime.btcAbove200d) summary = `Trading the ${describe(active)} (${why}). Bitcoin is below its 200-day average, so no new buys until it climbs back above.`;
+  else if (regime.known && !regime.btcAbove200d) summary = `Trading the ${describe(active)} (${why}). Bitcoin is below its 200-day average, so only coins above their own 200-day average can be bought.`;
   else summary = `Trading the ${describe(active)}, selling at +${active.targetR}R: ${why}.`;
 
   return {

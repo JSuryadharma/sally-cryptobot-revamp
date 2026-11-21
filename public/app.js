@@ -6,7 +6,7 @@ for (const type of ['gesturestart', 'gesturechange', 'gestureend']) {
 }
 
 const state = {
-  view: 'dashboard',
+  view: 'home',
   config: null,
   settings: null,
   coins: [],
@@ -129,13 +129,15 @@ function toast(title, message) {
 }
 
 // --- navigation ----------------------------------------------------------------
-const VIEW_TITLE = { dashboard: 'Dashboard', radar: 'Radar', settings: 'Settings' };
+const VIEW_TITLE = { home: 'Home', dashboard: 'Crypto', radar: 'Crypto radar', idx: 'Saham IDX', news: 'News', settings: 'Settings' };
+// Detail and sub views keep their parent's tab lit.
+const VIEW_TAB = { radar: 'dashboard', coin: 'dashboard', stock: 'idx' };
 function showView(name) {
   state.view = name;
   document.querySelectorAll('.view').forEach((el) => el.classList.add('hidden'));
   $(`view-${name}`).classList.remove('hidden');
-  document.querySelectorAll('.nav-tab').forEach((el) => el.classList.toggle('active', el.dataset.view === name));
-  $('pageTitle').textContent = name === 'coin' ? base(state.coinSymbol || '') : VIEW_TITLE[name];
+  document.querySelectorAll('.nav-tab').forEach((el) => el.classList.toggle('active', el.dataset.view === (VIEW_TAB[name] || name)));
+  $('pageTitle').textContent = name === 'coin' ? base(state.coinSymbol || '') : name === 'stock' ? (mk.stockSymbol || 'Stock') : VIEW_TITLE[name];
   window.scrollTo({ top: 0, behavior: reducedMotion.matches ? 'auto' : 'smooth' });
   renderCurrentView();
 }
@@ -159,8 +161,8 @@ function livePrice(coin) {
 function liveChange(coin) { return state.prices[coin.symbol]?.changePct ?? coin.latest?.changePct ?? 0; }
 function headline(coin) { return coin?.prediction?.headline || null; }
 const STRATEGY_NOTES = {
-  breakout: 'Buys a daily close above the 20-day high while Bitcoin is above its 200-day average. Sells at +1R, otherwise after 30 days.',
-  breakout55: 'Buys a daily close above the 55-day high while Bitcoin is above its 200-day average. Sells at +3R, otherwise after 30 days.'
+  breakout: 'Buys a daily close above the 20-day high while Bitcoin or the coin itself is above its 200-day average. Sells at +1R, otherwise after 30 days.',
+  breakout55: 'Buys a daily close above the 55-day high while Bitcoin or the coin itself is above its 200-day average. Sells at +3R, otherwise after 30 days.'
 };
 const AUTOPILOT_STATUS = {
   ok: ['good', 'Measured'],
@@ -231,6 +233,7 @@ function renderCurrentView() {
   else if (state.view === 'radar') renderRadar();
   else if (state.view === 'coin') renderCoin();
   else if (state.view === 'settings') renderSettings();
+  else renderMarketsView(state.view);
 }
 
 // --- header + robot status -------------------------------------------------------
@@ -252,7 +255,7 @@ function renderHeader() {
   const pill = $('enginePill');
   pill.className = `engine-pill ${status.cls}`;
   $('enginePillText').textContent = state.status?.stale ? 'Engine stale' : state.status ? `Checked ${fmtAgo(state.status.ageMs)}` : 'Engine';
-  pill.title = status.sub;
+  pill.title = status.sub ? `${status.title} · ${status.sub}` : status.title;
   const p = state.portfolio;
   if (p) $('headerBalance').textContent = fmtIdr(p.equityIdr ?? p.balanceIdr);
 }
@@ -441,6 +444,7 @@ function renderFiring() {
       </div>
       ${segmentsHtml(h, `fire-${coin.symbol}`)}
       <div class="fire-trigger">${triggerLine(coin, h)}</div>
+      ${oddsHtml(mk.insights?.plans?.[coin.symbol]?.odds, { compact: true, prefix: 'If bought: ' })}
       <div class="fire-foot">
         <svg class="ring sm" viewBox="0 0 44 44" aria-hidden="true"><circle class="ring-track" cx="22" cy="22" r="19"/><circle class="ring-fill ${h.stage === 'ready' ? 'bull' : 'signal'}" data-deadline="${h.decisionAt}" data-period="${period}" cx="22" cy="22" r="19"/></svg>
         <span>Decides in <span class="count" data-deadline="${h.decisionAt}">${fmtCountdown(h.decisionAt - Date.now())}</span></span>
@@ -494,6 +498,7 @@ function renderPositions() {
       </div>
       ${exit ? exitBarHtml(exit) : ''}
       ${exit?.nextCheckAt ? `<div class="muted small">${exitCheckText(exit)}</div>` : ''}
+      ${oddsHtml(mk.insights?.odds?.[pos.symbol], { compact: true, prefix: 'From here: ' })}
     </div>`;
   }).join('');
   bindOpeners(list);
@@ -508,7 +513,8 @@ function renderActivity() {
     if (item.kind === 'fill') {
       const buy = item.type === 'BUY';
       const pnl = item.realizedProfitIdr != null && !buy ? ` · ${item.realizedProfitIdr >= 0 ? '+' : ''}${fmtIdrShort(item.realizedProfitIdr)}` : '';
-      return `<div class="activity-item"><span class="icon ${buy ? 'buy' : 'sell'}">${buy ? 'B' : 'S'}</span><div><b>${buy ? 'Bought' : item.partial ? 'Sold part of' : 'Sold'} ${escapeHtml(base(item.symbol))}</b> at ${fmtPrice(item.price)}${pnl}<small>${escapeHtml(item.reason || '')} · ${when}</small></div></div>`;
+      const idx = item.market === 'idx';
+      return `<div class="activity-item"><span class="icon ${buy ? 'buy' : 'sell'}">${buy ? 'B' : 'S'}</span><div><b>${buy ? 'Bought' : item.partial ? 'Sold part of' : 'Sold'} ${escapeHtml(idx ? item.symbol : base(item.symbol))}</b>${idx ? ' <span class="market-badge idx tiny">IDX</span>' : ''} at ${idx ? fmtRp(item.price) : fmtPrice(item.price)}${pnl}<small>${escapeHtml(item.reason || '')} · ${when}</small></div></div>`;
     }
     if (item.kind === 'pause') return `<div class="activity-item"><span class="icon pause">!</span><div><b>Entries paused</b><small>${escapeHtml(item.reason)} · ${when}</small></div></div>`;
     return `<div class="activity-item"><span class="icon skip">-</span><div>Skipped ${escapeHtml(base(item.symbol))}<small>${escapeHtml(item.reason || '')} · ${when}</small></div></div>`;
@@ -887,7 +893,18 @@ function renderTfRow() {
 
 const CHART = { up: '#1A8F5A', down: '#D1433F', ema20: '#1F6FEB', ema50: '#9A988F', grid: '#EEEDE8', text: '#6B6A64', signal: '#C98A10', signalSoft: 'rgba(201,138,16,0.10)', stop: '#D1433F', entry: '#6B6A64' };
 
+// Chart colors follow the theme (CSS tokens in styles.css).
+function themeColors() {
+  const css = getComputedStyle(document.documentElement);
+  const v = (name) => css.getPropertyValue(name).trim();
+  return {
+    up: v('--bull'), down: v('--bear'), ema20: v('--accent'), ema50: v('--chart-ema50'), grid: v('--chart-grid'), text: v('--chart-text'),
+    signal: v('--signal'), stop: v('--bear'), entry: v('--chart-text'), cross: v('--chart-cross'), labelOn: v('--chart-label-on')
+  };
+}
+
 function drawChart() {
+  Object.assign(CHART, themeColors());
   const canvas = $('coinChart');
   const candles = state.chartCandles;
   const rect = canvas.getBoundingClientRect();
@@ -981,7 +998,7 @@ function drawChart() {
   const last = candles.at(-1);
   ctx.fillStyle = last.close >= last.open ? CHART.up : CHART.down;
   ctx.fillRect(w - pad.r + 2, y(last.close) - 9, pad.r - 4, 18);
-  ctx.fillStyle = '#fff'; ctx.font = '600 11px Inter, sans-serif';
+  ctx.fillStyle = CHART.labelOn; ctx.font = '600 11px Inter, sans-serif';
   ctx.fillText(fmtPrice(last.close), w - pad.r + 6, y(last.close) + 4);
 
   ctx.fillStyle = CHART.text; ctx.font = '11px Inter, sans-serif';
@@ -990,7 +1007,7 @@ function drawChart() {
 
   if (state.chartHighlight != null && candles[state.chartHighlight]) {
     const i = state.chartHighlight;
-    ctx.strokeStyle = 'rgba(29,28,26,0.35)'; ctx.setLineDash([3, 3]);
+    ctx.strokeStyle = CHART.cross; ctx.setLineDash([3, 3]);
     ctx.beginPath(); ctx.moveTo(x(i), pad.t); ctx.lineTo(x(i), pad.t + plotH); ctx.stroke();
     ctx.setLineDash([]);
   }
@@ -1048,6 +1065,7 @@ function renderSettings() {
   }));
 
   $('telegramToggle').checked = s.telegram.enabled;
+  loadBroker();
   note('telegramStatus', s.telegram.configured ? 'Bot token and chat ID are saved.' : 'Not configured yet.');
   $('setInitialBalance').value = s.initialBalanceIdr;
   $('setUsdIdr').value = s.usdIdrRate;
@@ -1056,6 +1074,7 @@ function renderSettings() {
   $('setSlippage').value = s.slippagePct;
   $('setMinVolume').value = s.minTradeQuoteVolumeUsdt;
   $('setBinanceUrl').value = s.binanceBaseUrl;
+  renderIdxSettings();
 }
 
 // What the autopilot (src/engine/autopilot.js) chose on the last engine check
@@ -1069,7 +1088,7 @@ function renderAutopilot() {
   }
   const r = (v) => (v == null ? '-' : `${v >= 0 ? '+' : ''}${v}R`);
   const regime = a.regime?.known
-    ? `<span class="pill ${a.regime.btcAbove200d ? 'good' : 'warn'}">BTC ${a.regime.btcAbove200d ? 'above' : 'below'} its 200-day average</span>`
+    ? `<span class="pill ${a.regime.btcAbove200d ? 'good' : 'warn'}">${a.regime.btcAbove200d ? 'BTC above its 200-day average' : 'BTC below its 200-day average: only coins above their own'}</span>`
     : '<span class="pill">BTC trend not known yet</span>';
   const rows = a.candidates.map((c) => {
     const [cls, word] = AUTOPILOT_STATUS[c.status] || ['', c.status];
@@ -1148,6 +1167,36 @@ $('testTelegram').addEventListener('click', async () => {
   try { await api('/api/telegram/test', { method: 'POST' }); note('telegramStatus', 'Test message sent.', 'good'); }
   catch (e) { note('telegramStatus', e.message, 'bad'); }
 });
+// ---------- real trading (src/brokers/execution.js) ----------
+async function loadBroker() {
+  try {
+    const b = await api('/api/broker/status');
+    const c = b.crypto;
+    const venue = c.venue === 'ajaib' ? 'Ajaib Coin' : 'Binance';
+    const where = c.mode === 'paper' ? 'Paper only: the server is not set up for real trading (see docs/LIVE-TRADING.md).'
+      : !c.hasKeys ? `Server is set to ${venue} ${c.network}, but the API keys are missing.`
+        : `${venue} ${c.network === 'live' ? 'LIVE (real money)' : 'testnet (fake money)'}, max ${Number(c.maxOrder).toLocaleString()} ${c.quote} per order${c.armed ? `, copying buys since ${new Date(c.armedSince).toLocaleString()}` : ', buys switched off'}.`;
+    $('brokerSummary').textContent = `${where} ${c.openPositions.length ? `Real coins held: ${c.openPositions.map((p) => p.symbol.replace('USDT', '')).join(', ')}.` : ''}`;
+    $('brokerCryptoLabel').textContent = `Copy crypto buys to ${c.venue === 'ajaib' ? 'Ajaib' : 'Binance'}`;
+    $('brokerCryptoToggle').checked = c.enabled;
+    $('brokerCryptoToggle').disabled = c.mode === 'paper' || !c.hasKeys;
+    $('brokerIdxToggle').checked = b.idx.tickets;
+    $('brokerLog').innerHTML = b.log.slice(0, 8).map((l) => `<li>${new Date(l.at).toLocaleString()} · ${l.market} ${l.kind} ${l.symbol || ''} ${l.amount != null ? `${Number(l.amount).toLocaleString(undefined, { maximumFractionDigits: 2 })} ${l.quote || ''}` : l.lots != null ? `${l.lots} lot` : ''} ${l.message ? `(${escapeHtml(l.message)})` : ''}</li>`).join('');
+  } catch (e) { $('brokerSummary').textContent = `Could not read the real-trading status: ${e.message}`; }
+}
+$('brokerCryptoToggle').addEventListener('change', async (e) => {
+  try { await saveSettings({ liveTrading: { cryptoEnabled: e.target.checked } }); note('brokerNote', e.target.checked ? 'On. Only robot buys from now on are copied.' : 'Off. No new real buys.', 'good'); loadBroker(); }
+  catch (err) { e.target.checked = !e.target.checked; note('brokerNote', err.message, 'bad'); }
+});
+$('brokerIdxToggle').addEventListener('change', async (e) => {
+  try { await saveSettings({ liveTrading: { idxTickets: e.target.checked } }); note('brokerNote', e.target.checked ? 'On. New IDX buys and sells arrive as notifications.' : 'Off.', 'good'); loadBroker(); }
+  catch (err) { e.target.checked = !e.target.checked; note('brokerNote', err.message, 'bad'); }
+});
+$('brokerTest').addEventListener('click', async () => {
+  note('brokerNote', 'Testing...');
+  try { const r = await api('/api/broker/test', { method: 'POST' }); note('brokerNote', r.message, 'good'); }
+  catch (e) { note('brokerNote', e.message, 'bad'); }
+});
 $('saveAdvanced').addEventListener('click', async () => {
   try {
     await saveSettings({
@@ -1180,17 +1229,40 @@ function tickClock() {
   });
 }
 
+// Theme: follow the device, or a fixed light/dark picked with the top-bar button.
+const THEME_NEXT = { auto: 'dark', dark: 'light', light: 'auto' };
+const THEME_LABEL = { auto: 'Theme: follow device', dark: 'Theme: dark', light: 'Theme: light' };
+function applyTheme(mode) {
+  if (mode === 'auto') delete document.documentElement.dataset.theme; else document.documentElement.dataset.theme = mode;
+  try { if (mode === 'auto') localStorage.removeItem('sally-theme'); else localStorage.setItem('sally-theme', mode); } catch {}
+  const btn = $('themeBtn');
+  btn.dataset.mode = mode;
+  btn.title = THEME_LABEL[mode];
+  btn.setAttribute('aria-label', THEME_LABEL[mode]);
+  redrawCharts();
+}
+function redrawCharts() {
+  if (state.view === 'coin' && state.chartCandles.length) drawChart();
+  if (state.view === 'stock') drawStockChart();
+}
+$('themeBtn').addEventListener('click', () => applyTheme(THEME_NEXT[$('themeBtn').dataset.mode] || 'auto'));
+$('themeBtn').dataset.mode = document.documentElement.dataset.theme || 'auto';
+window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', redrawCharts);
+
 async function bootstrap() {
   const [config, settings] = await Promise.all([api('/api/config'), api('/api/settings')]);
   state.config = config;
   state.settings = settings;
-  await Promise.all([loadCore(), loadPrices(), loadNotifications(), loadVerdict(), loadAccuracy()]);
+  initMarkets();
+  await Promise.all([loadCore(), loadPrices(), loadNotifications(), loadVerdict(), loadAccuracy(), loadMarkets()]);
   setInterval(loadCore, 20_000);
+  setInterval(loadMarkets, 60_000);
   setInterval(loadPrices, 30_000);
   setInterval(loadNotifications, 30_000);
   setInterval(loadAccuracy, 5 * 60_000);
   setInterval(tickClock, 1000);
   setInterval(() => { if (state.view === 'coin' && state.coinSymbol) loadChart().catch(console.error); }, 60_000);
+  renderCurrentView();
 }
 
 bootstrap().catch((error) => {

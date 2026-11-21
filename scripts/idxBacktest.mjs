@@ -41,15 +41,16 @@ const settings = {
   drawdownHaltPct: DEFAULT_ENGINE_CFG.drawdownHaltPct, tradeAllocationPct: DEFAULT_ENGINE_CFG.tradeAllocationPct, idx: { maxOpenPositions: 4 }
 };
 
-function run(profileOverride, { gate = true } = {}) {
+function run(profileOverride, { gate = true, regimeMode = null, fromMs = startMs } = {}) {
   const cfg = { ...idxEngineCfg(settings), profileOverrides: { idxBreakout: profileOverride } };
+  if (regimeMode) cfg.regimeMode = regimeMode;
   if (!gate) cfg.preTrade = null;
   const account = createPortfolio(START_BALANCE);
   const book = bookView(account, 'idx');
   let peak = START_BALANCE;
   let maxDd = 0;
   const out = advance(createEngineState(), book, series, {
-    nowMs: endMs, startMs, usdIdrRate: 1, cfg, tradeSymbols: symbols.filter((s) => series[s]), keepAllTransactions: true,
+    nowMs: endMs, startMs: fromMs, usdIdrRate: 1, cfg, tradeSymbols: symbols.filter((s) => series[s]), keepAllTransactions: true,
     onGroup: (_, pf) => {
       const eq = pf.balanceIdr + Object.values(pf.positions).reduce((s, p) => s + p.investedIdr, 0);
       peak = Math.max(peak, eq);
@@ -63,6 +64,19 @@ function run(profileOverride, { gate = true } = {}) {
   return { trades: closed.length, winPct: closed.length ? Math.round((100 * wins) / closed.length) : 0, avgR: Math.round(avgR * 100) / 100, returnPct: Math.round(((equity / START_BALANCE) - 1) * 1000) / 10, maxDdPct: Math.round(maxDd * 1000) / 10 };
 }
 
+// Market filter: IHSG above 200d (live) vs IHSG or the stock itself, the stock alone, none.
+if (process.env.REGIME_ONLY) {
+  const live = { breakoutLookback: 55, stopAtr: 3, targetR: 2 };
+  const out = [];
+  for (const regimeMode of ['btc200', 'either', 'coin200', 'off']) {
+    for (const [w, days] of [['1m', 30], ['3m', 91], ['6m', 182], ['1y', 365], [`${years}y`, years * 365]]) {
+      out.push({ regimeMode, window: w, ...run(live, { regimeMode, fromMs: endMs - days * 86_400_000 }) });
+    }
+  }
+  console.table(out);
+  console.log(JSON.stringify(out));
+  process.exit(0);
+}
 const rows = [];
 for (const breakoutLookback of [20, 55]) {
   for (const stopAtr of [2, 2.5, 3]) {

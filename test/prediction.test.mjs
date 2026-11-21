@@ -7,7 +7,7 @@ import { createRiskState } from '../src/engine/riskGuard.js';
 
 const RATE = 16_000;
 const START = Date.UTC(2026, 0, 1) / 1000;
-const cfg = resolveEngineCfg({ profiles: { swing: true, trend: false, scalping: false, breakout: false }, btcGate: false, minTradeQuoteVolumeUsdt: 0 });
+const cfg = resolveEngineCfg({ preTrade: null, profiles: { swing: true, trend: false, scalping: false, breakout: false }, btcGate: false, minTradeQuoteVolumeUsdt: 0 });
 
 // Hand-built "enriched" candles: indicator fields are set directly so each
 // scenario is exact and readable.
@@ -117,7 +117,7 @@ function breakoutScenario({ formingClose, btcUp = true }) {
 }
 
 function predictBreakout(s, o = {}) {
-  const bcfg = resolveEngineCfg({ minTradeQuoteVolumeUsdt: 0, breakoutEntry: 'close', ...o });
+  const bcfg = resolveEngineCfg({ preTrade: null, minTradeQuoteVolumeUsdt: 0, breakoutEntry: 'close', ...o });
   return predictCoin({
     symbol: 'COINUSDT', ...s, cfg: bcfg, portfolio: createPortfolio(10_000_000), risk: createRiskState(), symbolState: null,
     autoTradeOn: true, usdIdrRate: RATE, nowMs: (START + 25.5 * 86_400) * 1000

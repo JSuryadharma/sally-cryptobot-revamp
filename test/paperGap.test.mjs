@@ -102,7 +102,7 @@ test('engine gap sleeve: buys the same rebound as the paper test at 0.5% risk an
   const h = hourlyAfter(d);
   const series = { AAAUSDT: { '1d': d, '1h': h } };
   const [paper] = updateGapJournal([], series, ['AAAUSDT']);
-  const cfg = resolveEngineCfg({ profiles: { breakout: false, gap: true }, slippagePct: 0 });
+  const cfg = resolveEngineCfg({ preTrade: null, profiles: { breakout: false, gap: true }, slippagePct: 0 });
   const portfolio = createPortfolio(10_000_000);
   const out = advance(createEngineState(), portfolio, series, {
     nowMs: (h.at(-1).time + HOUR) * 1000, startMs: d[40].time * 1000, usdIdrRate: 16_000, cfg, tradeSymbols: ['AAAUSDT'], keepAllTransactions: true
@@ -125,7 +125,7 @@ test('engine gap sleeve: off when the profile is off, and ignores the autopilot 
   const series = { AAAUSDT: { '1d': d, '1h': h } };
   const run = (extra) => advance(createEngineState(), createPortfolio(10_000_000), series, {
     nowMs: (h.at(-1).time + HOUR) * 1000, startMs: d[40].time * 1000, usdIdrRate: 16_000,
-    cfg: resolveEngineCfg({ slippagePct: 0, ...extra }), tradeSymbols: ['AAAUSDT'], keepAllTransactions: true
+    cfg: resolveEngineCfg({ preTrade: null, slippagePct: 0, ...extra }), tradeSymbols: ['AAAUSDT'], keepAllTransactions: true
   }).transactions.filter((t) => t.type === 'BUY').length;
   assert.equal(run({ profiles: { breakout: false, gap: false } }), 0);
   assert.equal(run({ profiles: { breakout: false, gap: true }, autopilotPause: 'every breakout is losing' }), 1);

@@ -4,6 +4,8 @@
 //
 //   node scripts/idxBacktest.mjs            # 5 years, default watchlist
 //   node scripts/idxBacktest.mjs --years 3 --symbols BBCA,BBRI,TLKM
+import fs from 'node:fs/promises';
+import path from 'node:path';
 import { advance, createEngineState } from '../src/engine/core.js';
 import { createPortfolio } from '../src/engine/ledger.js';
 import { bookView } from '../src/account.js';
@@ -19,7 +21,10 @@ const START_BALANCE = 100_000_000;
 const series = {};
 for (const symbol of [...symbols, IDX_REGIME_SYMBOL]) {
   try {
-    const { candles } = await fetchIdxDaily(symbol, { range: `${years + 1}y` });
+    // IDX_DATA_DIR: <SYMBOL>.json daily candles instead of Yahoo (see scripts/skillResearch.mjs).
+    const { candles } = process.env.IDX_DATA_DIR
+      ? { candles: JSON.parse(await fs.readFile(path.join(process.env.IDX_DATA_DIR, `${symbol}.json`), 'utf8')) }
+      : await fetchIdxDaily(symbol, { range: `${years + 1}y` });
     series[symbol] = { '1d': enrichCandles(candles) };
     process.stderr.write(`${symbol} ${candles.length} days\n`);
   } catch (error) {
@@ -36,8 +41,9 @@ const settings = {
   drawdownHaltPct: DEFAULT_ENGINE_CFG.drawdownHaltPct, tradeAllocationPct: DEFAULT_ENGINE_CFG.tradeAllocationPct, idx: { maxOpenPositions: 4 }
 };
 
-function run(profileOverride) {
+function run(profileOverride, { gate = true } = {}) {
   const cfg = { ...idxEngineCfg(settings), profileOverrides: { idxBreakout: profileOverride } };
+  if (!gate) cfg.preTrade = null;
   const account = createPortfolio(START_BALANCE);
   const book = bookView(account, 'idx');
   let peak = START_BALANCE;
@@ -64,4 +70,10 @@ for (const breakoutLookback of [20, 55]) {
   }
 }
 console.table(rows);
+// Effect of the day-trader-skill pre-trade gate on the live rule and the best grid row.
+const gateRows = [];
+for (const p of [{ breakoutLookback: 20, stopAtr: 2.5, targetR: 2 }, { breakoutLookback: 55, stopAtr: 3, targetR: 2 }]) {
+  for (const gate of [true, false]) gateRows.push({ ...p, gate: gate ? 'skill gate on' : 'gate off', ...run(p, { gate }) });
+}
+console.table(gateRows);
 console.log(`Live default: 20-day, 2.5 ATR stop, +2R. ${years} years to ${new Date(endMs).toISOString().slice(0, 10)}, ${symbols.length} stocks, 0.4% round-trip cost.`);

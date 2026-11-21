@@ -109,6 +109,12 @@ function parseArgs(argv) {
 // Vercel, whose deployed filesystem is read-only outside /tmp, so writing a
 // cache file there fails every call.
 export async function loadRaw({ baseUrl, symbol, tf, startMs, endMs, useCache }) {
+  // KLINES_DIR: a folder of <SYMBOL>_<tf>.json candle arrays (e.g. built from a
+  // mirror when Binance is unreachable); sliced to the requested window.
+  if (process.env.KLINES_DIR) {
+    const all = JSON.parse(await fs.readFile(path.join(process.env.KLINES_DIR, `${symbol}_${tf}.json`), 'utf8'));
+    return all.filter((b) => b.time * 1000 >= startMs && b.time * 1000 < endMs);
+  }
   if (!useCache) return fetchKlinesRange(baseUrl, symbol, tf, startMs, endMs);
   const cacheDir = path.join(ROOT, 'benchmarks', '.cache');
   const file = path.join(cacheDir, `${symbol}_${tf}_${startMs}_${endMs}.json`);

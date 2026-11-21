@@ -10,8 +10,8 @@
 //   maxTradesPerDay     new entries per local day (this market)
 //   cashBufferPct       cash left after the buy must stay above this % of book equity
 //
-// Crypto keeps every limit off by default, so its trades are exactly as before;
-// the IDX market (markets/idx.js) turns them on.
+// Both markets use them: crypto via config.js skillGate() (default since
+// 2026-11-21), IDX via markets/idx.js.
 import { profileTargetR } from './config.js';
 import { bookEquityIdr } from './sizing.js';
 import { localDayKey } from './riskGuard.js';

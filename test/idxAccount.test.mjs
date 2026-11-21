@@ -108,8 +108,10 @@ test('pre-trade check: reward:risk, cash buffer and trades per day', () => {
   assert.match(noCash.reason, /cash after buy/);
   state.preTrade.trades = 1;
   assert.match(preTradeCheck({ state, portfolio: pf, cfg, profile, entryPrice: 100, stopPrice: 90, qty: 100, riskIdr: 1000, usdIdrRate: 1, nowMs: 0 }).reason, /entries today/);
-  // Crypto keeps every limit off.
-  assert.equal(preTradeCheck({ state, portfolio: pf, cfg: resolveEngineCfg(), profile, entryPrice: 100, stopPrice: 99.9, targetPrice: 100.01, qty: 1e9, riskIdr: 1e12, usdIdrRate: 1, nowMs: 0 }).ok, true);
+  // Crypto uses the skill gate by default; preTrade: null turns every limit off.
+  const bad = { state: createEngineState(), portfolio: pf, profile, entryPrice: 100, stopPrice: 99.9, targetPrice: 100.01, qty: 1e9, riskIdr: 1e12, usdIdrRate: 1, nowMs: 0 };
+  assert.equal(preTradeCheck({ ...bad, cfg: resolveEngineCfg() }).ok, false);
+  assert.equal(preTradeCheck({ ...bad, cfg: resolveEngineCfg({ preTrade: null }) }).ok, true);
 });
 
 function idxSeriesFrom(jsonBySymbol, nowMs) {

@@ -99,13 +99,15 @@ export const PROFILES = {
   // Yahoo Finance history and needs a machine that can reach Yahoo.
   idxBreakout: {
     key: 'idxBreakout',
-    label: 'IDX breakout 20-day (daily, IHSG above its 200-day average)',
+    label: 'IDX breakout 55-day (daily, IHSG above its 200-day average)',
     market: 'idx',
     entry: 'breakout',
     triggerTf: '1d',
     filterTf: '1d',
-    breakoutLookback: 20,
-    stopAtr: 2.5,
+    // 55-day / 3 ATR / +2R: best row of scripts/idxBacktest.mjs on 2021-02..2025-02
+    // BEI data (+14.6%, 49% wins; the old 20-day / 2.5 ATR lost 13.5%).
+    breakoutLookback: 55,
+    stopAtr: 3,
     targetR: 2,
     timeStopBars: 30,
     timeStopMinR: Infinity,
@@ -246,9 +248,20 @@ export const DEFAULT_ENGINE_CFG = {
   setup: SETUP_PARAMS
 };
 
+// day-trader-skill's risk manager limits (engine/preTradeCheck.js), on for
+// crypto since 2026-11-21: in scripts/skillEngineBacktest.mjs (36 months to
+// 2026-11-15) it lifted the robot from +143% / DD 21.3% to +172% / DD 15.9%;
+// the last 14 months were unchanged (+33.9% vs +33.8%). The gain comes from
+// the reward:risk rule, which blocks the 20-day breakout's +1R target after
+// costs (the daily limits alone: +131% / DD 22.9%). Pass preTrade: null to turn it off.
+export function skillGate(riskPerTradePct = DEFAULT_ENGINE_CFG.riskPerTradePct) {
+  return { minRewardRisk: 1, maxLossPerTradePct: Math.max(riskPerTradePct * 1.25, 0.5), maxDailyRiskPct: 6, maxTradesPerDay: 3, cashBufferPct: 10 };
+}
+
 export function resolveEngineCfg(overrides = {}) {
   return {
     ...DEFAULT_ENGINE_CFG,
+    preTrade: skillGate(overrides.riskPerTradePct ?? DEFAULT_ENGINE_CFG.riskPerTradePct),
     ...overrides,
     profiles: { ...DEFAULT_ENGINE_CFG.profiles, ...(overrides.profiles || {}) },
     profileOverrides: overrides.profileOverrides || {},

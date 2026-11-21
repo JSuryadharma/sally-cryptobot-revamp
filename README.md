@@ -39,7 +39,11 @@ A 24/7 crypto paper-trading robot and dashboard for Binance USDT pairs. It reads
 - **Modular engine**: `src/engine/core.js` only runs the loop. Entry rules are modules in `src/engine/strategies/` (breakout, gap, pullback) behind one interface; the market only changes the candles and the config (`src/markets/`). Sizing (`sizing.js`), the pre-trade check (`preTradeCheck.js`), risk brakes (`riskGuard.js`) and paper execution (`ledger.js`) are shared. `test/goldenEngine.mjs` snapshots crypto fills across seven configs.
 - **News** (`src/news/`): Google News, CNBC Indonesia, CoinDesk and Cointelegraph RSS every 15 minutes, tagged to tickers, with a word-list tone score and the measured next-day price move per headline. Informational: the robot does not trade on news.
 - **From day-trader-skill** (github.com/Jakeschincariol/day-trader-skill, ported to JS): the daily setup scanner (`src/tools/scanner.js`), the risk manager as a pre-trade gate (on for IDX: min reward:risk 1 after costs, max 3 buys a day, 10% cash kept free, daily risk cap), whole-lot sizing, and the time machine (`src/tools/timeMachine.js`) that replays past daily candles to estimate target-before-stop odds.
-- IDX strategy (20-day breakout, 2.5 ATR stop, +2R) is not backtested yet: run `node scripts/idxBacktest.mjs` on a machine that can reach Yahoo Finance.
+- IDX strategy: 55-day breakout, 3 ATR stop, +2R, chosen by `scripts/idxBacktest.mjs` on 2021-02..2025-02 BEI daily data (+14.6%, 49% wins, DD 20.6%; the earlier 20-day / 2.5 ATR rule lost 13.5%). The IHSG filter in that run is an equal-weight proxy of the 16 stocks. Re-run on Yahoo data where reachable.
+
+## Skill risk gate (2026-11-21)
+
+Every new entry, crypto and IDX, passes day-trader-skill's risk manager (`src/engine/preTradeCheck.js`, limits in `config.js skillGate()`): reward:risk after costs at least 1, at most 2.5% of equity risked per trade, 6% new risk and 3 buys per day, 10% cash kept free. In the 36-month backtest it took crypto from +143% / DD 21.3% to +172% / DD 15.9% (last 14 months unchanged). The reward:risk rule blocks the 20-day breakout's +1R target, so in practice crypto trades the 55-day breakout and the gap sleeve. The skill's entry setups (bull flag, SMA20 reclaim, oversold, oversold bounce) lost on the test period and are only shown in the scanner. Full comparison: `docs/research/skill-revamp-2026-11-21.md`.
 
 ## How it runs
 

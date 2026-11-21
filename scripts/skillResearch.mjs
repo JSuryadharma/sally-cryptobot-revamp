@@ -84,6 +84,11 @@ function buildRules() {
     { name: 'ROBOT 55-day breakout + regime, 3 ATR', group: 'robot', maxBars: 30, regime: true, when: (f, k, bars) => f.high55[k] != null && bars[k].close > f.high55[k], plan: atrStop(3) },
     { name: 'ROBOT 20-day breakout + regime, 3 ATR', group: 'robot', maxBars: 30, regime: true, when: (f, k, bars) => f.high20[k] != null && bars[k].close > f.high20[k], plan: atrStop(3) }
   ];
+  // Hybrids: the robot's breakout only when a skill setup agrees on the same day.
+  for (const [n, key] of [[55, 'high55'], [20, 'high20']]) {
+    rules.push({ name: `HYBRID ${n}-day breakout + skill bull flag, regime, 3 ATR`, group: 'hybrid', maxBars: 30, regime: true, plan: atrStop(3), when: (f, k, bars) => f[key][k] != null && bars[k].close > f[key][k] && setupsAt(f, k).includes('bullFlag') });
+    rules.push({ name: `HYBRID ${n}-day breakout + 2 skill setups, regime, 3 ATR`, group: 'hybrid', maxBars: 30, regime: true, plan: atrStop(3), when: (f, k, bars) => f[key][k] != null && bars[k].close > f[key][k] && setupsAt(f, k).length >= 2 });
+  }
   const setups = ['breakout20', 'bullFlag', 'reclaimMa20', 'oversoldBounce', 'oversold', 'confluence2'];
   for (const s of setups) {
     for (const regime of [false, true]) {
@@ -153,6 +158,11 @@ async function loadIdx(symbols, months) {
   const data = {};
   const years = Math.ceil(months / 12) + 1;
   for (const s of [...symbols, IDX_REGIME_SYMBOL]) {
+    // IDX_DATA_DIR: <SYMBOL>.json daily candles (same shape as parseYahooDaily) instead of Yahoo.
+    if (process.env.IDX_DATA_DIR) {
+      try { data[s] = JSON.parse(await fs.readFile(path.join(process.env.IDX_DATA_DIR, `${s}.json`), 'utf8')); } catch (e) { process.stderr.write(`${s} missing: ${e.message}\n`); }
+      continue;
+    }
     try {
       const { candles } = await fetchIdxDaily(s, { range: `${years}y` });
       data[s] = candles.map((b) => ({ ...b, closeTime: b.closeTime ?? (b.time * 1000 + DAY) }));

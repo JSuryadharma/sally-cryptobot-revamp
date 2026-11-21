@@ -44,7 +44,7 @@ export function buildIdxView({ symbol, series, live, cfg, positions, plan, scan,
   const why = position ? 'Holding: the robot sells at the stop, the target or after 30 days.'
     : !regimeOk ? 'IHSG is below its 200-day average, so the robot buys no stocks.'
       : !liquid ? `Daily value Rp ${(valueIdr / 1e9).toFixed(1)}B is under the Rp ${(cfg.minTradeQuoteVolumeUsdt / 1e9).toFixed(0)}B floor.`
-        : plan?.distancePct <= 0 ? `Trading above its 20-day high ${plan.level}: buys if it closes there today.`
+        : plan?.distancePct <= 0 ? `Trading above its 55-day high ${plan.level}: buys if it closes there today.`
           : plan ? `Needs a daily close above ${plan.level} (${plan.distancePct}% away).` : 'Not enough history yet.';
   return {
     symbol, market: 'idx', name: IDX_NAMES[symbol]?.[0] || symbol,

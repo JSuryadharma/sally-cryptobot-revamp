@@ -206,7 +206,7 @@ function renderIdx() {
           <div class="coin-name"><span class="coin-dot idx">${x.symbol}</span><div><b>${x.symbol}</b><small>${escapeHtml(x.name)}</small></div></div>
           <div class="row-mid">
             <div class="row-tags"><span class="stage-chip ${x.stage}">${STAGE_LABEL[x.stage]}</span>${x.setups.map((l) => `<span class="pill">${escapeHtml(l)}</span>`).join('')}${nc ? `<span class="pill pill-soft">${nc.count} news</span>` : ''}</div>
-            ${x.stage !== 'holding' && dist != null ? `<div class="meter" title="${dist}% from the 20-day high"><span style="width:${meter}%"></span></div>` : ''}
+            ${x.stage !== 'holding' && dist != null ? `<div class="meter" title="${dist}% from the 55-day high"><span style="width:${meter}%"></span></div>` : ''}
             <div class="muted">${escapeHtml(x.why)}</div>
           </div>
           <div class="row-right"><b>${fmtRp(x.price)}</b><span class="change ${x.changePct >= 0 ? 'up' : 'down'}">${fmtPct(x.changePct ?? 0)}</span>${sparkSvg(x.sparkline, { w: 72, h: 22 })}</div>
@@ -291,7 +291,7 @@ function drawStockChart() {
     levels.push({ price: held.entryPrice, color: MK_COLORS.text, dash: [], label: `Entry ${fmtRp(held.entryPrice)}` });
     levels.push({ price: held.stopPrice, color: MK_COLORS.down, dash: [6, 4], label: `Stop ${fmtRp(held.stopPrice)}`, below: true });
   } else if (x0?.plan) {
-    levels.push({ price: x0.plan.level, color: MK_COLORS.signal, dash: [6, 4], label: `20-day high ${fmtRp(x0.plan.level)}` });
+    levels.push({ price: x0.plan.level, color: MK_COLORS.signal, dash: [6, 4], label: `55-day high ${fmtRp(x0.plan.level)}` });
   }
   ctx.font = '600 11px Inter, sans-serif';
   const pad = { l: 8, r: Math.ceil(ctx.measureText(fmtRp(Math.max(...candles.map((c) => c.high)))).width) + 14, t: 12, b: 22 };

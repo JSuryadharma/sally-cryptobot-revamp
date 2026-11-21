@@ -104,8 +104,11 @@ export const PROFILES = {
     entry: 'breakout',
     triggerTf: '1d',
     filterTf: '1d',
-    // 55-day / 3 ATR / +2R: best row of scripts/idxBacktest.mjs on 2021-02..2025-02
-    // BEI data (+14.6%, 49% wins; the old 20-day / 2.5 ATR lost 13.5%).
+    // 55-day / 3 ATR / +2R (2026-11-21, scripts/idxBacktest.mjs): beat the old
+    // 20-day / 2.5 ATR on BEI OHLC 2021-02..2025-02 (+5.0% vs -4.2%, real IHSG)
+    // and on 14 stocks 2024-11..2026-11 (+2.1% vs -1.6%); over 11 years the
+    // 20-day made more (+86% vs +69%) with a similar drawdown.
+    // Set minSkillSetups: 2 to also require two day-trader-skill setups.
     breakoutLookback: 55,
     stopAtr: 3,
     targetR: 2,

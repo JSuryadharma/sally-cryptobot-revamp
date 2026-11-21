@@ -72,7 +72,7 @@ for (const breakoutLookback of [20, 55]) {
 console.table(rows);
 // Effect of the day-trader-skill pre-trade gate on the live rule and the best grid row.
 const gateRows = [];
-for (const p of [{ breakoutLookback: 20, stopAtr: 2.5, targetR: 2 }, { breakoutLookback: 55, stopAtr: 3, targetR: 2 }]) {
+for (const p of [{ breakoutLookback: 20, stopAtr: 2.5, targetR: 2 }, { breakoutLookback: 55, stopAtr: 3, targetR: 2 }, { breakoutLookback: 55, stopAtr: 3, targetR: 2, minSkillSetups: 2 }, { breakoutLookback: 55, stopAtr: 3, targetR: 3, minSkillSetups: 2 }]) {
   for (const gate of [true, false]) gateRows.push({ ...p, gate: gate ? 'skill gate on' : 'gate off', ...run(p, { gate }) });
 }
 console.table(gateRows);

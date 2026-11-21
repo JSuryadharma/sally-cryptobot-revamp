@@ -178,7 +178,9 @@ function parseArgs(argv) {
     const v = argv[k + 1];
     if (argv[k] === '--market') { a.market = v; k += 1; }
     else if (argv[k] === '--months') { a.months = Number(v); k += 1; }
-    else if (argv[k] === '--split') { a.split = Number(v); k += 1; }
+    else if (argv[k] === '--split') { a.split = /^\d{4}-/.test(v) ? v : Number(v); k += 1; }
+    else if (argv[k] === '--symbols') { a.symbols = v.split(',').map((x) => x.trim().toUpperCase()); k += 1; }
+    else if (argv[k] === '--tag') { a.tag = v; k += 1; }
     else if (argv[k] === '--cost') { a.cost = Number(v); k += 1; }
     else if (argv[k] === '--end') { a.end = Date.parse(v); k += 1; }
   }
@@ -191,9 +193,9 @@ const cell = (s) => (s.n ? `${s.n} · ${s.winPct}% · ${s.avgR}R · PF ${s.pf ??
 async function main() {
   const a = parseArgs(process.argv.slice(2));
   const startMs = a.end - a.months * MONTH_MS;
-  const splitMs = startMs + a.split * (a.end - startMs);
+  const splitMs = typeof a.split === 'string' ? Date.parse(a.split) : startMs + a.split * (a.end - startMs);
   const day = (ms) => new Date(ms).toISOString().slice(0, 10);
-  const symbols = a.market === 'idx' ? DEFAULT_IDX_WATCHLIST : DEFAULT_SYMBOLS;
+  const symbols = a.symbols || (a.market === 'idx' ? DEFAULT_IDX_WATCHLIST : DEFAULT_SYMBOLS);
   const regimeSymbol = a.market === 'idx' ? IDX_REGIME_SYMBOL : BTC_SYMBOL;
   const data = a.market === 'idx' ? await loadIdx(symbols, a.months) : await loadCrypto(symbols, startMs, a.end);
   if (!data[regimeSymbol]?.length) throw new Error(`No ${regimeSymbol} history`);
@@ -219,7 +221,7 @@ async function main() {
     lines.push('');
   }
   await fs.mkdir(path.join(ROOT, 'reports'), { recursive: true });
-  const base = path.join(ROOT, 'reports', `skill-research-${a.market}-${day(a.end)}`);
+  const base = path.join(ROOT, 'reports', `skill-research-${a.market}${a.tag ? `-${a.tag}` : ''}-${day(a.end)}`);
   await fs.writeFile(`${base}.md`, lines.join('\n'));
   await fs.writeFile(`${base}.json`, JSON.stringify({ args: { ...a, end: day(a.end) }, splitAt: day(splitMs), best, results }, null, 2));
   console.log(lines.slice(0, best.length + 8).join('\n'));

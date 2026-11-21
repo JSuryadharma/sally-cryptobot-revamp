@@ -15,6 +15,7 @@
 //   for the last <hours>, bought at that moment.
 // - 'cont': yesterday closed as a breakout and live price trades above
 //   yesterday's high (follow-through), bought at that moment.
+import { scanSetups } from '../../tools/scanner.js';
 import { TF_MS, regimeSymbolOf, regimeLabelOf } from '../config.js';
 import { evaluateSetup, quoteVolume24h } from '../setups.js';
 import { btcAbove200d } from '../paperBreakout.js';
@@ -102,6 +103,16 @@ function evaluateIntrabar(ctx, event, profile) {
 }
 
 // Check at the daily close.
+// Optional day-trader-skill confirmation (profile.minSkillSetups): keep a
+// close breakout only when the skill's daily scanner (tools/scanner.js) finds
+// at least that many setups on the same bar.
+function skillConfirmed(evaluation, trig, i, profile) {
+  if (!profile.minSkillSetups || !evaluation?.signal) return evaluation;
+  const hits = scanSetups(trig.slice(Math.max(0, i - 40), i + 1))?.setups || [];
+  if (hits.length >= profile.minSkillSetups) return { ...evaluation, signal: { ...evaluation.signal, reason: `${evaluation.signal.reason} Skill setups: ${hits.join(', ')}.` } };
+  return { ...evaluation, signal: null, skillSetups: hits };
+}
+
 function evaluateClose(ctx, event, profile) {
   const { series, cfg } = ctx;
   const trig = series[event.symbol][profile.triggerTf];
@@ -112,7 +123,7 @@ function evaluateClose(ctx, event, profile) {
   const evaluation = evaluateSetup({ trig, i: event.i, filt, j: j < 0 ? null : j, profile, cfg, btc });
   const mode = breakoutMode(cfg);
   if (liveBreakout(profile, cfg)) return { ...evaluation, signal: null };
-  if (mode.kind !== 'nextClose') return evaluation;
+  if (mode.kind !== 'nextClose') return skillConfirmed(evaluation, trig, event.i, profile);
   // Confirmation: yesterday's close broke out and today's close is still above that level.
   const prev = event.i > 0 ? evaluateSetup({ trig, i: event.i - 1, filt, j: j < 1 ? null : j - 1, profile, cfg, btc: btc && { ...btc, j: btc.j - 1 } }) : null;
   const c = trig[event.i];

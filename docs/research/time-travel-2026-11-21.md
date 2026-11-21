@@ -28,6 +28,16 @@ Joe minta strategi alternatif yang lebih sering trading dan lebih besar profitny
 
 "Per tahun" adalah return di tahun 1, 2, dan 3 secara berurutan (Des 2023 sampai Nov 2026).
 
+**Dicek ulang dengan engine asli** (profil baru `breakoutTrail`, beli di break live, plus gap rebound):
+
+| Strategi | Rata-rata 3 bln | Median | % jendela untung | Terburuk | Trade / 3 bln | Win | Per tahun | 3 bln terakhir | Total |
+|---|---|---|---|---|---|---|---|---|---|
+| Robot sekarang | +9,4% | +3,0% | 73% | −9,9% | 15,4 | 52% | 101,6 / 12,3 / 20,2 | +23,5% | +172% |
+| Breakout 20 hari, exit low 10 hari (engine) | +15,1% | +5,2% | 64% | −22,2% | 15,0 | 45% | 101,3 / 64,2 / 5,8 | +8,6% | +250% |
+| Sama, tapi beli di close harian | +13,2% | +4,6% | 64% | −22,7% | 16,1 | 46% | 63,3 / 74,5 / 13,8 | +16,9% | +224% |
+
+Di engine asli, keunggulan exit trailing lebih kecil daripada di simulator sederhana. Totalnya +250% vs +172%, dan rata-rata 3 bulannya +15,1% vs +9,4%. Tapi di tahun terakhir hasilnya kalah dari robot sekarang (+5,8% vs +20,2%), dan kerugian 3 bulan terburuknya dua kali lebih dalam.
+
 ## Saham IDX (14 saham, 60 bulan)
 
 | Strategi | Rata-rata profit 3 bln | Median | % jendela untung | Terburuk | Trade / 3 bln | Win rate | Per tahun | 3 bln terakhir | Bootstrap: median · P(untung) |

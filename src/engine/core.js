@@ -131,7 +131,14 @@ function manage(ctx, event) {
   if (position.filledAtMs && bar.time * 1000 < position.filledAtMs) bar = afterFill(series[event.symbol][ctx.cfg.earlyTf], TF_MS[ctx.cfg.earlyTf], bar, position.filledAtMs, event.closeMs) || bar;
   // With exit candles on, the stop and target were already checked on them; the
   // trigger close only counts the bar, moves the trail and runs the time stop.
-  const { fills, updates } = onBar(position, bar, profile, cfg, { priceExits: !exitTf || !series[event.symbol][exitTf] });
+  // Channel exit (profile.channelExitBars): the lowest low of the N bars before this one.
+  let channelLow = null;
+  if (profile.channelExitBars && event.i >= profile.channelExitBars) {
+    const trigBars = series[event.symbol][event.tf];
+    channelLow = Infinity;
+    for (let k = event.i - profile.channelExitBars; k < event.i; k += 1) channelLow = Math.min(channelLow, trigBars[k].low);
+  }
+  const { fills, updates } = onBar(position, bar, profile, cfg, { priceExits: !exitTf || !series[event.symbol][exitTf], channelLow });
   if (updates) Object.assign(position, updates);
   if (fills.length) applyFills(ctx, event.symbol, fills, bar);
 }

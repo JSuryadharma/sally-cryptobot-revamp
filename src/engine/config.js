@@ -92,6 +92,29 @@ export const PROFILES = {
     cooldownBars: 1,
     barsPer24h: 1
   },
+  // Trend-following variant (time-travel study 2026-11-21, scripts/timeTravel.mjs):
+  // the 20-day breakout with no fixed target, sold when a daily close breaks
+  // the prior 10-day low. Off by default.
+  breakoutTrail: {
+    key: 'breakoutTrail',
+    label: 'Breakout 20-day, exit at the 10-day low (daily, BTC above its 200-day average)',
+    entry: 'breakout',
+    triggerTf: '1d',
+    filterTf: '1d',
+    breakoutLookback: 20,
+    stopAtr: 2,
+    targetR: 0,
+    channelExitBars: 10,
+    timeStopBars: 120,
+    timeStopMinR: Infinity,
+    trailAtrMult: null,
+    breakeven: false,
+    earlyEntry: false,
+    trendExit: false,
+    cooldownAfterAnyExit: true,
+    cooldownBars: 1,
+    barsPer24h: 1
+  },
   // IDX stocks (markets/idx.js): the same daily breakout, with IHSG above its
   // 200-day average as the regime filter. Bought at the daily close (IDX's
   // post-closing session trades at the closing price), exits checked on daily
@@ -244,7 +267,7 @@ export const DEFAULT_ENGINE_CFG = {
   // The 4h/daily pullback (swing, trend) lost money on the test period of the
   // entry research, so breakout is the only strategy on by default. Live, the
   // autopilot (autopilot.js) picks the profiles on every tick.
-  profiles: { scalping: false, swing: false, trend: false, breakout: true, breakout55: false, gap: true },
+  profiles: { scalping: false, swing: false, trend: false, breakout: true, breakout55: false, breakoutTrail: false, gap: true },
   // Set by the autopilot when every candidate strategy is losing in the paper
   // test: signals are still recorded, but no new position is opened.
   autopilotPause: null,

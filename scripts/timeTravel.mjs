@@ -284,9 +284,15 @@ async function robotEngine(startMs, endMs, symbols) {
   const { loadSeries, simulate } = await import('./backtest.mjs');
   const series = await loadSeries({ symbols, startMs, endMs, useCache: true });
   const out = {};
-  for (const [label, gate] of [['Robot (live engine, skill gate)', undefined], ['Robot (engine, before skill gate)', null]]) {
-    const cfg = resolveEngineCfg({ roundTripCostPct: 0.2, slippagePct: 0.05, ...(gate === null ? { preTrade: null } : {}) });
-    const { equityCurve, transactions } = simulate(series, { symbols, startMs, endMs, autopilot: true, cfg });
+  const variants = [
+    ['Robot (live engine, skill gate)', {}, true],
+    ['Robot (engine, before skill gate)', { preTrade: null }, true],
+    ['Engine: breakout 20d, exit at 10-day low + gap sleeve', { profiles: { breakout: false, breakout55: false, breakoutTrail: true, gap: true } }, false],
+    ['Engine: breakout 20d, exit at 10-day low, daily-close entry + gap', { breakoutEntry: 'close', profiles: { breakout: false, breakout55: false, breakoutTrail: true, gap: true } }, false]
+  ].filter(([label]) => !process.env.ENGINE_ONLY || label.includes(process.env.ENGINE_ONLY));
+  for (const [label, over, autopilot] of variants) {
+    const cfg = resolveEngineCfg({ roundTripCostPct: 0.2, slippagePct: 0.05, ...over });
+    const { equityCurve, transactions } = simulate(series, { symbols, startMs, endMs, autopilot, cfg });
     const equity = equityCurve.map((p) => ({ t: Date.parse(p.date) + DAY, eq: p.equityIdr }));
     const trades = transactions.filter((t) => t.type === 'SELL' && !t.partial).map((t) => ({ entryT: Date.parse(t.openedAt || t.createdAt), exitT: Date.parse(t.createdAt), r: t.rMultiple, pct: null }));
     out[label] = { equity, trades };

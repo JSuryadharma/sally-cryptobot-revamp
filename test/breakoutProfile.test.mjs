@@ -18,7 +18,7 @@ const position = (o = {}) => ({
 const bar = (o) => ({ time: 0, open: 101, high: 102, low: 99, close: 101, atr14: 2, ema50: 90, ...o });
 
 test('breakout plus the gap sleeve are on by default', () => {
-  assert.deepEqual(cfg.profiles, { scalping: false, swing: false, trend: false, breakout: true, breakout55: false, gap: true });
+  assert.deepEqual(cfg.profiles, { scalping: false, swing: false, trend: false, breakout: true, breakout55: false, breakoutTrail: false, gap: true });
 });
 
 test('strategy switches are no longer settings: the autopilot decision sets the profiles', () => {

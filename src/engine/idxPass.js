@@ -6,7 +6,7 @@
 import { advance, createEngineState } from './core.js';
 import { bookView } from '../account.js';
 import { loadIdxSeries, idxEngineCfg, idxSessionOpen, IDX_REGIME_SYMBOL, IDX_NAMES } from '../markets/idx.js';
-import { btcAbove200d } from './paperBreakout.js';
+import { btcAbove200d, regimeAllows } from './paperBreakout.js';
 import { positionOdds, breakoutPlans, scannerFor } from './insights.js';
 import { quoteVolume24h } from './setups.js';
 
@@ -42,7 +42,7 @@ export function buildIdxView({ symbol, series, live, cfg, positions, plan, scan,
   else if (plan && plan.distancePct <= 0) stage = 'ready';
   else if (plan && plan.distancePct <= 3) stage = 'setting-up';
   const why = position ? 'Holding: the robot sells at the stop, the target or after 30 days.'
-    : !regimeOk ? 'IHSG is below its 200-day average, so the robot buys no stocks.'
+    : !regimeOk ? 'IHSG and this stock are both below their 200-day averages, so the robot does not buy it.'
       : !liquid ? `Daily value Rp ${(valueIdr / 1e9).toFixed(1)}B is under the Rp ${(cfg.minTradeQuoteVolumeUsdt / 1e9).toFixed(0)}B floor.`
         : plan?.distancePct <= 0 ? `Trading above its 55-day high ${plan.level}: buys if it closes there today.`
           : plan ? `Needs a daily close above ${plan.level} (${plan.distancePct}% away).` : 'Not enough history yet.';
@@ -82,7 +82,9 @@ export async function idxPass({ settings, portfolio, nowMs, stored, loader = loa
   const scanBySymbol = Object.fromEntries(scan.map((s) => [s.symbol, s]));
   const stocks = {};
   for (const symbol of new Set([...idx.watchlist, ...held])) {
-    const v = buildIdxView({ symbol, series, live, cfg, positions: view.positions, plan: plans[symbol], scan: scanBySymbol[symbol], regimeOk });
+    const daily = series[symbol]?.['1d'];
+    const stockOk = Boolean(daily?.length) && regimeAllows(cfg, regime, daily, daily.at(-1).time);
+    const v = buildIdxView({ symbol, series, live, cfg, positions: view.positions, plan: plans[symbol], scan: scanBySymbol[symbol], regimeOk: stockOk });
     if (v) stocks[symbol] = v;
   }
   let ihsg = null;

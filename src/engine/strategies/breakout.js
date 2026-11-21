@@ -1,6 +1,6 @@
 // Daily breakout strategy (profiles `breakout`, `breakout55`, and the IDX
 // breakout): buy above the prior N-day high while the market's regime symbol
-// (BTC for crypto, IHSG for IDX stocks) closes above its 200-day average.
+// (BTC for crypto, IHSG for IDX stocks) closes above its 200-day average (cfg.regimeMode can also accept the coin or stock itself).
 //
 // When it buys is set by cfg.breakoutEntry:
 // - 'close' (default): the daily close above the level, as researched.

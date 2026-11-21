@@ -149,7 +149,7 @@ export function idxEngineCfg(settings) {
     drawdownHaltPct: settings.drawdownHaltPct,
     tradeAllocationPct: settings.tradeAllocationPct,
     timeZone: 'Asia/Jakarta',
-    regimeMode: 'btc200', // IHSG above its 200-day average
+    regimeMode: 'either', // IHSG or the stock itself above its 200-day average (Joe, 2026-11-21)
     maxOpenPositions: idx.maxOpenPositions ?? 4,
     maxNewEntriesPerBar: 3,
     // Typical online-broker fees: 0.15% buy, 0.25% sell (incl. 0.1% sales tax).

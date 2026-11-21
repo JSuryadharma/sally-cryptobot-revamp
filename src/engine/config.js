@@ -122,7 +122,7 @@ export const PROFILES = {
   // Yahoo Finance history and needs a machine that can reach Yahoo.
   idxBreakout: {
     key: 'idxBreakout',
-    label: 'IDX breakout 55-day (daily, IHSG above its 200-day average)',
+    label: 'IDX breakout 55-day (daily, IHSG or the stock above its 200-day average)',
     market: 'idx',
     entry: 'breakout',
     triggerTf: '1d',
@@ -208,7 +208,7 @@ export const DEFAULT_ENGINE_CFG = {
   // Breakout market filter (paperBreakout.regimeAllows). 'either': BTC or the
   // coin itself above its 200-day average (Joe, 2026-11-21; engine backtest to
   // 2026-11-14: 3y +188% vs +165%, last year +33.5% vs +20.2%, same 18.1% max
-  // drawdown as BTC-only). IDX keeps the IHSG-only rule ('btc200').
+  // drawdown as BTC-only). IDX uses 'either' too (IHSG or the stock), set in markets/idx.js.
   regimeMode: 'either',
   maxPortfolioRiskPct: 10,
   maxOpenPositions: 6,

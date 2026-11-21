@@ -178,7 +178,7 @@ function renderIdx() {
     : ihsg ? `
       <div class="ihsg-top"><div><div class="eyebrow">IHSG composite</div><div class="big-number">${Math.round(ihsg.close).toLocaleString('id-ID')}</div>
       <div class="muted small">${ihsg.date} · 200-day avg ${Math.round(ihsg.sma200).toLocaleString('id-ID')} (${fmtPct(ihsg.abovePct, 1)})</div></div>${sparkSvg(ihsg.sparkline, { w: 140, h: 48 })}</div>
-      <div class="ihsg-foot"><span class="pill ${ihsg.regimeOk ? 'good' : 'warn'}">${ihsg.regimeOk ? 'Buying allowed: IHSG above its 200-day average' : 'No new buys: IHSG below its 200-day average'}</span><span class="pill">${d.sessionOpen ? 'Market open' : 'Market closed'}</span></div>`
+      <div class="ihsg-foot"><span class="pill ${ihsg.regimeOk ? 'good' : 'warn'}">${ihsg.regimeOk ? 'Buying allowed: IHSG above its 200-day average' : 'IHSG below its 200-day average: only stocks above their own'}</span><span class="pill">${d.sessionOpen ? 'Market open' : 'Market closed'}</span></div>`
       : '<div class="eyebrow">IHSG</div><div class="muted">Waiting for the first IDX data load (Yahoo Finance).</div>';
   if (s) {
     $('idxBookCard').innerHTML = `<div class="eyebrow">Saham book · shared cash</div>

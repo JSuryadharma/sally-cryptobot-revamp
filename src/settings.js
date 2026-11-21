@@ -36,6 +36,9 @@ function defaultSettings() {
     slippagePct: DEFAULT_ENGINE_CFG.slippagePct,
     minTradeQuoteVolumeUsdt: DEFAULT_ENGINE_CFG.minTradeQuoteVolumeUsdt,
     telegram: { enabled: true, botToken: '', chatId: '', categories: ['trade', 'ai-review'] },
+    // Real-money switches (src/brokers/execution.js). Real orders also need the
+    // server env (BROKER_CRYPTO + Binance keys); see docs/LIVE-TRADING.md.
+    liveTrading: { cryptoEnabled: false, cryptoEnabledAt: null, idxTickets: false, idxTicketsAt: null },
     binanceBaseUrl: 'https://data-api.binance.vision',
     timeZone: 'Asia/Jakarta',
     // Paper trading only - this never sends a real order to Binance.
@@ -148,6 +151,12 @@ export function normalize(input, watchlistFallback) {
         ? raw.telegram.categories.filter((c) => typeof c === 'string')
         : base.telegram.categories
     },
+    liveTrading: {
+      cryptoEnabled: raw.liveTrading?.cryptoEnabled === true,
+      cryptoEnabledAt: raw.liveTrading?.cryptoEnabled === true ? (raw.liveTrading?.cryptoEnabledAt || null) : null,
+      idxTickets: raw.liveTrading?.idxTickets === true,
+      idxTicketsAt: raw.liveTrading?.idxTickets === true ? (raw.liveTrading?.idxTicketsAt || null) : null
+    },
     binanceBaseUrl: isHttpUrl(raw.binanceBaseUrl) ? raw.binanceBaseUrl : base.binanceBaseUrl,
     timeZone: typeof raw.timeZone === 'string' && raw.timeZone.trim() ? raw.timeZone.trim() : base.timeZone,
     initialBalanceIdr: boundedNumber(raw.initialBalanceIdr, base.initialBalanceIdr, 100_000, 10_000_000_000),
@@ -174,7 +183,8 @@ export async function readSettings() {
     autoTrade: { ...base.autoTrade, ...stored.autoTrade },
     gapSleeve: { ...base.gapSleeve, ...stored.gapSleeve },
     idx: { ...base.idx, ...stored.idx },
-    telegram: { ...base.telegram, ...stored.telegram }
+    telegram: { ...base.telegram, ...stored.telegram },
+    liveTrading: { ...base.liveTrading, ...stored.liveTrading }
   });
 }
 
@@ -186,8 +196,13 @@ export async function updateSettings(patch) {
     autoTrade: { ...current.autoTrade, ...(patch.autoTrade || {}) },
     gapSleeve: { ...current.gapSleeve, ...(patch.gapSleeve || {}) },
     idx: { ...current.idx, ...(patch.idx || {}) },
-    telegram: { ...current.telegram, ...(patch.telegram || {}) }
+    telegram: { ...current.telegram, ...(patch.telegram || {}) },
+    liveTrading: { ...current.liveTrading, ...(patch.liveTrading || {}) }
   };
+  // Switching real trading on stamps the time: only paper buys after it are copied.
+  const now = new Date().toISOString();
+  if (merged.liveTrading.cryptoEnabled === true && !current.liveTrading?.cryptoEnabled) merged.liveTrading.cryptoEnabledAt = now;
+  if (merged.liveTrading.idxTickets === true && !current.liveTrading?.idxTickets) merged.liveTrading.idxTicketsAt = now;
   const next = normalize(merged, current.watchlist);
   await writeJson(SETTINGS_FILE, next);
   return next;
@@ -205,6 +220,7 @@ export function publicSettings(settings) {
       configured: Boolean(settings.telegram.botToken && settings.telegram.chatId),
       categories: settings.telegram.categories
     },
+    liveTrading: settings.liveTrading,
     binanceBaseUrl: settings.binanceBaseUrl,
     timeZone: settings.timeZone,
     initialBalanceIdr: settings.initialBalanceIdr,

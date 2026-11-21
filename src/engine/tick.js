@@ -4,6 +4,7 @@ import { readCoinsCache, writeCoinsCache } from '../coinsCache.js';
 import { readSettings, engineCfgFromSettings } from '../settings.js';
 import { getPortfolio, PORTFOLIO_KEY } from '../tradingRobot.js';
 import { syncStartingBalance } from './deposit.js';
+import { reconcileBrokers } from '../brokers/execution.js';
 import { resolveUsdIdrRate } from '../binanceData.js';
 import { NotificationCenter } from '../notifications.js';
 import { resolveEngineCfg, profilesFor, BTC_SYMBOL } from './config.js';
@@ -211,6 +212,9 @@ async function enginePass({ notifications = new NotificationCenter(), forceIdx =
     ...(deposit && context.idxState ? { [IDX_STATE_KEY]: context.idxState } : {}),
     ...(idx?.writes || {}), ...newsWrites
   });
+  // Real-money copy of the robot's positions (off unless configured; docs/LIVE-TRADING.md).
+  let broker = null;
+  try { broker = await reconcileBrokers({ portfolio, settings, usdIdrRate, notifications }); } catch (error) { console.warn('[broker] reconcile failed:', error.message); }
   await notifyResults(notifications, out, cfg);
   if (idx) await notifyResults(notifications, idx.out, idx.cfg, 'IDX ');
   if (changed) {

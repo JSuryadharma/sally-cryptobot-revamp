@@ -41,6 +41,10 @@ A 24/7 crypto paper-trading robot and dashboard for Binance USDT pairs. It reads
 - **From day-trader-skill** (github.com/Jakeschincariol/day-trader-skill, ported to JS): the daily setup scanner (`src/tools/scanner.js`), the risk manager as a pre-trade gate (on for IDX: min reward:risk 1 after costs, max 3 buys a day, 10% cash kept free, daily risk cap), whole-lot sizing, and the time machine (`src/tools/timeMachine.js`) that replays past daily candles to estimate target-before-stop odds.
 - IDX strategy: 55-day breakout, 3 ATR stop, +2R (see `docs/research/skill-revamp-2026-11-21.md`, backtests through 2026-11-19). Optional `minSkillSetups: 2` on the profile keeps only breakouts the day-trader-skill scanner confirms.
 
+## Real trading (2026-11-21)
+
+Off by default. `src/brokers/` copies the robot's crypto positions to Binance Spot (testnet or live) and sends Ajaib order tickets for IDX (Ajaib has no public stock API). Setup guide: [docs/LIVE-TRADING.md](docs/LIVE-TRADING.md).
+
 ## Skill risk gate (2026-11-21)
 
 Every new entry, crypto and IDX, passes day-trader-skill's risk manager (`src/engine/preTradeCheck.js`, limits in `config.js skillGate()`): reward:risk after costs at least 1, at most 2.5% of equity risked per trade, 6% new risk and 3 buys per day, 10% cash kept free. In the 36-month backtest it took crypto from +143% / DD 21.3% to +172% / DD 15.9% (last 14 months unchanged). The reward:risk rule blocks the 20-day breakout's +1R target, so in practice crypto trades the 55-day breakout and the gap sleeve. The skill's entry setups (bull flag, SMA20 reclaim, oversold, oversold bounce) lost on the test period and are only shown in the scanner. Full comparison: `docs/research/skill-revamp-2026-11-21.md`.

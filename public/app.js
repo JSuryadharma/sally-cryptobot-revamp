@@ -1065,6 +1065,7 @@ function renderSettings() {
   }));
 
   $('telegramToggle').checked = s.telegram.enabled;
+  loadBroker();
   note('telegramStatus', s.telegram.configured ? 'Bot token and chat ID are saved.' : 'Not configured yet.');
   $('setInitialBalance').value = s.initialBalanceIdr;
   $('setUsdIdr').value = s.usdIdrRate;
@@ -1165,6 +1166,34 @@ $('saveTelegram').addEventListener('click', async () => {
 $('testTelegram').addEventListener('click', async () => {
   try { await api('/api/telegram/test', { method: 'POST' }); note('telegramStatus', 'Test message sent.', 'good'); }
   catch (e) { note('telegramStatus', e.message, 'bad'); }
+});
+// ---------- real trading (src/brokers/execution.js) ----------
+async function loadBroker() {
+  try {
+    const b = await api('/api/broker/status');
+    const c = b.crypto;
+    const where = c.mode === 'paper' ? 'Paper only: the server is not set up for Binance (see docs/LIVE-TRADING.md).'
+      : !c.hasKeys ? `Server is set to Binance ${c.network}, but the API keys are missing.`
+        : `Binance ${c.network === 'live' ? 'LIVE (real money)' : 'testnet (fake money)'}, max ${c.maxOrderUsdt} USDT per order${c.armed ? `, copying buys since ${new Date(c.armedSince).toLocaleString()}` : ', buys switched off'}.`;
+    $('brokerSummary').textContent = `${where} ${c.openPositions.length ? `Real coins held: ${c.openPositions.map((p) => p.symbol.replace('USDT', '')).join(', ')}.` : ''}`;
+    $('brokerCryptoToggle').checked = c.enabled;
+    $('brokerCryptoToggle').disabled = c.mode === 'paper' || !c.hasKeys;
+    $('brokerIdxToggle').checked = b.idx.tickets;
+    $('brokerLog').innerHTML = b.log.slice(0, 8).map((l) => `<li>${new Date(l.at).toLocaleString()} · ${l.market} ${l.kind} ${l.symbol || ''} ${l.usdt != null ? `${Number(l.usdt).toFixed(2)} USDT` : l.lots != null ? `${l.lots} lot` : ''} ${l.message ? `(${escapeHtml(l.message)})` : ''}</li>`).join('');
+  } catch (e) { $('brokerSummary').textContent = `Could not read the real-trading status: ${e.message}`; }
+}
+$('brokerCryptoToggle').addEventListener('change', async (e) => {
+  try { await saveSettings({ liveTrading: { cryptoEnabled: e.target.checked } }); note('brokerNote', e.target.checked ? 'On. Only robot buys from now on are copied.' : 'Off. No new real buys.', 'good'); loadBroker(); }
+  catch (err) { e.target.checked = !e.target.checked; note('brokerNote', err.message, 'bad'); }
+});
+$('brokerIdxToggle').addEventListener('change', async (e) => {
+  try { await saveSettings({ liveTrading: { idxTickets: e.target.checked } }); note('brokerNote', e.target.checked ? 'On. New IDX buys and sells arrive as notifications.' : 'Off.', 'good'); loadBroker(); }
+  catch (err) { e.target.checked = !e.target.checked; note('brokerNote', err.message, 'bad'); }
+});
+$('brokerTest').addEventListener('click', async () => {
+  note('brokerNote', 'Testing...');
+  try { const r = await api('/api/broker/test', { method: 'POST' }); note('brokerNote', r.message, 'good'); }
+  catch (e) { note('brokerNote', e.message, 'bad'); }
 });
 $('saveAdvanced').addEventListener('click', async () => {
   try {

@@ -1,4 +1,5 @@
 import { btcAbove200d } from './paperBreakout.js';
+import { regimeLabelOf } from './config.js';
 
 // Long-only entry setups. Pure: works on enriched candle arrays plus an index,
 // so the backtester can scan history without slicing arrays per bar.
@@ -169,12 +170,15 @@ function evaluateDailyBreakout(ctx) {
   }
 
   const btcDaily = ctx.btc?.filt;
-  const btcOk = check(checklist, 'btcRegime', 'BTC above its 200-day average', btcAbove200d(btcDaily, c.time),
-    btcDaily?.length ? `BTC ${roundPrice(btcDaily[Math.min(ctx.btc.j ?? btcDaily.length - 1, btcDaily.length - 1)]?.close)}` : 'no BTC data');
+  const regime = regimeLabelOf(cfg);
+  const btcOk = check(checklist, 'btcRegime', `${regime} above its 200-day average`, btcAbove200d(btcDaily, c.time),
+    btcDaily?.length ? `${regime} ${roundPrice(btcDaily[Math.min(ctx.btc.j ?? btcDaily.length - 1, btcDaily.length - 1)]?.close)}` : `no ${regime} data`);
 
   const volUsdt = quoteVolume24h(trig, i, profile.barsPer24h);
-  const tradeable = check(checklist, 'tradeable', `liquid (24h vol >= $${Math.round(cfg.minTradeQuoteVolumeUsdt / 1e6)}M)`,
-    volUsdt >= cfg.minTradeQuoteVolumeUsdt, `24h vol ~$${(volUsdt / 1e6).toFixed(1)}M`);
+  const idr = cfg.quoteCurrency === 'IDR';
+  const tradeable = check(checklist, 'tradeable',
+    idr ? `liquid (daily value >= Rp ${(cfg.minTradeQuoteVolumeUsdt / 1e9).toFixed(0)}B)` : `liquid (24h vol >= $${Math.round(cfg.minTradeQuoteVolumeUsdt / 1e6)}M)`,
+    volUsdt >= cfg.minTradeQuoteVolumeUsdt, idr ? `daily value ~Rp ${(volUsdt / 1e9).toFixed(1)}B` : `24h vol ~$${(volUsdt / 1e6).toFixed(1)}M`);
 
   let priorHigh = -Infinity;
   for (let k = i - n; k < i; k += 1) priorHigh = Math.max(priorHigh, trig[k].high);
@@ -191,7 +195,7 @@ function evaluateDailyBreakout(ctx) {
         setup: 'breakout', entryPrice: c.close, stopPrice: stop,
         // Same 0-100 scale as the pullback score; it ranks same-day signals only.
         score: Math.round(clamp01((c.close - priorHigh) / c.atr14) * 50 + clamp01(((c.close - c.low) / Math.max(c.high - c.low, 1e-12))) * 50),
-        reason: `Daily close ${roundPrice(c.close)} above the prior ${n}-day high ${level}, BTC above its 200-day average.`
+        reason: `Daily close ${roundPrice(c.close)} above the prior ${n}-day high ${level}, ${regime} above its 200-day average.`
       };
     }
   }

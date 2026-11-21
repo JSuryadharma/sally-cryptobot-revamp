@@ -5,222 +5,26 @@
 // all symbols, in time order. For each bar time it first manages open
 // positions (stops, partials, trails, exits), then updates the risk brakes,
 // then evaluates entries and opens the best-scoring ones that fit.
-import { profilesFor, exitTfFor, TF_MS, BTC_SYMBOL } from './config.js';
-import { evaluateSetup, quoteVolume24h } from './setups.js';
-import { btcAbove200d } from './paperBreakout.js';
+//
+// The loop knows nothing about a particular strategy or market:
+// - entry rules live in strategies/*.js, picked per profile (strategies/index.js);
+// - position sizing in sizing.js, pre-trade limits in preTradeCheck.js;
+// - paper execution (cash, fills, fees) in ledger.js;
+// - the market (crypto or IDX stocks) only changes the candles passed in and
+//   cfg (regime symbol, currency rate, lot size, costs): see src/markets/.
+import { profilesFor, exitTfFor, TF_MS } from './config.js';
 import { onBar, onExitBar } from './positionManager.js';
 import { sizePosition, bookEquityIdr } from './sizing.js';
 import { openPositionQty, sellPosition, normalizePosition } from './ledger.js';
 import { createRiskState, updateRisk, recordTradeResult, entryBlock } from './riskGuard.js';
-import { enrichCandles } from '../indicators.js';
-import { gapAt, reboundAt, reboundPlan, GAP_RULE } from './paperGap.js';
+import { preTradeCheck, recordEntry } from './preTradeCheck.js';
+import { strategyFor } from './strategies/index.js';
+import { closeMsOf, lastClosedIndex, firstAfter, symbolState } from './bars.js';
 
-// Early entry: between trigger-candle closes, every closed cfg.earlyTf candle
-// (5m by default) re-checks the setup against the trigger candle formed so
-// far, so a pullback reclaim is bought within minutes instead of at the 4h (or
-// daily) close.
-// Closed trigger candles fed to the indicators with the forming one. 250 bars
-// is plenty for EMA50/ATR14/ADX14 to converge.
-const EARLY_WINDOW = 250;
+export { breakoutMode } from './strategies/index.js';
 
 export function createEngineState() {
   return { version: 2, symbols: {}, risk: createRiskState() };
-}
-
-function closeMsOf(bar, tf) {
-  return bar.time * 1000 + TF_MS[tf];
-}
-
-// Index of the last bar in `bars` closed at or before `ms`, or -1.
-function lastClosedIndex(bars, tf, ms) {
-  let lo = 0;
-  let hi = bars.length - 1;
-  let found = -1;
-  while (lo <= hi) {
-    const mid = (lo + hi) >> 1;
-    if (closeMsOf(bars[mid], tf) <= ms) { found = mid; lo = mid + 1; } else hi = mid - 1;
-  }
-  return found;
-}
-
-// Index of the first bar opened after `time`, or -1. Binary search: the
-// backtest's autopilot replay calls advance() once per day.
-function firstAfter(bars, time) {
-  let lo = 0;
-  let hi = bars.length;
-  while (lo < hi) {
-    const mid = (lo + hi) >> 1;
-    if (bars[mid].time > time) hi = mid; else lo = mid + 1;
-  }
-  return lo < bars.length ? lo : -1;
-}
-
-function symbolState(state, symbol) {
-  if (!state.symbols[symbol]) state.symbols[symbol] = { lastBarTime: {}, cooldownUntilMs: {} };
-  const s = state.symbols[symbol];
-  s.lastBarTime ||= {};
-  s.cooldownUntilMs ||= {};
-  return s;
-}
-
-function earlyProfile(profile, cfg) {
-  return Boolean(cfg.earlyEntry) && profile.earlyEntry !== false && Boolean(TF_MS[cfg.earlyTf]) && TF_MS[cfg.earlyTf] < TF_MS[profile.triggerTf];
-}
-
-// The trigger-timeframe candle formed so far, from the closed early candles
-// since it opened up to and including sub[k].
-function formingCandle(sub, k, tf) {
-  const openMs = Math.floor((sub[k].time * 1000) / TF_MS[tf]) * TF_MS[tf];
-  let m = k;
-  while (m > 0 && sub[m - 1].time * 1000 >= openMs) m -= 1;
-  const bar = { time: openMs / 1000, date: new Date(openMs).toISOString().slice(0, 10), open: sub[m].open, high: -Infinity, low: Infinity, close: sub[k].close, volume: 0 };
-  for (let n = m; n <= k; n += 1) {
-    bar.high = Math.max(bar.high, sub[n].high);
-    bar.low = Math.min(bar.low, sub[n].low);
-    bar.volume += sub[n].volume || 0;
-  }
-  return bar;
-}
-
-// Breakout entry timing (cfg.breakoutEntry). The daily breakout's level is the
-// prior N-day high; these modes change only when the robot buys:
-// - 'close' (default): the daily close above the level, as researched.
-// - 'nextClose': a daily close above the level, confirmed by the next daily
-//   close still above that same level; bought at the confirming close.
-// - 'touch': the first closed earlyTf (5m) candle above the level, mid-day.
-//   Optional price-action filters, comma-separated after 'touch:':
-//   b<x> the 5m close must clear the level by x daily ATRs; v<x> the breaking
-//   5m candle's volume must be x times its 24h average; k<m> buy at the close
-//   of an m-minute candle that closed above the level (e.g. k15, k60).
-// - 'hold:<hours>': live price has closed every earlyTf candle above the level
-//   for the last <hours>, bought at that moment.
-// - 'cont': yesterday closed as a breakout and live price trades above
-//   yesterday's high (follow-through), bought at that moment.
-export function breakoutMode(cfg) {
-  const raw = String(cfg?.breakoutEntry || 'close');
-  if (raw.startsWith('hold:')) return { kind: 'hold', holdMs: Number(raw.slice(5)) * 3_600_000 };
-  if (raw === 'touch' || raw.startsWith('touch:')) {
-    const mode = { kind: 'touch', holdMs: 0 };
-    for (const part of raw.slice(6).split(/[,+]/).filter(Boolean)) {
-      const value = Number(part.slice(1));
-      if (!Number.isFinite(value)) continue;
-      if (part[0] === 'b') mode.bufferAtr = value;
-      else if (part[0] === 'v') mode.volMult = value;
-      else if (part[0] === 'k') mode.candleMin = value;
-    }
-    return mode;
-  }
-  return { kind: ['nextClose', 'cont'].includes(raw) ? raw : 'close', holdMs: 0 };
-}
-
-// True when the breakout profile is bought on live (earlyTf) candles instead of a daily close.
-function liveBreakout(profile, cfg) {
-  if (profile.entry !== 'breakout' || !TF_MS[cfg.earlyTf]) return false;
-  const { kind } = breakoutMode(cfg);
-  return kind === 'touch' || kind === 'hold' || kind === 'cont';
-}
-
-function priorHighOf(daily, endIdx, n) {
-  let high = -Infinity;
-  for (let k = endIdx - n + 1; k <= endIdx; k += 1) high = Math.max(high, daily[k].high);
-  return high;
-}
-
-function roundPx(value) {
-  return Number.isFinite(value) && value !== 0 ? Number(value.toPrecision(8)) : value;
-}
-
-// Live breakout check at a closed earlyTf candle against the closed daily candles.
-function evaluateBreakoutLive(ctx, event, profile) {
-  const { series, cfg } = ctx;
-  const daily = series[event.symbol][profile.triggerTf];
-  const sub = series[event.symbol][cfg.earlyTf];
-  if (!daily || !sub) return null;
-  const n = profile.breakoutLookback;
-  const ci = lastClosedIndex(daily, profile.triggerTf, event.closeMs);
-  if (ci < n + 1) return null;
-  const d = daily[ci];
-  if (!(d.atr14 > 0)) return null;
-  const level = priorHighOf(daily, ci, n);
-  const price = sub[event.i].close;
-  if (!(price > level)) return null;
-  const mode = breakoutMode(cfg);
-  if (mode.kind === 'hold') {
-    const bars = Math.max(1, Math.round(mode.holdMs / TF_MS[cfg.earlyTf]));
-    if (event.i - bars + 1 < 0) return null;
-    for (let q = event.i - bars + 1; q < event.i; q += 1) if (!(sub[q].close > level)) return null;
-  } else if (mode.kind === 'cont') {
-    if (!(d.close > priorHighOf(daily, ci - 1, n))) return null;
-  } else if (mode.kind === 'touch') {
-    if (mode.bufferAtr && !(price > level + mode.bufferAtr * d.atr14)) return null;
-    if (mode.candleMin && event.closeMs % (mode.candleMin * 60_000) !== 0) return null;
-    if (mode.volMult) {
-      const bars = Math.round(TF_MS['1d'] / TF_MS[cfg.earlyTf]);
-      if (event.i < bars) return null;
-      let sum = 0;
-      for (let q = event.i - bars; q < event.i; q += 1) sum += sub[q].volume || 0;
-      if (!((sub[event.i].volume || 0) >= mode.volMult * (sum / bars))) return null;
-    }
-  }
-  if (!btcAbove200d(series[BTC_SYMBOL]?.[profile.filterTf], d.time)) return null;
-  if (quoteVolume24h(daily, ci, profile.barsPer24h) < cfg.minTradeQuoteVolumeUsdt) return null;
-  const stop = roundPx(price - profile.stopAtr * d.atr14);
-  if (!(stop > 0)) return null;
-  const formingTime = d.time + TF_MS[profile.triggerTf] / 1000;
-  const what = mode.kind === 'hold' ? `held above the prior ${n}-day high ${roundPx(level)} for ${mode.holdMs / 3_600_000}h`
-    : mode.kind === 'cont' ? `traded above yesterday's breakout high ${roundPx(d.high)}`
-      : `broke the prior ${n}-day high ${roundPx(level)}`;
-  return {
-    signal: {
-      setup: 'breakout', entryPrice: price, stopPrice: stop,
-      score: Math.round(Math.max(0, Math.min(1, (price - level) / d.atr14)) * 100),
-      reason: `Live price ${roundPx(price)} ${what}, BTC above its 200-day average.`
-    },
-    checklist: [],
-    armedLevel: roundPx(level),
-    barTime: formingTime
-  };
-}
-
-// Gap rebound check at a closed 1h candle (paperGap.js has the rule). The
-// oldest daily gap from the last 10 days that price has not filled and that
-// has not been traded yet, with price still below it and a 1h rebound now.
-function evaluateGap(ctx, event, profile) {
-  const { series, state } = ctx;
-  const hourly = series[event.symbol][profile.triggerTf];
-  const daily = series[event.symbol][profile.filterTf];
-  if (!hourly || !daily) return null;
-  const sState = symbolState(state, event.symbol);
-  const used = sState.gapsTraded || {};
-  const ci = lastClosedIndex(daily, profile.filterTf, event.closeMs);
-  if (ci < 0) return null;
-  // Gaps older than the 10-day window can't trade again; keep the stored state small.
-  for (const t of Object.keys(used)) if (Number(t) < daily[ci].time - 30 * 86_400) delete used[t];
-  const liveBars = Math.round(GAP_RULE.liveDays * TF_MS['1d'] / TF_MS[profile.triggerTf]);
-  const base = { signal: null, checklist: [] };
-  if (!reboundAt(hourly, event.i)) return base;
-  for (let k = Math.max(24, ci - GAP_RULE.liveDays); k <= ci; k += 1) {
-    if (used[daily[k].time]) continue;
-    const gap = gapAt(daily, k);
-    if (!gap) continue;
-    const i0 = firstAfter(hourly, daily[k].time + TF_MS['1d'] / 1000 - 1);
-    if (i0 < 0 || event.i < i0 || event.i >= i0 + liveBars) continue;
-    let filled = false;
-    for (let m = i0; m <= event.i; m += 1) if (hourly[m].high >= gap.top) { filled = true; break; }
-    if (filled || !(hourly[event.i].close < gap.bottom)) continue;
-    const plan = reboundPlan(hourly, event.i);
-    if (!plan || !(plan.target > plan.entry)) continue;
-    return {
-      ...base,
-      gapTime: daily[k].time,
-      signal: {
-        setup: 'gap', entryPrice: plan.entry, stopPrice: roundPx(plan.exitStop), targetPrice: roundPx(plan.target),
-        score: Math.min(100, Math.round(gap.volX * 10)),
-        reason: `1h rebound under the ${daily[k].date} daily gap ${roundPx(gap.bottom)}-${roundPx(gap.top)} (gap-day volume ${Math.round(gap.volX * 10) / 10}x): RSI back from under 30, close above EMA20. Target ${roundPx(plan.target)}.`
-      }
-    };
-  }
-  return base;
 }
 
 function enabledProfiles(cfg) {
@@ -237,7 +41,7 @@ function buildEvents(state, portfolio, series, { nowMs, startMs, live, cfg, trad
   for (const symbol of tradeSymbols) {
     for (const p of enabledProfiles(cfg)) {
       add(symbol, p.triggerTf);
-      if (earlyProfile(p, cfg) || liveBreakout(p, cfg)) add(symbol, cfg.earlyTf);
+      if (strategyFor(p).usesIntrabar(p, cfg)) add(symbol, cfg.earlyTf);
       // A position opened during this pass needs its exit candles too.
       if (exitTfFor(p, cfg)) add(symbol, cfg.exitTf);
     }
@@ -346,78 +150,6 @@ function afterFill(sub, subMs, bar, fromMs, toMs) {
   };
 }
 
-// Same pullback test evaluatePullback() runs for a trigger candle at ci + 1,
-// from the closed candles alone.
-function pullbackSeen(trig, ci, cfg) {
-  const p = cfg.setup;
-  let touched = false;
-  let minRsi = Infinity;
-  for (let k = ci + 1 - p.pullbackLookback; k <= ci; k += 1) {
-    const b = trig[k];
-    if (!b || !Number.isFinite(b.low) || !Number.isFinite(b.ema20) || !Number.isFinite(b.atr14) || !Number.isFinite(b.rsi14) || b.atr14 <= 0) continue;
-    if ((b.low - b.ema20) / b.atr14 <= p.pullbackTouchAtr) touched = true;
-    minRsi = Math.min(minRsi, b.rsi14);
-  }
-  return touched && minRsi >= p.rsiDipMin && minRsi <= p.rsiDipMax;
-}
-
-// Setup check on the forming trigger candle at an early-candle close. Returns the
-// evaluation with the forming candle's time, or null when there is nothing to check.
-function evaluateEarly(ctx, event, profile) {
-  const { series, cfg } = ctx;
-  const trigAll = series[event.symbol][profile.triggerTf];
-  const sub = series[event.symbol][cfg.earlyTf];
-  if (!trigAll || event.closeMs % TF_MS[profile.triggerTf] === 0) return null; // the candle's own close is checked normally
-  const ci = lastClosedIndex(trigAll, profile.triggerTf, event.closeMs);
-  if (ci < 1) return null;
-  const forming = formingCandle(sub, event.i, profile.triggerTf);
-  if (!(forming.close > trigAll[ci].high)) return null; // cheap pre-checks first: no reclaim yet,
-  if (!pullbackSeen(trigAll, ci, cfg)) return null; // or no pullback to buy
-  const trig = enrichCandles(trigAll.slice(Math.max(0, ci - EARLY_WINDOW + 1), ci + 1).concat(forming));
-  const filt = series[event.symbol][profile.filterTf];
-  const j = lastClosedIndex(filt, profile.filterTf, event.closeMs);
-  let btc = null;
-  if (cfg.btcGate && series[BTC_SYMBOL]?.[profile.filterTf]) {
-    const btcFilt = series[BTC_SYMBOL][profile.filterTf];
-    btc = { filt: btcFilt, j: lastClosedIndex(btcFilt, profile.filterTf, event.closeMs) };
-  }
-  return { ...evaluateSetup({ trig, i: trig.length - 1, filt, j: j < 0 ? null : j, profile, cfg, btc }), barTime: forming.time };
-}
-
-function evaluate(ctx, event, profile) {
-  const { series, cfg } = ctx;
-  const trig = series[event.symbol][profile.triggerTf];
-  const filt = series[event.symbol][profile.filterTf];
-  if (!filt) return null;
-  const j = lastClosedIndex(filt, profile.filterTf, event.closeMs);
-  let btc = null;
-  // The breakout's BTC regime check is part of the rule, not the optional gate.
-  if ((cfg.btcGate || profile.entry === 'breakout') && series[BTC_SYMBOL]?.[profile.filterTf]) {
-    const btcFilt = series[BTC_SYMBOL][profile.filterTf];
-    btc = { filt: btcFilt, j: lastClosedIndex(btcFilt, profile.filterTf, event.closeMs) };
-  }
-  if (profile.entry === 'gap') return evaluateGap(ctx, event, profile);
-  const evaluation = evaluateSetup({ trig, i: event.i, filt, j: j < 0 ? null : j, profile, cfg, btc });
-  if (profile.entry !== 'breakout') return evaluation;
-  const mode = breakoutMode(cfg);
-  if (liveBreakout(profile, cfg)) return { ...evaluation, signal: null };
-  if (mode.kind !== 'nextClose') return evaluation;
-  // Confirmation: yesterday's close broke out and today's close is still above that level.
-  const prev = event.i > 0 ? evaluateSetup({ trig, i: event.i - 1, filt, j: j < 1 ? null : j - 1, profile, cfg, btc: btc && { ...btc, j: btc.j - 1 } }) : null;
-  const c = trig[event.i];
-  let signal = null;
-  if (prev?.signal && prev.armedLevel != null && c.close > prev.armedLevel && c.atr14 > 0) {
-    const stop = roundPx(c.close - profile.stopAtr * c.atr14);
-    if (stop > 0) {
-      signal = {
-        ...prev.signal, entryPrice: c.close, stopPrice: stop,
-        reason: `Daily close ${roundPx(c.close)} still above the ${profile.breakoutLookback}-day high ${prev.armedLevel} it broke yesterday, BTC above its 200-day average.`
-      };
-    }
-  }
-  return { ...evaluation, signal };
-}
-
 // What out.signals carries for a candidate. entryPrice/stopPrice are the
 // setup's plan before slippage, so outcomes.js can follow every signal.
 function signalFields(c) {
@@ -462,10 +194,10 @@ export function advance(state, portfolio, series, opts) {
       if (!tradeSymbols.has(event.symbol) || portfolio.positions[event.symbol]) continue;
       const isLatest = event.i === series[event.symbol][event.tf].length - 1;
       for (const profile of enabledProfiles(cfg)) {
+        const strategy = strategyFor(profile);
         const early = profile.triggerTf !== event.tf;
-        const liveBo = liveBreakout(profile, cfg);
-        if (early && !(event.tf === cfg.earlyTf && (earlyProfile(profile, cfg) || liveBo))) continue;
-        const evaluation = early ? (liveBo ? evaluateBreakoutLive(ctx, event, profile) : evaluateEarly(ctx, event, profile)) : evaluate(ctx, event, profile);
+        if (early && !(event.tf === cfg.earlyTf && strategy.usesIntrabar(profile, cfg))) continue;
+        const evaluation = early ? strategy.evaluateIntrabar(ctx, event, profile) : strategy.evaluateClose(ctx, event, profile);
         if (!evaluation) continue;
         const barTime = early ? evaluation.barTime : series[event.symbol][event.tf][event.i].time;
         if (live && isLatest && !early) {
@@ -491,10 +223,10 @@ export function advance(state, portfolio, series, opts) {
         else if (live && nowMs - closeMs > maxDelayMs) skip = 'missed-late: tick ran too long after the bar closed';
         else if (signal.score < cfg.minConfidencePct) skip = `score ${signal.score} below ${cfg.minConfidencePct}`;
         else if (blocked) skip = `entries paused: ${blocked}`;
-        else if (cfg.autopilotPause && profile.entry !== 'gap') skip = `autopilot paused: ${cfg.autopilotPause}`;
+        else if (cfg.autopilotPause && strategy.followsAutopilot !== false) skip = `autopilot paused: ${cfg.autopilotPause}`;
         else if (cooldownUntil && closeMs < cooldownUntil) skip = profile.cooldownAfterAnyExit ? 'cooldown: the last trade closed on this candle' : 'cooldown after stop-out';
         if (skip) { out.signals.push({ ...base, taken: false, skip }); continue; }
-        candidates.push({ ...base, signal, event, profile, early, gapTime: evaluation.gapTime });
+        candidates.push({ ...base, signal, event, profile, strategy, evaluation, early });
       }
     }
 
@@ -508,17 +240,22 @@ export function advance(state, portfolio, series, opts) {
       const entryPrice = c.signal.entryPrice * (1 + cfg.slippagePct / 100);
       let sized = null;
       if (!skip) {
-        // A profile can set its own risk per trade (the gap sleeve: 1%).
+        // A profile can set its own risk per trade (the gap sleeve: 0.5%).
         const sizeCfg = c.profile.riskPct ? { ...cfg, riskPerTradePct: Math.min(cfg.riskPerTradePct, c.profile.riskPct) } : cfg;
         sized = sizePosition({ portfolio, entryPrice, stopPrice: c.signal.stopPrice, usdIdrRate, cfg: sizeCfg });
         if (!(sized.qty > 0)) skip = sized.reason;
+      }
+      if (!skip) {
+        // Last gate before the order (ported from day-trader-skill's risk manager).
+        const gate = preTradeCheck({ state, portfolio, cfg, profile: c.profile, entryPrice, stopPrice: c.signal.stopPrice, targetPrice: c.signal.targetPrice, qty: sized.qty, riskIdr: sized.riskIdr, usdIdrRate, nowMs: closeMs });
+        if (!gate.ok) skip = gate.reason;
       }
       if (skip) { out.signals.push({ ...signalFields(c), taken: false, skip }); continue; }
       const bar = series[c.symbol][c.event.tf][c.event.i];
       const { transaction, note } = openPositionQty(portfolio, {
         symbol: c.symbol, profile: c.profile.key, setup: c.setup, quantity: sized.qty, entryPrice,
         stopPrice: c.signal.stopPrice, riskIdr: sized.riskIdr, score: c.score,
-        reason: c.early && c.profile.entry !== 'breakout' ? `${c.signal.reason} Bought early on a ${cfg.earlyTf} check, before the ${c.profile.triggerTf} close.` : c.signal.reason,
+        reason: c.signal.reason,
         timeMs: ctx.timeFor(bar), barTime: c.barTime, usdIdrRate, roundTripCostPct: cfg.roundTripCostPct,
         keepAllTransactions: ctx.keepAll
       });
@@ -526,7 +263,8 @@ export function advance(state, portfolio, series, opts) {
       if (transaction) {
         if (c.early) portfolio.positions[c.symbol].filledAtMs = closeMs;
         if (c.signal.targetPrice) portfolio.positions[c.symbol].targetPrice = c.signal.targetPrice;
-        if (c.gapTime != null) (symbolState(state, c.symbol).gapsTraded ||= {})[c.gapTime] = true;
+        c.strategy.onFilled?.(ctx, c);
+        recordEntry(state, sized.riskIdr, closeMs, cfg);
         out.transactions.push(transaction);
         opened += 1;
       }

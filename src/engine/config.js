@@ -246,6 +246,16 @@ export function profilesFor(cfg) {
   return cached;
 }
 
+// The market's regime filter for the breakout: BTC for crypto, IHSG for IDX
+// stocks (markets/idx.js sets cfg.regimeSymbol and cfg.regimeLabel).
+export function regimeSymbolOf(cfg) {
+  return cfg?.regimeSymbol || BTC_SYMBOL;
+}
+
+export function regimeLabelOf(cfg) {
+  return cfg?.regimeLabel || 'BTC';
+}
+
 export function profileTimeStopBars(profile, cfg) {
   return Math.round(profile.timeStopBars * (cfg.timeStopMult ?? 1));
 }

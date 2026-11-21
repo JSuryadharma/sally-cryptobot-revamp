@@ -18,6 +18,11 @@ import { signalRecords, updateJournal, summarizeOutcomes } from './outcomes.js';
 import { updatePaperJournal, summarizePaper, paperCostPct, paperResults } from './paperBreakout.js';
 import { decideStrategy, decisionChanged } from './autopilot.js';
 import { updateGapJournal, summarizeGap } from './paperGap.js';
+import { bookView } from '../account.js';
+import { idxPass, IDX_STATE_KEY, IDX_CACHE_KEY } from './idxPass.js';
+import { loadIdxSeries, idxEngineCfg, IDX_REGIME_SYMBOL } from '../markets/idx.js';
+import { positionOdds, breakoutPlans, scannerFor } from './insights.js';
+import { refreshNews, priceHistoryFrom, NEWS_JOURNAL_KEY, PRICE_HISTORY_KEY, NEWS_REFRESH_MS } from '../news/service.js';
 
 const LEASE_NAME = 'engine';
 const LEASE_TTL_MS = 120_000;
@@ -27,6 +32,8 @@ export const SIGNAL_JOURNAL_KEY = 'signal-journal.json';
 export const PAPER_JOURNAL_KEY = 'paper-breakout-journal.json';
 export const AUTOPILOT_KEY = 'autopilot.json';
 export const GAP_JOURNAL_KEY = 'paper-gap-journal.json';
+export const CRYPTO_INSIGHTS_KEY = 'crypto-insights.json';
+export const NEWS_STATE_KEY = 'news-state.json';
 const AUTOPILOT_CHANGES_MAX = 20;
 const TICK_LOG_MAX = 300;
 const STALE_AFTER_MS = 20 * 60_000;
@@ -58,13 +65,14 @@ export async function readAutopilot() {
 async function loadContext() {
   const [settings, autopilot] = await Promise.all([readSettings(), readAutopilot()]);
   const cfg = resolveEngineCfg(engineCfgFromSettings(settings, autopilot));
-  const [portfolio, storedState, usdIdrRate] = await Promise.all([
+  const [portfolio, storedState, usdIdrRate, idxState] = await Promise.all([
     getPortfolio(settings),
     readJson(ENGINE_STATE_KEY, null),
-    resolveUsdIdrRate(settings.usdIdrRate, settings.binanceBaseUrl)
+    resolveUsdIdrRate(settings.usdIdrRate, settings.binanceBaseUrl),
+    readJson(IDX_STATE_KEY, null)
   ]);
   const engineState = storedState?.version === 2 ? storedState : createEngineState();
-  return { settings, cfg, portfolio, engineState, usdIdrRate, autopilot };
+  return { settings, cfg, portfolio, engineState, usdIdrRate, autopilot, idxState };
 }
 
 // Brings the paper test up to date, then lets the autopilot pick the strategy
@@ -121,12 +129,12 @@ export async function readPaperGap() {
   return { ...summarizeGap(journal, { costPct: paperCostPct(cfg) }), recent: journal.slice(0, 20) };
 }
 
-async function notifyResults(notifications, out, cfg) {
+async function notifyResults(notifications, out, cfg, prefix = '') {
   const labels = profilesFor(cfg);
   for (const tx of out.transactions) {
     if (tx.type === 'BUY') {
       await notifications.notify({
-        title: `BUY ${tx.symbol}`,
+        title: `${prefix}BUY ${tx.symbol}`,
         message: `${tx.reason} Confidence ${tx.confidencePct ?? 0}% (${labels[tx.profile]?.label || tx.profile}). Stop ${tx.stopPrice}, risk Rp ${Math.round(tx.riskIdr).toLocaleString('id-ID')}.`,
         level: 'info', category: 'trade'
       });
@@ -134,22 +142,24 @@ async function notifyResults(notifications, out, cfg) {
       const pnl = Math.round(tx.realizedProfitIdr).toLocaleString('id-ID');
       const r = tx.rMultiple != null ? ` Trade result ${tx.rMultiple}R.` : '';
       await notifications.notify({
-        title: `${tx.partial ? 'PARTIAL SELL' : 'SELL'} ${tx.symbol}`,
+        title: `${prefix}${tx.partial ? 'PARTIAL SELL' : 'SELL'} ${tx.symbol}`,
         message: `${tx.reason} Realized P&L: Rp ${pnl}.${r}`,
         level: tx.realizedProfitIdr >= 0 ? 'success' : 'warning', category: 'trade'
       });
     }
   }
   for (const event of out.riskEvents) {
-    await notifications.notify({ title: 'New entries paused', message: `${event.reason}. Open positions keep their stops.`, level: 'warning', category: 'trade' });
+    await notifications.notify({ title: `${prefix}New entries paused`, message: `${event.reason}. Open positions keep their stops.`, level: 'warning', category: 'trade' });
   }
 }
 
 // One full engine pass. Caller holds the lease.
-async function enginePass({ notifications = new NotificationCenter() } = {}) {
+async function enginePass({ notifications = new NotificationCenter(), forceIdx = false } = {}) {
   const startedAt = Date.now();
   const context = await loadContext();
   const { settings, portfolio, engineState, usdIdrRate } = context;
+  // Crypto trades its own book; cash is shared with the IDX book (account.js).
+  const cryptoBook = bookView(portfolio, 'crypto');
   const held = Object.keys(portfolio.positions || {});
   const symbols = [...new Set([...settings.watchlist, ...held, BTC_SYMBOL])];
   const { series, live, errors } = await loadLiveSeries(symbols, { baseUrl: settings.binanceBaseUrl, nowMs: startedAt });
@@ -160,15 +170,45 @@ async function enginePass({ notifications = new NotificationCenter() } = {}) {
 
   // Auto-trade off stops new entries only; open positions keep their stops.
   const tradeSymbols = settings.autoTrade.enabled ? settings.watchlist.filter((s) => series[s]) : [];
-  const out = advance(engineState, portfolio, series, { nowMs: startedAt, live: true, usdIdrRate, cfg, tradeSymbols });
+  const out = advance(engineState, cryptoBook, series, { nowMs: startedAt, live: true, usdIdrRate, cfg, tradeSymbols });
+  for (const tx of out.transactions) tx.market = 'crypto';
+
+  // IDX stocks: same engine, own book, shared cash. A data or code failure here
+  // never stops the crypto half.
+  let idx = null;
+  let idxError = null;
+  try {
+    idx = await idxPass({ settings, portfolio, nowMs: startedAt, stored: context.idxState, force: forceIdx });
+  } catch (error) {
+    idxError = error.message;
+    console.warn('[engine] IDX pass failed:', error.message);
+  }
   portfolio.updatedAt = new Date().toISOString();
   const journal = updateJournal(await readSignalJournal(), signalRecords(out.signals, cfg), series);
   const gapJournal = updateGapJournal(await readJson(GAP_JOURNAL_KEY, []), series, settings.watchlist);
+
+  // Scanner and time-machine odds (day-trader-skill ports) for the crypto side.
+  const activeProfile = cfg.profiles?.breakout55 ? 'breakout55' : 'breakout';
+  const cryptoInsights = {
+    updatedAt: new Date(startedAt).toISOString(),
+    scanner: scannerFor(Object.fromEntries(Object.entries(series).filter(([s]) => settings.watchlist.includes(s))), { minValue: settings.minTradeQuoteVolumeUsdt }).slice(0, 20),
+    odds: positionOdds({ positions: cryptoBook.positions, series, live, cfg }),
+    plans: breakoutPlans({ symbols: settings.watchlist, series, live, cfg, profileKey: activeProfile })
+  };
+
+  // Daily closes for the news correlation, and the news itself every 15 minutes.
+  const previousHistory = await readJson(PRICE_HISTORY_KEY, {});
+  const priceHistory = { crypto: priceHistoryFrom(series), idx: idx ? priceHistoryFrom(idx.series) : (previousHistory.idx || {}) };
+  const newsWrites = await maybeRefreshNews(settings, startedAt);
+
   await writeJsonMany({
     [PORTFOLIO_KEY]: portfolio, [ENGINE_STATE_KEY]: engineState, [SIGNAL_JOURNAL_KEY]: journal,
-    [PAPER_JOURNAL_KEY]: paperJournal, [AUTOPILOT_KEY]: autopilot, [GAP_JOURNAL_KEY]: gapJournal
+    [PAPER_JOURNAL_KEY]: paperJournal, [AUTOPILOT_KEY]: autopilot, [GAP_JOURNAL_KEY]: gapJournal,
+    [CRYPTO_INSIGHTS_KEY]: cryptoInsights, [PRICE_HISTORY_KEY]: priceHistory,
+    ...(idx?.writes || {}), ...newsWrites
   });
   await notifyResults(notifications, out, cfg);
+  if (idx) await notifyResults(notifications, idx.out, idx.cfg, 'IDX ');
   if (changed) {
     await notifications.notify({
       title: autopilot.paused ? 'Autopilot paused new buys' : `Autopilot: ${profilesFor(cfg)[autopilot.chosen]?.label || autopilot.chosen}`,
@@ -195,8 +235,28 @@ async function enginePass({ notifications = new NotificationCenter() } = {}) {
       realizedProfitIdr: t.realizedProfitIdr ?? null, rMultiple: t.rMultiple ?? null, reason: t.reason
     })),
     riskEvents: out.riskEvents,
-    autopilot: { chosen: autopilot.chosen, paused: autopilot.paused, changed }
+    autopilot: { chosen: autopilot.chosen, paused: autopilot.paused, changed },
+    idx: idx ? {
+      ran: true,
+      symbolsOk: Object.keys(idx.cache.stocks).length,
+      symbolsFailed: idx.cache.errors,
+      fills: idx.cache.fills.map((f) => ({ ...f, market: 'idx' }))
+    } : { ran: false, error: idxError }
   };
+}
+
+async function maybeRefreshNews(settings, nowMs) {
+  try {
+    const state = await readJson(NEWS_STATE_KEY, null);
+    if (state?.lastRunMs && nowMs - state.lastRunMs < NEWS_REFRESH_MS) return {};
+    const { journal, added, errors, feeds } = await refreshNews(await readJson(NEWS_JOURNAL_KEY, []), {
+      watchlists: { crypto: settings.watchlist, idx: settings.idx?.enabled ? settings.idx.watchlist : [] }, nowMs
+    });
+    return { [NEWS_JOURNAL_KEY]: journal, [NEWS_STATE_KEY]: { lastRunMs: nowMs, added, errors, feeds } };
+  } catch (error) {
+    console.warn('[news] refresh failed:', error.message);
+    return {};
+  }
 }
 
 async function appendTickLog(entry) {
@@ -238,7 +298,8 @@ export async function runTickIfDue({ reason = 'dashboard' } = {}) {
 export async function runManualTrade(symbol, action) {
   if (action !== 'BUY' && action !== 'SELL') return { status: 400, body: { error: 'action must be BUY or SELL.' } };
   return withEngineLease(async () => {
-    const { settings, cfg, portfolio, engineState, usdIdrRate } = await loadContext();
+    const { settings, cfg, portfolio: account, engineState, usdIdrRate } = await loadContext();
+    const portfolio = bookView(account, 'crypto');
     const { series, live, errors } = await loadLiveSeries([symbol, BTC_SYMBOL], { baseUrl: settings.binanceBaseUrl });
     if (!series[symbol]) return { status: 502, body: { error: `Couldn't load ${symbol} prices: ${errors[0]?.error || 'unknown error'}` } };
     const nowMs = Date.now();
@@ -280,7 +341,8 @@ export async function runManualTrade(symbol, action) {
       });
     }
 
-    await writeJsonMany({ [PORTFOLIO_KEY]: portfolio, [ENGINE_STATE_KEY]: engineState });
+    if (result.transaction) result.transaction.market = 'crypto';
+    await writeJsonMany({ [PORTFOLIO_KEY]: account, [ENGINE_STATE_KEY]: engineState });
     const tx = result.transaction;
     const notifications = new NotificationCenter();
     if (tx) {
@@ -307,6 +369,7 @@ function activityFrom(log) {
   for (const tick of log.slice(0, 60)) {
     const at = tick.startedAt;
     for (const f of tick.fills || []) items.push({ kind: 'fill', at, ...f });
+    for (const f of tick.idx?.fills || []) items.push({ kind: 'fill', at, ...f, market: 'idx' });
     for (const e of tick.riskEvents || []) items.push({ kind: 'pause', at, reason: e.reason });
     for (const s of tick.signals || []) {
       if (s.taken) continue;
@@ -355,4 +418,71 @@ export async function handleTickRequest(req) {
     console.error('[engine/tick] failed:', error);
     return { status: 500, body: { error: error.message } };
   }
+}
+
+// Manual paper trade on an IDX stock: BUY at the latest price with the IDX
+// breakout's 2.5 ATR stop and +2R target, sized in whole lots from the shared
+// cash; SELL closes the position. Then a pass with a forced IDX refresh.
+export async function runIdxManualTrade(symbol, action) {
+  if (action !== 'BUY' && action !== 'SELL') return { status: 400, body: { error: 'action must be BUY or SELL.' } };
+  return withEngineLease(async () => {
+    const { settings, portfolio: account } = await loadContext();
+    if (!settings.idx?.enabled) return { status: 400, body: { error: 'IDX trading is off in Settings.' } };
+    const book = bookView(account, 'idx');
+    const cfg = idxEngineCfg(settings);
+    const { series, live, errors } = await loadIdxSeries([symbol, IDX_REGIME_SYMBOL]);
+    const daily = series[symbol]?.['1d'];
+    if (!daily?.length) return { status: 502, body: { error: `Couldn't load ${symbol}: ${errors[0]?.error || 'no data'}` } };
+    const nowMs = Date.now();
+    const price = live[symbol]?.['1d']?.close ?? daily.at(-1).close;
+    let result;
+    if (action === 'BUY') {
+      if (book.positions[symbol]) return { status: 400, body: { error: 'Already holding this stock.' } };
+      if (Object.keys(book.positions).length >= cfg.maxOpenPositions) return { status: 400, body: { error: `All ${cfg.maxOpenPositions} IDX position slots are in use.` } };
+      const profile = profilesFor(cfg).idxBreakout;
+      const entry = price * (1 + cfg.slippagePct / 100);
+      const stop = Number((entry - profile.stopAtr * daily.at(-1).atr14).toPrecision(8));
+      const sized = sizePosition({ portfolio: book, entryPrice: entry, stopPrice: stop, usdIdrRate: 1, cfg });
+      if (!(sized.qty > 0)) return { status: 400, body: { error: `Can't size this trade: ${sized.reason}.` } };
+      result = openPositionQty(book, {
+        symbol, profile: profile.key, setup: 'manual', quantity: sized.qty, entryPrice: entry, stopPrice: stop,
+        riskIdr: sized.riskIdr, score: null, reason: 'Manual buy - user override.', timeMs: nowMs, barTime: daily.at(-1).time,
+        usdIdrRate: 1, roundTripCostPct: cfg.roundTripCostPct
+      });
+    } else {
+      if (!book.positions[symbol]) return { status: 400, body: { error: 'No open position to sell.' } };
+      result = sellPosition(book, {
+        symbol, price: price * (1 - cfg.slippagePct / 100), reason: 'Manual sell - user override.', exitKind: 'manual',
+        timeMs: nowMs, usdIdrRate: 1, roundTripCostPct: cfg.roundTripCostPct
+      });
+    }
+    const tx = result.transaction;
+    if (tx) tx.market = 'idx';
+    await writeJsonMany({ [PORTFOLIO_KEY]: account });
+    const notifications = new NotificationCenter();
+    if (tx) {
+      const detail = tx.type === 'BUY' ? `Bought ${tx.quantity / 100} lot at ${tx.price}, stop ${tx.stopPrice}.` : `Sold at ${tx.price}. P&L: Rp ${Math.round(tx.realizedProfitIdr).toLocaleString('id-ID')}.`;
+      await notifications.notify({ title: `Manual IDX ${tx.type} ${symbol}`, message: detail, level: 'info', category: 'trade' });
+    }
+    const entryLog = { ...(await enginePass({ notifications, forceIdx: true })), reason: `manual-idx-${action.toLowerCase()}` };
+    if (tx) entryLog.fills.unshift({ symbol, type: tx.type, partial: false, price: tx.price, profile: tx.profile, market: 'idx', realizedProfitIdr: tx.realizedProfitIdr ?? null, rMultiple: tx.rMultiple ?? null, reason: tx.reason });
+    await appendTickLog(entryLog);
+    return { status: tx ? 200 : 400, body: tx ? { transaction: tx } : { error: result.note || 'Trade not executed.' } };
+  });
+}
+
+export async function readIdx() {
+  const [cache, state, settings] = await Promise.all([readJson(IDX_CACHE_KEY, null), readJson(IDX_STATE_KEY, null), readSettings()]);
+  return {
+    enabled: Boolean(settings.idx?.enabled), autoTrade: Boolean(settings.idx?.autoTrade), watchlist: settings.idx?.watchlist || [],
+    lastRunAt: state?.lastRunMs ? new Date(state.lastRunMs).toISOString() : null,
+    risk: state?.engine?.risk ? { haltReason: state.engine.risk.haltReason || null, preTrade: state.engine.preTrade || null } : null,
+    recentFills: state?.recentFills || [],
+    ...(cache || { stocks: {}, scanner: [], odds: {}, ihsg: null, errors: [] }),
+    stocks: Object.values(cache?.stocks || {})
+  };
+}
+
+export async function readCryptoInsights() {
+  return readJson(CRYPTO_INSIGHTS_KEY, { scanner: [], odds: {}, plans: {} });
 }

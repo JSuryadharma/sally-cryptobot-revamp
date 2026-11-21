@@ -1,5 +1,6 @@
 import { readJson, writeJson } from './storage.js';
 import { DEFAULT_ENGINE_CFG } from './engine/config.js';
+import { DEFAULT_IDX_WATCHLIST, normalizeIdxSymbol } from './markets/idx.js';
 
 export const SETTINGS_FILE = 'settings.json';
 
@@ -25,6 +26,8 @@ function defaultSettings() {
     autoTrade: { enabled: true },
     // The gap-rebound sleeve (engine/config.js PROFILES.gap), next to the breakouts.
     gapSleeve: { enabled: true },
+    // IDX stocks (markets/idx.js): a second book on the same cash pool.
+    idx: { enabled: true, autoTrade: true, watchlist: [...DEFAULT_IDX_WATCHLIST], maxOpenPositions: 4 },
     riskPerTradePct: DEFAULT_ENGINE_CFG.riskPerTradePct,
     maxPortfolioRiskPct: DEFAULT_ENGINE_CFG.maxPortfolioRiskPct,
     dailyLossLimitPct: DEFAULT_ENGINE_CFG.dailyLossLimitPct,
@@ -74,6 +77,12 @@ function boundedList(value, fallback) {
   return cleaned.length ? cleaned.slice(0, 20) : fallback;
 }
 
+function idxList(value, fallback) {
+  if (!Array.isArray(value)) return fallback;
+  const cleaned = [...new Set(value.map(normalizeIdxSymbol).filter(Boolean))];
+  return cleaned.length ? cleaned.slice(0, 30) : fallback;
+}
+
 function boundedNumber(value, fallback, min, max) {
   const n = Number(value);
   return Number.isFinite(n) ? Math.min(max, Math.max(min, n)) : fallback;
@@ -110,6 +119,12 @@ export function normalize(input, watchlistFallback) {
     // to live here are gone: stored values are dropped on the next save.
     autoTrade: { enabled: raw.autoTrade?.enabled !== false },
     gapSleeve: { enabled: raw.gapSleeve?.enabled !== false },
+    idx: {
+      enabled: raw.idx?.enabled !== false,
+      autoTrade: raw.idx?.autoTrade !== false,
+      watchlist: idxList(raw.idx?.watchlist, base.idx.watchlist),
+      maxOpenPositions: Math.round(boundedNumber(raw.idx?.maxOpenPositions, base.idx.maxOpenPositions, 1, 10))
+    },
     riskPerTradePct: boundedNumber(raw.riskPerTradePct, base.riskPerTradePct, 0.1, 5),
     maxPortfolioRiskPct: boundedNumber(raw.maxPortfolioRiskPct, base.maxPortfolioRiskPct, 0.5, 20),
     dailyLossLimitPct: boundedNumber(raw.dailyLossLimitPct, base.dailyLossLimitPct, 0.5, 20),
@@ -152,6 +167,7 @@ export async function readSettings() {
     ...stored,
     autoTrade: { ...base.autoTrade, ...stored.autoTrade },
     gapSleeve: { ...base.gapSleeve, ...stored.gapSleeve },
+    idx: { ...base.idx, ...stored.idx },
     telegram: { ...base.telegram, ...stored.telegram }
   });
 }
@@ -163,6 +179,7 @@ export async function updateSettings(patch) {
     ...patch,
     autoTrade: { ...current.autoTrade, ...(patch.autoTrade || {}) },
     gapSleeve: { ...current.gapSleeve, ...(patch.gapSleeve || {}) },
+    idx: { ...current.idx, ...(patch.idx || {}) },
     telegram: { ...current.telegram, ...(patch.telegram || {}) }
   };
   const next = normalize(merged, current.watchlist);
@@ -176,6 +193,7 @@ export function publicSettings(settings) {
     watchlist: settings.watchlist,
     autoTrade: settings.autoTrade,
     gapSleeve: settings.gapSleeve,
+    idx: settings.idx,
     telegram: {
       enabled: settings.telegram.enabled,
       configured: Boolean(settings.telegram.botToken && settings.telegram.chatId),

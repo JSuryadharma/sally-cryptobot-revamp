@@ -92,6 +92,30 @@ export const PROFILES = {
     cooldownBars: 1,
     barsPer24h: 1
   },
+  // IDX stocks (markets/idx.js): the same daily breakout, with IHSG above its
+  // 200-day average as the regime filter. Bought at the daily close (IDX's
+  // post-closing session trades at the closing price), exits checked on daily
+  // candles. NOT backtested yet: scripts/idxBacktest.mjs compares variants on
+  // Yahoo Finance history and needs a machine that can reach Yahoo.
+  idxBreakout: {
+    key: 'idxBreakout',
+    label: 'IDX breakout 20-day (daily, IHSG above its 200-day average)',
+    market: 'idx',
+    entry: 'breakout',
+    triggerTf: '1d',
+    filterTf: '1d',
+    breakoutLookback: 20,
+    stopAtr: 2.5,
+    targetR: 2,
+    timeStopBars: 30,
+    timeStopMinR: Infinity,
+    trailAtrMult: null,
+    breakeven: false,
+    earlyEntry: false,
+    cooldownAfterAnyExit: true,
+    cooldownBars: 1,
+    barsPer24h: 1
+  },
   // Gap rebound (paperGap.js has the rule; scripts/gapResearch.mjs the
   // research). Runs next to the breakouts, not chosen by the autopilot, and
   // has its own on/off switch in Settings. Buys a 1h rebound (RSI back from

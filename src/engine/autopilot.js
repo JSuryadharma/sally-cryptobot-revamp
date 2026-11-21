@@ -101,7 +101,7 @@ export function decideStrategy({ results, btcDaily, nowMs, params = AUTOPILOT_PA
   const paused = !chosen;
   const active = chosen || candidates[0];
   // The gap sleeve has its own switch (settings.gapSleeve), so it is left out here.
-  const profiles = Object.fromEntries(Object.keys(PROFILES).filter((key) => PROFILES[key].entry !== 'gap').map((key) => [key, key === active.profile]));
+  const profiles = Object.fromEntries(Object.keys(PROFILES).filter((key) => PROFILES[key].entry !== 'gap' && !PROFILES[key].market).map((key) => [key, key === active.profile]));
   const regime = regimeAt(btcDaily, nowMs);
 
   let summary;

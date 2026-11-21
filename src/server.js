@@ -12,7 +12,12 @@ import { readJson } from './storage.js';
 import { runAndStoreBacktest, VERDICT_KEY } from './backtestRunner.js';
 import { readCoinsCache } from './coinsCache.js';
 import { checkConnection } from './pgClient.js';
-import { handleTickRequest, readEngineStatus, readPredictionAccuracy, readPaperBreakout, readPaperGap, runTick, runTickIfDue, runManualTrade, readAutopilot } from './engine/tick.js';
+import { handleTickRequest, readEngineStatus, readPredictionAccuracy, readPaperBreakout, readPaperGap, runTick, runTickIfDue, runManualTrade, readAutopilot, runIdxManualTrade, readIdx, readCryptoInsights } from './engine/tick.js';
+import { accountSnapshot } from './account.js';
+import { fetchIdxDaily, normalizeIdxSymbol } from './markets/idx.js';
+import { enrichCandles } from './indicators.js';
+import { correlateNews, NEWS_JOURNAL_KEY, PRICE_HISTORY_KEY } from './news/service.js';
+import { NEWS_STATE_KEY } from './engine/tick.js';
 import { loadChartCandles } from './engine/candles.js';
 import { resetData } from './engine/reset.js';
 
@@ -191,13 +196,66 @@ async function route(req, res) {
   }
 
   if (pathname === '/api/portfolio' && method === 'GET') {
-    const settings = await readSettings();
-    const [portfolio, { coins }, usdIdrRate] = await Promise.all([
-      getPortfolio(settings), readCoinsCache(), resolveUsdIdrRate(settings.usdIdrRate, settings.binanceBaseUrl)
+    const { portfolio, prices, usdIdrRate } = await accountInputs();
+    const account = accountSnapshot(portfolio, prices, { crypto: usdIdrRate, idx: 1 });
+    // Crypto fields as before; equity and return now cover the whole account (both books).
+    return sendJson(res, 200, { ...markToMarket(portfolio, prices.crypto, usdIdrRate), equityIdr: account.equityIdr, totalReturnPct: account.totalReturnPct, account });
+  }
+
+  // One cash pool, two books: crypto and IDX stocks (src/account.js).
+  if (pathname === '/api/account' && method === 'GET') {
+    const { portfolio, prices, usdIdrRate } = await accountInputs();
+    const snapshot = accountSnapshot(portfolio, prices, { crypto: usdIdrRate, idx: 1 });
+    const transactions = (portfolio.transactions || []).slice(0, 40).map((t) => ({ ...t, market: t.market || 'crypto' }));
+    return sendJson(res, 200, { ...snapshot, usdIdrRate, transactions });
+  }
+
+  if (pathname === '/api/idx' && method === 'GET') {
+    return sendJson(res, 200, await readIdx());
+  }
+
+  const idxTrade = pathname.match(/^\/api\/idx\/([A-Z]{4})\/trade$/i);
+  if (idxTrade && method === 'POST') {
+    const body = await readBody(req);
+    const { status, body: result } = await runIdxManualTrade(idxTrade[1].toUpperCase(), String(body.action || '').toUpperCase());
+    return sendJson(res, status, result);
+  }
+
+  const idxCandles = pathname.match(/^\/api\/idx\/([A-Z]{4}|IHSG)\/candles$/i);
+  if (idxCandles && method === 'GET') {
+    const symbol = idxCandles[1].toUpperCase();
+    try {
+      const candles = await idxChartCandles(symbol === 'IHSG' ? symbol : normalizeIdxSymbol(symbol));
+      return sendJson(res, 200, { symbol, tf: '1d', candles: candles.slice(-CHART_WINDOW['1d']).map((c) => ({ time: c.time, date: c.date, open: c.open, high: c.high, low: c.low, close: c.close, volume: c.volume, ema20: c.ema20, ema50: c.ema50, atr14: c.atr14 })), structure: analyzeStructure(candles) });
+    } catch (error) {
+      return sendJson(res, 502, { error: error.message });
+    }
+  }
+
+  if (pathname === '/api/insights' && method === 'GET') {
+    return sendJson(res, 200, await readCryptoInsights());
+  }
+
+  if (pathname === '/api/news' && method === 'GET') {
+    const [journal, history, state, idx, { coins }] = await Promise.all([
+      readJson(NEWS_JOURNAL_KEY, []), readJson(PRICE_HISTORY_KEY, {}), readJson(NEWS_STATE_KEY, null), readIdx(), readCoinsCache()
     ]);
-    const prices = {};
-    for (const symbol of Object.keys(portfolio.positions)) prices[symbol] = coins[symbol]?.latest?.close;
-    return sendJson(res, 200, markToMarket(portfolio, prices, usdIdrRate));
+    const live = {
+      crypto: Object.fromEntries(Object.entries(coins).map(([s, c]) => [s, c?.latest?.close]).filter(([, v]) => Number.isFinite(v))),
+      idx: Object.fromEntries(idx.stocks.map((st) => [st.symbol, st.price]))
+    };
+    const { items, tickers } = correlateNews(journal, history, live, { days: 14 });
+    const market = url.searchParams.get('market');
+    const symbol = url.searchParams.get('symbol')?.toUpperCase();
+    let list = items;
+    if (market) list = list.filter((n) => n.market === market || n.tickers.some((t) => t.market === market));
+    if (symbol) list = list.filter((n) => n.tickers.some((t) => t.symbol === symbol));
+    return sendJson(res, 200, {
+      items: list.slice(0, Number(url.searchParams.get('limit')) || 60),
+      tickers,
+      updatedAt: state?.lastRunMs ? new Date(state.lastRunMs).toISOString() : null,
+      feedErrors: state?.errors || []
+    });
   }
 
   if (pathname === '/api/settings' && method === 'GET') {
@@ -225,6 +283,30 @@ async function route(req, res) {
   }
 
   return serveStatic(req, res, pathname);
+}
+
+// Prices for marking both books to market: crypto from the last engine pass's
+// coin cache, IDX from the last IDX pass.
+async function accountInputs() {
+  const settings = await readSettings();
+  const [portfolio, { coins }, usdIdrRate, idx] = await Promise.all([
+    getPortfolio(settings), readCoinsCache(), resolveUsdIdrRate(settings.usdIdrRate, settings.binanceBaseUrl), readIdx()
+  ]);
+  const prices = { crypto: {}, idx: {} };
+  for (const symbol of Object.keys(portfolio.positions || {})) prices.crypto[symbol] = coins[symbol]?.latest?.close;
+  for (const stock of idx.stocks) prices.idx[stock.symbol] = stock.price;
+  return { portfolio, prices, usdIdrRate };
+}
+
+const idxChartCache = new Map();
+async function idxChartCandles(symbol) {
+  if (!symbol) throw new Error('Not an IDX ticker.');
+  const cached = idxChartCache.get(symbol);
+  if (cached && Date.now() - cached.at < 5 * 60_000) return cached.candles;
+  const { candles } = await fetchIdxDaily(symbol, { range: '1y' });
+  const enriched = enrichCandles(candles);
+  idxChartCache.set(symbol, { at: Date.now(), candles: enriched });
+  return enriched;
 }
 
 // With BASE_PATH=/sally, "/sally/api/x" is routed as "/api/x" and only "/sally" returns

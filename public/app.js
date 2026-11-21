@@ -6,7 +6,7 @@ for (const type of ['gesturestart', 'gesturechange', 'gestureend']) {
 }
 
 const state = {
-  view: 'dashboard',
+  view: 'home',
   config: null,
   settings: null,
   coins: [],
@@ -129,13 +129,15 @@ function toast(title, message) {
 }
 
 // --- navigation ----------------------------------------------------------------
-const VIEW_TITLE = { dashboard: 'Dashboard', radar: 'Radar', settings: 'Settings' };
+const VIEW_TITLE = { home: 'Home', dashboard: 'Crypto', radar: 'Crypto radar', idx: 'Saham IDX', news: 'News', settings: 'Settings' };
+// Detail and sub views keep their parent's tab lit.
+const VIEW_TAB = { radar: 'dashboard', coin: 'dashboard', stock: 'idx' };
 function showView(name) {
   state.view = name;
   document.querySelectorAll('.view').forEach((el) => el.classList.add('hidden'));
   $(`view-${name}`).classList.remove('hidden');
-  document.querySelectorAll('.nav-tab').forEach((el) => el.classList.toggle('active', el.dataset.view === name));
-  $('pageTitle').textContent = name === 'coin' ? base(state.coinSymbol || '') : VIEW_TITLE[name];
+  document.querySelectorAll('.nav-tab').forEach((el) => el.classList.toggle('active', el.dataset.view === (VIEW_TAB[name] || name)));
+  $('pageTitle').textContent = name === 'coin' ? base(state.coinSymbol || '') : name === 'stock' ? (mk.stockSymbol || 'Stock') : VIEW_TITLE[name];
   window.scrollTo({ top: 0, behavior: reducedMotion.matches ? 'auto' : 'smooth' });
   renderCurrentView();
 }
@@ -231,6 +233,7 @@ function renderCurrentView() {
   else if (state.view === 'radar') renderRadar();
   else if (state.view === 'coin') renderCoin();
   else if (state.view === 'settings') renderSettings();
+  else renderMarketsView(state.view);
 }
 
 // --- header + robot status -------------------------------------------------------
@@ -441,6 +444,7 @@ function renderFiring() {
       </div>
       ${segmentsHtml(h, `fire-${coin.symbol}`)}
       <div class="fire-trigger">${triggerLine(coin, h)}</div>
+      ${oddsHtml(mk.insights?.plans?.[coin.symbol]?.odds, { compact: true, prefix: 'If bought: ' })}
       <div class="fire-foot">
         <svg class="ring sm" viewBox="0 0 44 44" aria-hidden="true"><circle class="ring-track" cx="22" cy="22" r="19"/><circle class="ring-fill ${h.stage === 'ready' ? 'bull' : 'signal'}" data-deadline="${h.decisionAt}" data-period="${period}" cx="22" cy="22" r="19"/></svg>
         <span>Decides in <span class="count" data-deadline="${h.decisionAt}">${fmtCountdown(h.decisionAt - Date.now())}</span></span>
@@ -494,6 +498,7 @@ function renderPositions() {
       </div>
       ${exit ? exitBarHtml(exit) : ''}
       ${exit?.nextCheckAt ? `<div class="muted small">${exitCheckText(exit)}</div>` : ''}
+      ${oddsHtml(mk.insights?.odds?.[pos.symbol], { compact: true, prefix: 'From here: ' })}
     </div>`;
   }).join('');
   bindOpeners(list);
@@ -508,7 +513,8 @@ function renderActivity() {
     if (item.kind === 'fill') {
       const buy = item.type === 'BUY';
       const pnl = item.realizedProfitIdr != null && !buy ? ` · ${item.realizedProfitIdr >= 0 ? '+' : ''}${fmtIdrShort(item.realizedProfitIdr)}` : '';
-      return `<div class="activity-item"><span class="icon ${buy ? 'buy' : 'sell'}">${buy ? 'B' : 'S'}</span><div><b>${buy ? 'Bought' : item.partial ? 'Sold part of' : 'Sold'} ${escapeHtml(base(item.symbol))}</b> at ${fmtPrice(item.price)}${pnl}<small>${escapeHtml(item.reason || '')} · ${when}</small></div></div>`;
+      const idx = item.market === 'idx';
+      return `<div class="activity-item"><span class="icon ${buy ? 'buy' : 'sell'}">${buy ? 'B' : 'S'}</span><div><b>${buy ? 'Bought' : item.partial ? 'Sold part of' : 'Sold'} ${escapeHtml(idx ? item.symbol : base(item.symbol))}</b>${idx ? ' <span class="market-badge idx tiny">IDX</span>' : ''} at ${idx ? fmtRp(item.price) : fmtPrice(item.price)}${pnl}<small>${escapeHtml(item.reason || '')} · ${when}</small></div></div>`;
     }
     if (item.kind === 'pause') return `<div class="activity-item"><span class="icon pause">!</span><div><b>Entries paused</b><small>${escapeHtml(item.reason)} · ${when}</small></div></div>`;
     return `<div class="activity-item"><span class="icon skip">-</span><div>Skipped ${escapeHtml(base(item.symbol))}<small>${escapeHtml(item.reason || '')} · ${when}</small></div></div>`;
@@ -1056,6 +1062,7 @@ function renderSettings() {
   $('setSlippage').value = s.slippagePct;
   $('setMinVolume').value = s.minTradeQuoteVolumeUsdt;
   $('setBinanceUrl').value = s.binanceBaseUrl;
+  renderIdxSettings();
 }
 
 // What the autopilot (src/engine/autopilot.js) chose on the last engine check
@@ -1184,13 +1191,16 @@ async function bootstrap() {
   const [config, settings] = await Promise.all([api('/api/config'), api('/api/settings')]);
   state.config = config;
   state.settings = settings;
-  await Promise.all([loadCore(), loadPrices(), loadNotifications(), loadVerdict(), loadAccuracy()]);
+  initMarkets();
+  await Promise.all([loadCore(), loadPrices(), loadNotifications(), loadVerdict(), loadAccuracy(), loadMarkets()]);
   setInterval(loadCore, 20_000);
+  setInterval(loadMarkets, 60_000);
   setInterval(loadPrices, 30_000);
   setInterval(loadNotifications, 30_000);
   setInterval(loadAccuracy, 5 * 60_000);
   setInterval(tickClock, 1000);
   setInterval(() => { if (state.view === 'coin' && state.coinSymbol) loadChart().catch(console.error); }, 60_000);
+  renderCurrentView();
 }
 
 bootstrap().catch((error) => {

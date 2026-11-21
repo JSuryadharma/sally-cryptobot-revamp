@@ -33,6 +33,14 @@ A 24/7 crypto paper-trading robot and dashboard for Binance USDT pairs. It reads
   - the trade it would place (entry, stop, size, money at risk);
   - anything that would stop it firing.
 
+## Two markets, one deposit (2026-11)
+
+- **Crypto** (Binance, unchanged strategy) and **Saham IDX** (Yahoo Finance `.JK`, IHSG as the regime filter) trade from one paper cash balance. Crypto positions stay in `portfolio.positions`; IDX positions live in `portfolio.books.idx`. `src/account.js` gives each market a view with its own positions and the shared cash, and sizing sees the whole account.
+- **Modular engine**: `src/engine/core.js` only runs the loop. Entry rules are modules in `src/engine/strategies/` (breakout, gap, pullback) behind one interface; the market only changes the candles and the config (`src/markets/`). Sizing (`sizing.js`), the pre-trade check (`preTradeCheck.js`), risk brakes (`riskGuard.js`) and paper execution (`ledger.js`) are shared. `test/goldenEngine.mjs` snapshots crypto fills across seven configs.
+- **News** (`src/news/`): Google News, CNBC Indonesia, CoinDesk and Cointelegraph RSS every 15 minutes, tagged to tickers, with a word-list tone score and the measured next-day price move per headline. Informational: the robot does not trade on news.
+- **From day-trader-skill** (github.com/Jakeschincariol/day-trader-skill, ported to JS): the daily setup scanner (`src/tools/scanner.js`), the risk manager as a pre-trade gate (on for IDX: min reward:risk 1 after costs, max 3 buys a day, 10% cash kept free, daily risk cap), whole-lot sizing, and the time machine (`src/tools/timeMachine.js`) that replays past daily candles to estimate target-before-stop odds.
+- IDX strategy (20-day breakout, 2.5 ATR stop, +2R) is not backtested yet: run `node scripts/idxBacktest.mjs` on a machine that can reach Yahoo Finance.
+
 ## How it runs
 
 The server does no trading on its own timer on Vercel. An external scheduler ([cron-job.org](https://cron-job.org)) calls `POST /api/engine/tick` every 5 minutes, at minutes 1, 6, 11, … 56. That lands each tick 1 minute after every 5-minute candle close, including each 4h and daily close. Each tick:

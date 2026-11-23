@@ -33,7 +33,7 @@ function conditionText(key, profile, hold = null) {
     pullback: { label: 'Price pulled back to the EMA20 in the last 5 candles', fail: 'no recent pullback to the EMA20' },
     reclaim: { label: `This ${trig} candle closes above the previous high`, fail: 'the candle has not closed above the previous high' },
     noChase: { label: 'Not overextended (close near the EMA20)', fail: 'price is stretched too far above the EMA20' },
-    btcRegime: { label: 'Bitcoin is above its 200-day average', fail: 'Bitcoin is below its 200-day average' },
+    btcRegime: { label: 'Bitcoin is above its 50-day average', fail: 'Bitcoin is below its 50-day average' },
     breakout: hold ? {
       label: hold.hours ? `Live price holds above the prior ${profile.breakoutLookback}-day high for ${hold.hours} hours`
         : hold.bufferAtr ? `Live price clears the prior ${profile.breakoutLookback}-day high by ${hold.bufferAtr} ATR` : `Live price trades above the prior ${profile.breakoutLookback}-day high`,

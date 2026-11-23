@@ -149,7 +149,12 @@ export function idxEngineCfg(settings) {
     drawdownHaltPct: settings.drawdownHaltPct,
     tradeAllocationPct: settings.tradeAllocationPct,
     timeZone: 'Asia/Jakarta',
-    regimeMode: 'either', // IHSG or the stock itself above its 200-day average (Joe, 2026-11-21)
+    // IHSG above its 50-day average (Joe, 2026-11-23: the 200-day is too slow).
+    // Backtest, 14 stocks 2015-2026 (Yahoo adj. close): IHSG>50d 11y +42% DD
+    // 35%, 2y +18% DD 13%; the old IHSG-or-stock >200d 11y +4.5% DD 56%, 2y
+    // -1.5% DD 25%; IHSG-or-stock >50d 11y -29% DD 60%.
+    regimeMode: 'btc200',
+    regimeDays: 50,
     maxOpenPositions: idx.maxOpenPositions ?? 4,
     maxNewEntriesPerBar: 3,
     // Typical online-broker fees: 0.15% buy, 0.25% sell (incl. 0.1% sales tax).

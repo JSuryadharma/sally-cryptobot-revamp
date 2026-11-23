@@ -41,9 +41,10 @@ const settings = {
   drawdownHaltPct: DEFAULT_ENGINE_CFG.drawdownHaltPct, tradeAllocationPct: DEFAULT_ENGINE_CFG.tradeAllocationPct, idx: { maxOpenPositions: 4 }
 };
 
-function run(profileOverride, { gate = true, regimeMode = null, fromMs = startMs } = {}) {
+function run(profileOverride, { gate = true, regimeMode = null, regimeDays = null, fromMs = startMs } = {}) {
   const cfg = { ...idxEngineCfg(settings), profileOverrides: { idxBreakout: profileOverride } };
   if (regimeMode) cfg.regimeMode = regimeMode;
+  if (regimeDays) cfg.regimeDays = regimeDays;
   if (!gate) cfg.preTrade = null;
   const account = createPortfolio(START_BALANCE);
   const book = bookView(account, 'idx');
@@ -68,9 +69,11 @@ function run(profileOverride, { gate = true, regimeMode = null, fromMs = startMs
 if (process.env.REGIME_ONLY) {
   const live = { breakoutLookback: 55, stopAtr: 3, targetR: 2 };
   const out = [];
-  for (const regimeMode of ['btc200', 'either', 'coin200', 'off']) {
-    for (const [w, days] of [['1m', 30], ['3m', 91], ['6m', 182], ['1y', 365], [`${years}y`, years * 365]]) {
-      out.push({ regimeMode, window: w, ...run(live, { regimeMode, fromMs: endMs - days * 86_400_000 }) });
+  const DAYS = (process.env.REGIME_DAYS || '200,50').split(',').map(Number);
+  const MODES = (process.env.REGIME_MODES || 'btc200,either,coin200,off').split(',');
+  for (const regimeDays of DAYS) for (const regimeMode of MODES) {
+    for (const [w, days] of [['1m', 30], ['3m', 91], ['6m', 182], ['1y', 365], ['2y', 730], [`${years}y`, years * 365]]) {
+      out.push({ regimeDays, regimeMode, window: w, ...run(live, { regimeMode, regimeDays, fromMs: endMs - days * 86_400_000 }) });
     }
   }
   console.table(out);

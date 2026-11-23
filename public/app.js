@@ -161,8 +161,8 @@ function livePrice(coin) {
 function liveChange(coin) { return state.prices[coin.symbol]?.changePct ?? coin.latest?.changePct ?? 0; }
 function headline(coin) { return coin?.prediction?.headline || null; }
 const STRATEGY_NOTES = {
-  breakout: 'Buys a daily close above the 20-day high while Bitcoin or the coin itself is above its 200-day average. Sells at +1R, otherwise after 30 days.',
-  breakout55: 'Buys a daily close above the 55-day high while Bitcoin or the coin itself is above its 200-day average. Sells at +3R, otherwise after 30 days.'
+  breakout: 'Buys a daily close above the 20-day high while Bitcoin is above its 50-day average. Sells at +1R, otherwise after 30 days.',
+  breakout55: 'Buys a daily close above the 55-day high while Bitcoin is above its 50-day average. Sells at +3R, otherwise after 30 days.'
 };
 const AUTOPILOT_STATUS = {
   ok: ['good', 'Measured'],
@@ -569,7 +569,7 @@ function renderPaper() {
   if (!closed) {
     badge.className = 'pill';
     badge.textContent = signals ? `${signals} open` : 'Watching';
-    $('paperMeta').textContent = 'Paper only, no trades placed. Records a signal when a coin closes above its 20- or 55-day high while BTC is above its 200-day average.'
+    $('paperMeta').textContent = 'Paper only, no trades placed. Records a signal when a coin closes above its 20- or 55-day high while BTC is above its 50-day average.'
       + (signals ? ` ${signals} signal${signals === 1 ? '' : 's'} still open.` : ' None yet.');
   } else {
     const totalR = Math.round(rules.reduce((s, r) => s + r.totalR, 0) * 100) / 100;
@@ -1088,7 +1088,7 @@ function renderAutopilot() {
   }
   const r = (v) => (v == null ? '-' : `${v >= 0 ? '+' : ''}${v}R`);
   const regime = a.regime?.known
-    ? `<span class="pill ${a.regime.btcAbove200d ? 'good' : 'warn'}">${a.regime.btcAbove200d ? 'BTC above its 200-day average' : 'BTC below its 200-day average: only coins above their own'}</span>`
+    ? `<span class="pill ${a.regime.btcAboveSma ? 'good' : 'warn'}">${a.regime.btcAboveSma ? `BTC above its ${a.regime.smaDays || 50}-day average` : `BTC below its ${a.regime.smaDays || 50}-day average: no new buys`}</span>`
     : '<span class="pill">BTC trend not known yet</span>';
   const rows = a.candidates.map((c) => {
     const [cls, word] = AUTOPILOT_STATUS[c.status] || ['', c.status];

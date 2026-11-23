@@ -155,6 +155,29 @@ export async function reconcileBrokers({ portfolio, settings, usdIdrRate, notifi
         await notify(`${label}: buy skipped ${p.symbol}`, error.message, 'warning');
       }
     }
+    // Scale-ins (engine/dca.js): the paper position bought more at its stop;
+    // buy the same extra on the venue so the real position matches its new stop.
+    for (const p of Object.values(paper)) {
+      const pos = state.crypto[p.tradeId];
+      if (!buysOn || !venue || !pos || !((p.dcaAdds || 0) > (pos.adds || 0)) || !(p.dcaLastSpendIdr > 0)) continue;
+      pos.adds = p.dcaAdds;
+      try {
+        const paperAmount = cfg.quote === 'IDR' ? p.dcaLastSpendIdr : p.dcaLastSpendIdr / usdIdrRate;
+        const free = await venue.free();
+        const amount = Math.min(paperAmount * cfg.scale, cfg.maxOrder, free * 0.98);
+        const fill = await venue.buy(p.symbol, amount, clientId(`ax${p.dcaAdds}`, p.tradeId));
+        if (!(fill.qty > 0)) throw new Error(`order not filled (${fill.status || 'no fill'})`);
+        pos.qty += Math.max(0, fill.qty - (fill.baseFee || 0));
+        pos.quoteSpent += fill.quote;
+        pos.paperStop = p.stopPrice;
+        pushLog(state, { market: 'crypto', kind: 'buy', symbol: p.symbol, tradeId: p.tradeId, qty: fill.qty, amount: fill.quote, quote: cfg.quote, avgPrice: fill.avgPrice, venue: cfg.venue, network: cfg.network, scaleIn: true });
+        actions.push({ kind: 'buy', symbol: p.symbol, amount: fill.quote });
+        await notify(`${label}: added to ${p.symbol}`, `Scale-in at the stop: ${fill.qty} at ~${fill.avgPrice?.toPrecision(6)} for ${fill.quote.toFixed(2)} ${cfg.quote}. New robot stop ${p.stopPrice}.`);
+      } catch (error) {
+        pushLog(state, { market: 'crypto', kind: 'buy-failed', symbol: p.symbol, tradeId: p.tradeId, message: `scale-in: ${error.message}` });
+        await notify(`${label}: scale-in skipped ${p.symbol}`, `${error.message}. The real position keeps its first lot; the robot still sells it at its stop or target.`, 'warning');
+      }
+    }
     // Forget failure marks of closed paper trades.
     for (const id of Object.keys(state.failed)) if (!paperTradeIds.has(id)) delete state.failed[id];
   }

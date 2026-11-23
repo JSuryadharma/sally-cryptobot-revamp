@@ -141,3 +141,27 @@ export function markToMarket(state, prices, usdIdrRate) {
     ? round2(((output.equityIdr - output.initialBalanceIdr) / output.initialBalanceIdr) * 100) : 0;
   return output;
 }
+
+// Adds `quantity` to an open position (averaging down, engine/dca.js). The
+// first lot's entryPrice, initialStop and riskIdr stay as they are, so R
+// multiples keep measuring against the trade's original risk.
+export function addToPosition(portfolio, {
+  symbol, quantity, price, reason, timeMs, barTime, usdIdrRate, roundTripCostPct, keepAllTransactions = false
+}) {
+  const position = portfolio.positions[symbol];
+  if (!position) return { transaction: null, note: 'No open position for this symbol.' };
+  const spendIdr = round2(quantity * price * usdIdrRate * (1 + roundTripCostPct / 200));
+  if (!(quantity > 0) || spendIdr > portfolio.balanceIdr + 0.01) return { transaction: null, note: 'Insufficient balance.' };
+  portfolio.balanceIdr = round2(portfolio.balanceIdr - spendIdr);
+  position.quantity += quantity;
+  position.investedIdr = round2(position.investedIdr + spendIdr);
+  position.investedUsdt = round2(position.investedIdr / usdIdrRate);
+  const transaction = {
+    id: newId('tx', timeMs), tradeId: position.tradeId, type: 'BUY', dca: true, symbol,
+    mode: position.profile, profile: position.profile, setup: 'dca',
+    quantity, price, spendIdr, reason: reason || '', balanceAfterIdr: portfolio.balanceIdr,
+    createdAt: new Date(timeMs).toISOString(), barTime
+  };
+  record(portfolio, transaction, keepAllTransactions);
+  return { transaction };
+}

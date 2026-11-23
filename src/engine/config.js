@@ -46,7 +46,7 @@ export const PROFILES = {
   // closes.
   breakout: {
     key: 'breakout',
-    label: 'Breakout 20-day (daily, BTC above its 200-day average)',
+    label: 'Breakout 20-day (daily, BTC above its 50-day average)',
     entry: 'breakout',
     triggerTf: '1d',
     filterTf: '1d',
@@ -70,7 +70,7 @@ export const PROFILES = {
   // 20-day breakout when the paper test shows it doing better.
   breakout55: {
     key: 'breakout55',
-    label: 'Breakout 55-day (daily, BTC above its 200-day average)',
+    label: 'Breakout 55-day (daily, BTC above its 50-day average)',
     entry: 'breakout',
     triggerTf: '1d',
     filterTf: '1d',
@@ -97,7 +97,7 @@ export const PROFILES = {
   // the prior 10-day low. Off by default.
   breakoutTrail: {
     key: 'breakoutTrail',
-    label: 'Breakout 20-day, exit at the 10-day low (daily, BTC above its 200-day average)',
+    label: 'Breakout 20-day, exit at the 10-day low (daily, BTC above its 50-day average)',
     entry: 'breakout',
     triggerTf: '1d',
     filterTf: '1d',
@@ -116,13 +116,13 @@ export const PROFILES = {
     barsPer24h: 1
   },
   // IDX stocks (markets/idx.js): the same daily breakout, with IHSG above its
-  // 200-day average as the regime filter. Bought at the daily close (IDX's
+  // 50-day average as the regime filter. Bought at the daily close (IDX's
   // post-closing session trades at the closing price), exits checked on daily
   // candles. NOT backtested yet: scripts/idxBacktest.mjs compares variants on
   // Yahoo Finance history and needs a machine that can reach Yahoo.
   idxBreakout: {
     key: 'idxBreakout',
-    label: 'IDX breakout 55-day (daily, IHSG or the stock above its 200-day average)',
+    label: 'IDX breakout 55-day (daily, IHSG above its 50-day average)',
     market: 'idx',
     entry: 'breakout',
     triggerTf: '1d',
@@ -205,11 +205,15 @@ export const DEFAULT_ENGINE_CFG = {
   // 4 positions and 1 entry per close returned +6.8%, drawdown 9.5%. Raising
   // risk alone (still 1 entry per close) mostly raised the drawdown.
   riskPerTradePct: 2,
-  // Breakout market filter (paperBreakout.regimeAllows). 'either': BTC or the
-  // coin itself above its 200-day average (Joe, 2026-11-21; engine backtest to
-  // 2026-11-14: 3y +188% vs +165%, last year +33.5% vs +20.2%, same 18.1% max
-  // drawdown as BTC-only). IDX uses 'either' too (IHSG or the stock), set in markets/idx.js.
-  regimeMode: 'either',
+  // Breakout market filter (paperBreakout.regimeAllows). Since 2026-11-23:
+  // BTC alone above its 50-day average (Joe: the 200-day is too slow for
+  // today's market). Engine backtest to 2026-11-21, Rp 20M: BTC>50d 3y +174%
+  // DD 19.2%, 1y +26.7%, 6m +26.6%, 3m +1.3%; the old BTC-or-coin >200d 3y
+  // +179% DD 18.1%, 1y +32.4%, 6m +18.6%, 3m -1.6%. BTC-or-coin >50d was
+  // worse than both (3y +153%), so the coin leg was dropped with the switch.
+  // 'btc200' means "the market symbol (BTC / IHSG)"; the days come from regimeDays.
+  regimeMode: 'btc200',
+  regimeDays: 50,
   maxPortfolioRiskPct: 10,
   maxOpenPositions: 6,
   tradeAllocationPct: 0.3,
@@ -375,7 +379,7 @@ export function describeProfile(profileKey, cfg = DEFAULT_ENGINE_CFG) {
     return {
       mode: profileKey,
       label: profile.label,
-      emaCrossLabel: `close above the prior ${profile.breakoutLookback}-day high, BTC above its 200-day average`,
+      emaCrossLabel: `close above the prior ${profile.breakoutLookback}-day high, BTC above its ${cfg?.regimeDays ?? 50}-day average`,
       rsiLabel: null,
       rsiRangeLabel: null,
       slAtrMult: profile.stopAtr,

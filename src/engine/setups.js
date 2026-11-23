@@ -1,4 +1,4 @@
-import { btcAbove200d, regimeAllows, regimeNote } from './paperBreakout.js';
+import { regimeAllows, regimeNote } from './paperBreakout.js';
 import { regimeLabelOf } from './config.js';
 
 // Long-only entry setups. Pure: works on enriched candle arrays plus an index,
@@ -157,7 +157,7 @@ function evaluateBreakout(ctx, checklist) {
 }
 
 // The breakout profile: buy the daily close above the prior N-day high while
-// BTC's daily close is above its 200-day average. Same rule as the research
+// the market filter passes (paperBreakout.regimeAllows, cfg.regimeDays). Same rule as the research
 // and the paper test (paperBreakout.js), plus the engine's liquidity check.
 function evaluateDailyBreakout(ctx) {
   const { trig, i, profile, cfg } = ctx;
@@ -195,7 +195,7 @@ function evaluateDailyBreakout(ctx) {
         setup: 'breakout', entryPrice: c.close, stopPrice: stop,
         // Same 0-100 scale as the pullback score; it ranks same-day signals only.
         score: Math.round(clamp01((c.close - priorHigh) / c.atr14) * 50 + clamp01(((c.close - c.low) / Math.max(c.high - c.low, 1e-12))) * 50),
-        reason: `Daily close ${roundPrice(c.close)} above the prior ${n}-day high ${level}, ${regime} above its 200-day average.`
+        reason: `Daily close ${roundPrice(c.close)} above the prior ${n}-day high ${level}, ${regimeNote(cfg, regime)}.`
       };
     }
   }

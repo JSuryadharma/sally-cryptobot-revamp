@@ -20,9 +20,9 @@
 // 55-day breakout alone, because each switch came after the leader's good run.
 // When every candidate is benched it pauses new entries, keeps the first
 // profile on so signals are still recorded, and resumes once the paper results
-// recover. BTC under its 200-day average blocks the breakout entries on its
+// recover. BTC under its 50-day average blocks the breakout entries on its
 // own; the autopilot only reports it.
-import { btcAbove200d } from './paperBreakout.js';
+import { aboveSma, DEFAULT_REGIME_DAYS } from './paperBreakout.js';
 import { PROFILES } from './config.js';
 
 export const AUTOPILOT_PARAMS = {
@@ -44,22 +44,23 @@ export const RETIRED = {
   scalping: 'Lost money in every backtest after costs.'
 };
 
-const BTC_SMA_DAYS = 200;
+const BTC_SMA_DAYS = DEFAULT_REGIME_DAYS;
 
 function round2(v) { return Math.round(v * 100) / 100; }
 
 function regimeAt(btcDaily, nowMs) {
-  if (!btcDaily?.length) return { known: false, btcAbove200d: false, btcClose: null, sma200: null };
+  if (!btcDaily?.length) return { known: false, btcAboveSma: false, smaDays: BTC_SMA_DAYS, btcClose: null, sma: null };
   let j = btcDaily.length - 1;
   while (j >= 0 && btcDaily[j].time * 1000 > nowMs) j -= 1;
-  if (j < BTC_SMA_DAYS - 1) return { known: false, btcAbove200d: false, btcClose: btcDaily[j]?.close ?? null, sma200: null };
+  if (j < BTC_SMA_DAYS - 1) return { known: false, btcAboveSma: false, smaDays: BTC_SMA_DAYS, btcClose: btcDaily[j]?.close ?? null, sma: null };
   let sum = 0;
   for (let k = j - BTC_SMA_DAYS + 1; k <= j; k += 1) sum += btcDaily[k].close;
   return {
     known: true,
-    btcAbove200d: btcAbove200d(btcDaily, btcDaily[j].time),
+    btcAboveSma: aboveSma(btcDaily, btcDaily[j].time, BTC_SMA_DAYS),
+    smaDays: BTC_SMA_DAYS,
     btcClose: btcDaily[j].close,
-    sma200: round2(sum / BTC_SMA_DAYS),
+    sma: round2(sum / BTC_SMA_DAYS),
     asOf: new Date(btcDaily[j].time * 1000).toISOString().slice(0, 10)
   };
 }
@@ -106,7 +107,7 @@ export function decideStrategy({ results, btcDaily, nowMs, params = AUTOPILOT_PA
 
   let summary;
   if (paused) summary = `New buys are paused: ${why}. The paper test keeps running and buying resumes once a breakout recovers.`;
-  else if (regime.known && !regime.btcAbove200d) summary = `Trading the ${describe(active)} (${why}). Bitcoin is below its 200-day average, so only coins above their own 200-day average can be bought.`;
+  else if (regime.known && !regime.btcAboveSma) summary = `Trading the ${describe(active)} (${why}). Bitcoin is below its ${BTC_SMA_DAYS}-day average, so new buys wait until it climbs back above.`;
   else summary = `Trading the ${describe(active)}, selling at +${active.targetR}R: ${why}.`;
 
   return {

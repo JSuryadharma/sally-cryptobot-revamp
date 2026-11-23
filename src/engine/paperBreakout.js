@@ -26,35 +26,51 @@ const LIVE_SCAN_BARS = 3;
 
 function round2(v) { return Math.round(v * 100) / 100; }
 
-// Is BTC's latest daily close at or before `time` above its 200-day average?
-export function btcAbove200d(btcDaily, time) {
-  if (!btcDaily?.length) return false;
-  let j = btcDaily.length - 1;
-  while (j >= 0 && btcDaily[j].time > time) j -= 1;
-  if (j < BTC_SMA_DAYS - 1) return false;
+// Days in the market filter's moving average (cfg.regimeDays). 50 since
+// 2026-11-23 (Joe: the 200-day was too slow for today's market).
+export const DEFAULT_REGIME_DAYS = 50;
+export function regimeDaysOf(cfg) {
+  const n = Number(cfg?.regimeDays);
+  return Number.isFinite(n) && n >= 2 ? Math.round(n) : DEFAULT_REGIME_DAYS;
+}
+
+// Is the latest daily close at or before `time` above its `days`-day average?
+export function aboveSma(daily, time, days = DEFAULT_REGIME_DAYS) {
+  if (!daily?.length) return false;
+  let j = daily.length - 1;
+  while (j >= 0 && daily[j].time > time) j -= 1;
+  if (j < days - 1) return false;
   let sum = 0;
-  for (let k = j - BTC_SMA_DAYS + 1; k <= j; k += 1) sum += btcDaily[k].close;
-  return btcDaily[j].close > sum / BTC_SMA_DAYS;
+  for (let k = j - days + 1; k <= j; k += 1) sum += daily[k].close;
+  return daily[j].close > sum / days;
+}
+
+// Is BTC's latest daily close at or before `time` above its 200-day average?
+// (Paper journal's original research rule; the live filter uses aboveSma.)
+export function btcAbove200d(btcDaily, time) {
+  return aboveSma(btcDaily, time, BTC_SMA_DAYS);
 }
 
 // Market filter for the engine's breakout entries (cfg.regimeMode):
-// 'btc200' (default) the regime symbol (BTC / IHSG) above its 200-day average;
-// 'coin200' the coin itself above its own 200-day average; 'either' one of the
-// two; 'off' no filter.
+// 'btc200' (default) the regime symbol (BTC / IHSG) above its N-day average;
+// 'coin200' the coin itself above its own N-day average; 'either' one of the
+// two; 'off' no filter. N = cfg.regimeDays (the mode names predate it).
 export function regimeNote(cfg, label) {
   const mode = cfg?.regimeMode || 'btc200';
+  const n = regimeDaysOf(cfg);
   if (mode === 'off') return 'no market filter';
-  if (mode === 'coin200') return 'coin above its 200-day average';
-  if (mode === 'either') return `${label} or the coin above its 200-day average`;
-  return `${label} above its 200-day average`;
+  if (mode === 'coin200') return `coin above its ${n}-day average`;
+  if (mode === 'either') return `${label} or the coin above its ${n}-day average`;
+  return `${label} above its ${n}-day average`;
 }
 
 export function regimeAllows(cfg, regimeDaily, coinDaily, time) {
   const mode = cfg?.regimeMode || 'btc200';
+  const n = regimeDaysOf(cfg);
   if (mode === 'off') return true;
-  if (mode === 'coin200') return btcAbove200d(coinDaily, time);
-  if (mode === 'either') return btcAbove200d(regimeDaily, time) || btcAbove200d(coinDaily, time);
-  return btcAbove200d(regimeDaily, time);
+  if (mode === 'coin200') return aboveSma(coinDaily, time, n);
+  if (mode === 'either') return aboveSma(regimeDaily, time, n) || aboveSma(coinDaily, time, n);
+  return aboveSma(regimeDaily, time, n);
 }
 
 // Entry plan if daily bar i breaks out under `rule`, else null. Uses bars <= i only.

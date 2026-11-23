@@ -1,5 +1,6 @@
-// Averaging down (DCA) on a capitulation-like spike, instead of (or before)
-// taking the stop-loss. Off by default (cfg.dca = null); research only, see
+// Averaging down (DCA) instead of (or before) taking the stop-loss. The default
+// is the plain scale-in at the stop (cfg.dca = SCALE_IN_AT_STOP); the spike
+// modes are research only. See
 // scripts/dcaBacktest.mjs and docs/research/dca-spike-2026-11-23.md.
 //
 // A "spike" is measured on the last `windowBars` closed exit candles (5m):
@@ -42,12 +43,9 @@ export const DCA_DEFAULTS = {
   targetR: 1
 };
 
-// The one variant that beat the plain stop in both test periods
-// (scripts/dcaBacktest.mjs, 36 months to 2026-11-21): when the 3-ATR stop is
-// reached, buy half the first lot more at that 5m close, with no spike or
-// volume condition, and move the stop to where all lots lose 1.5R (about 4
-// ATR under the first entry). The target stays where it was.
-export const SCALE_IN_AT_STOP = { mode: 'replace', rangeMult: 0, volMult: 0, red: false, addFrac: 0.5, capR: 1.5 };
+// The default (engine/config.js SCALE_IN_AT_STOP): the one variant that beat
+// the plain stop in both test periods.
+export { SCALE_IN_AT_STOP } from './config.js';
 
 export function dcaCfgOf(cfg) {
   return cfg?.dca ? { ...DCA_DEFAULTS, ...cfg.dca } : null;

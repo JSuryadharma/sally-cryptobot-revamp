@@ -23,7 +23,7 @@ const variants = {
 };
 const out = {};
 for (const [name, v] of Object.entries(variants)) {
-  const cfg = resolveEngineCfg({ minTradeQuoteVolumeUsdt: 0, preTrade: null, regimeMode: 'btc200', ...v });
+  const cfg = resolveEngineCfg({ minTradeQuoteVolumeUsdt: 0, preTrade: null, dca: null, regimeMode: 'btc200', ...v });
   const pf = createPortfolio(10_000_000);
   const r = advance(createEngineState(), pf, full, { nowMs: end, startMs: tradeStart, usdIdrRate: 16000, cfg, tradeSymbols: symbols, keepAllTransactions: true });
   const strip = (t) => ({ ...t, id: undefined, tradeId: undefined });

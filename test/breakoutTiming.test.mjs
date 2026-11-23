@@ -13,7 +13,7 @@ const startMs = START + 210.5 * 86_400_000;
 const endMs = START + BARS * TF_MS['15m'];
 
 function run(breakoutEntry) {
-  const cfg = resolveEngineCfg({ preTrade: null, minTradeQuoteVolumeUsdt: 0, earlyTf: '15m', exitTf: '15m', breakoutEntry });
+  const cfg = resolveEngineCfg({ preTrade: null, minTradeQuoteVolumeUsdt: 0, earlyTf: '15m', exitTf: '15m', breakoutEntry, dca: null });
   const out = advance(createEngineState(), createPortfolio(10_000_000), series, { nowMs: endMs, startMs, usdIdrRate: 16_000, cfg, tradeSymbols: symbols, keepAllTransactions: true });
   return out.transactions.filter((t) => t.type === 'BUY');
 }

@@ -1051,7 +1051,6 @@ function renderSettings() {
   if (!s) return;
   $('autoTradeToggle').checked = s.autoTrade.enabled;
   $('gapSleeveToggle').checked = s.gapSleeve?.enabled !== false;
-  $('scaleInToggle').checked = s.scaleIn?.enabled === true;
   renderAutopilot();
   $('setRiskPerTrade').value = s.riskPerTradePct;
   $('setMaxPositions').value = s.maxOpenPositions;
@@ -1120,10 +1119,6 @@ $('resetData').addEventListener('click', async () => {
 });
 $('gapSleeveToggle').addEventListener('change', async (e) => {
   try { await saveSettings({ gapSleeve: { enabled: e.target.checked } }); note('tradingNote', e.target.checked ? 'Gap rebound trades are on.' : 'Gap rebound trades are off. The paper test keeps recording them.', 'good'); loadCore(); }
-  catch (error) { e.target.checked = !e.target.checked; note('tradingNote', error.message, 'bad'); }
-});
-$('scaleInToggle').addEventListener('change', async (e) => {
-  try { await saveSettings({ scaleIn: { enabled: e.target.checked } }); note('tradingNote', e.target.checked ? 'Scale-in at the stop is on: a breakout that reaches its stop buys 0.5x more, new stop at -1.5R.' : 'Scale-in is off: breakouts sell at their 3-ATR stop.', 'good'); loadCore(); }
   catch (error) { e.target.checked = !e.target.checked; note('tradingNote', error.message, 'bad'); }
 });
 $('autoTradeToggle').addEventListener('change', async (e) => {

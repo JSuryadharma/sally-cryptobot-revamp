@@ -48,7 +48,11 @@ test('pre mode needs a spike with volume', () => {
 
 test('no DCA when cfg.dca is off', () => {
   const { portfolio, ctx } = setup();
-  ctx.cfg = resolveEngineCfg({ preTrade: null });
+  ctx.cfg = resolveEngineCfg({ preTrade: null, dca: null });
   const pos = portfolio.positions.TESTUSDT;
   assert.equal(dcaOnExitBar(ctx, { symbol: 'TESTUSDT', tf: '5m', i: 50 }, pos, { time: 1, open: 92, high: 92, low: 90, close: 91 }, 3, 'stop'), false);
+});
+
+test('scale-in at the stop is the engine default', () => {
+  assert.deepEqual(resolveEngineCfg({}).dca, SCALE_IN_AT_STOP);
 });

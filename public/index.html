@@ -318,7 +318,6 @@
             <h2>Auto-trading</h2>
             <label class="switch-row"><span><b>Trade automatically</b><small>When off, the robot only watches. Open positions keep their stops.</small></span><input type="checkbox" id="autoTradeToggle" role="switch" /></label>
             <label class="switch-row"><span><b>Gap rebound trades</b><small>Also buys a 1h rebound under a daily gap that formed on 2x volume. 0.5% risk, max loss 15%, sells at +1.5R or after 7 days.</small></span><input type="checkbox" id="gapSleeveToggle" role="switch" /></label>
-            <label class="switch-row"><span><b>Scale in at the stop</b><small>When a breakout reaches its 3-ATR stop, buy half the first lot more instead of selling, and move the stop to where the whole trade loses 1.5R (about 4 ATR under entry). Backtest: more profit in both periods, but a failed trade loses 1.5R instead of 1R.</small></span><input type="checkbox" id="scaleInToggle" role="switch" /></label>
             <div class="field-label">Strategy (chosen automatically)</div>
             <div id="autopilotPanel" class="stack tight"></div>
             <div class="form-grid">

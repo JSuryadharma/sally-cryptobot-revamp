@@ -1,6 +1,5 @@
 import { readJson, writeJson } from './storage.js';
 import { DEFAULT_ENGINE_CFG } from './engine/config.js';
-import { SCALE_IN_AT_STOP } from './engine/dca.js';
 import { DEFAULT_IDX_WATCHLIST, normalizeIdxSymbol } from './markets/idx.js';
 
 export const SETTINGS_FILE = 'settings.json';
@@ -27,8 +26,6 @@ function defaultSettings() {
     autoTrade: { enabled: true },
     // The gap-rebound sleeve (engine/config.js PROFILES.gap), next to the breakouts.
     gapSleeve: { enabled: true },
-    // Scale-in at the stop (engine/dca.js SCALE_IN_AT_STOP): off until Joe turns it on.
-    scaleIn: { enabled: false },
     // IDX stocks (markets/idx.js): a second book on the same cash pool.
     idx: { enabled: true, autoTrade: true, watchlist: [...DEFAULT_IDX_WATCHLIST], maxOpenPositions: 4 },
     riskPerTradePct: DEFAULT_ENGINE_CFG.riskPerTradePct,
@@ -130,7 +127,6 @@ export function normalize(input, watchlistFallback) {
     // to live here are gone: stored values are dropped on the next save.
     autoTrade: { enabled: raw.autoTrade?.enabled !== false },
     gapSleeve: { enabled: raw.gapSleeve?.enabled !== false },
-    scaleIn: { enabled: raw.scaleIn?.enabled === true },
     idx: {
       enabled: raw.idx?.enabled !== false,
       autoTrade: raw.idx?.autoTrade !== false,
@@ -186,7 +182,6 @@ export async function readSettings() {
     ...stored,
     autoTrade: { ...base.autoTrade, ...stored.autoTrade },
     gapSleeve: { ...base.gapSleeve, ...stored.gapSleeve },
-    scaleIn: { ...base.scaleIn, ...stored.scaleIn },
     idx: { ...base.idx, ...stored.idx },
     telegram: { ...base.telegram, ...stored.telegram },
     liveTrading: { ...base.liveTrading, ...stored.liveTrading }
@@ -200,7 +195,6 @@ export async function updateSettings(patch) {
     ...patch,
     autoTrade: { ...current.autoTrade, ...(patch.autoTrade || {}) },
     gapSleeve: { ...current.gapSleeve, ...(patch.gapSleeve || {}) },
-    scaleIn: { ...current.scaleIn, ...(patch.scaleIn || {}) },
     idx: { ...current.idx, ...(patch.idx || {}) },
     telegram: { ...current.telegram, ...(patch.telegram || {}) },
     liveTrading: { ...current.liveTrading, ...(patch.liveTrading || {}) }
@@ -220,7 +214,6 @@ export function publicSettings(settings) {
     watchlist: settings.watchlist,
     autoTrade: settings.autoTrade,
     gapSleeve: settings.gapSleeve,
-    scaleIn: settings.scaleIn,
     idx: settings.idx,
     telegram: {
       enabled: settings.telegram.enabled,
@@ -267,7 +260,6 @@ export function engineCfgFromSettings(settings, autopilot = null) {
     timeZone: settings.timeZone,
     earlyEntry: false,
     profiles: { ...(autopilot?.profiles || DEFAULT_ENGINE_CFG.profiles), gap: settings.gapSleeve?.enabled !== false },
-    dca: settings.scaleIn?.enabled === true ? SCALE_IN_AT_STOP : null,
     autopilotPause: autopilot?.paused ? autopilot.pauseReason : null
   };
 }

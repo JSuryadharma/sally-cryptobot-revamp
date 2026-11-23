@@ -1,4 +1,4 @@
-// Averaging down on capitulation spikes (engine/dca.js) vs the live stop rule,
+// Averaging down on capitulation spikes (engine/dca.js) vs the plain stop rule,
 // through the real engine (autopilot, skill gate, gap sleeve) on one account.
 //
 //   KLINES_DIR=... node scripts/dcaBacktest.mjs --months 36 --end 2026-11-21
@@ -10,10 +10,10 @@ import { SCALE_IN_AT_STOP } from '../src/engine/dca.js';
 
 const MONTH_MS = 30 * 86_400_000;
 
-// name -> cfg.dca (null = live rule). Defaults in engine/dca.js DCA_DEFAULTS.
+// name -> cfg.dca (null = plain stop). Defaults in engine/dca.js DCA_DEFAULTS.
 export const VARIANTS = {
-  'live: 3-ATR stop, no DCA': null,
-  'SHIPPED scale-in at stop (Settings switch)': SCALE_IN_AT_STOP,
+  'plain 3-ATR stop, no DCA': null,
+  'DEFAULT scale-in at stop': SCALE_IN_AT_STOP,
   // Add before the stop: trade >= 0.5R under water + 1h spike.
   'pre 1h 3xATR 3xVol, +1x, cap 2R': { mode: 'pre' },
   'pre 1h 2xATR 2xVol, +1x, cap 2R': { mode: 'pre', rangeMult: 2, volMult: 2 },
@@ -115,7 +115,7 @@ async function main() {
   const rows = [];
   const trades = {};
   const windows = [['all', startMs, args.end], ['train', startMs, args.split], ['test', args.split, args.end]];
-  for (const [name, dca] of Object.entries(VARIANTS).filter(([n]) => n.startsWith('live') || !process.env.ONLY || process.env.ONLY.split('|').some((o) => n.includes(o)))) {
+  for (const [name, dca] of Object.entries(VARIANTS).filter(([n]) => n.startsWith('plain') || !process.env.ONLY || process.env.ONLY.split('|').some((o) => n.includes(o)))) {
     for (const [label, from, to] of windows) {
       const t0 = Date.now();
       const cfg = dca?.extra ? resolveEngineCfg({ ...base, ...dca.extra, dca: null }) : resolveEngineCfg({ ...base, dca });

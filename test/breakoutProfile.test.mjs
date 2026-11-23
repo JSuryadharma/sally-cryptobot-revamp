@@ -10,7 +10,7 @@ import { syntheticSeries } from './helpers.mjs';
 
 const RATE = 16_000;
 const breakout = PROFILES.breakout;
-const cfg = resolveEngineCfg({ minTradeQuoteVolumeUsdt: 0, breakoutEntry: 'close' });
+const cfg = resolveEngineCfg({ preTrade: null, minTradeQuoteVolumeUsdt: 0, breakoutEntry: 'close' });
 const position = (o = {}) => ({
   symbol: 'X', profile: 'breakout', quantity: 1, entryPrice: 100, stopPrice: 96, initialStop: 96,
   highWaterMark: 100, barsHeld: 0, partialTaken: false, mfeR: 0, investedIdr: 100 * RATE, ...o
@@ -18,7 +18,7 @@ const position = (o = {}) => ({
 const bar = (o) => ({ time: 0, open: 101, high: 102, low: 99, close: 101, atr14: 2, ema50: 90, ...o });
 
 test('breakout plus the gap sleeve are on by default', () => {
-  assert.deepEqual(cfg.profiles, { scalping: false, swing: false, trend: false, breakout: true, breakout55: false, gap: true });
+  assert.deepEqual(cfg.profiles, { scalping: false, swing: false, trend: false, breakout: true, breakout55: false, breakoutTrail: false, gap: true });
 });
 
 test('strategy switches are no longer settings: the autopilot decision sets the profiles', () => {
@@ -61,7 +61,7 @@ test('engine breakout trades match the paper test trade for trade', () => {
   const startMs = START + 210.5 * 86_400_000;
   const endMs = START + BARS * TF_MS['15m'];
   // With the paper test's researched 2x ATR stop (the live profile uses 3x).
-  const loose = resolveEngineCfg({
+  const loose = resolveEngineCfg({ preTrade: null,
     profileOverrides: { breakout: { stopAtr: 2 } }, breakoutEntry: 'close',
     minTradeQuoteVolumeUsdt: 0, slippagePct: 0, maxOpenPositions: 50, maxNewEntriesPerBar: 50, maxPortfolioRiskPct: 100,
     tradeAllocationPct: 0.05, maxConsecutiveLosses: 1000, dailyLossLimitPct: 100, drawdownHaltPct: 100

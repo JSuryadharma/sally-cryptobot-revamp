@@ -92,6 +92,58 @@ export const PROFILES = {
     cooldownBars: 1,
     barsPer24h: 1
   },
+  // Trend-following variant (time-travel study 2026-11-21, scripts/timeTravel.mjs):
+  // the 20-day breakout with no fixed target, sold when a daily close breaks
+  // the prior 10-day low. Off by default.
+  breakoutTrail: {
+    key: 'breakoutTrail',
+    label: 'Breakout 20-day, exit at the 10-day low (daily, BTC above its 200-day average)',
+    entry: 'breakout',
+    triggerTf: '1d',
+    filterTf: '1d',
+    breakoutLookback: 20,
+    stopAtr: 2,
+    targetR: 0,
+    channelExitBars: 10,
+    timeStopBars: 120,
+    timeStopMinR: Infinity,
+    trailAtrMult: null,
+    breakeven: false,
+    earlyEntry: false,
+    trendExit: false,
+    cooldownAfterAnyExit: true,
+    cooldownBars: 1,
+    barsPer24h: 1
+  },
+  // IDX stocks (markets/idx.js): the same daily breakout, with IHSG above its
+  // 200-day average as the regime filter. Bought at the daily close (IDX's
+  // post-closing session trades at the closing price), exits checked on daily
+  // candles. NOT backtested yet: scripts/idxBacktest.mjs compares variants on
+  // Yahoo Finance history and needs a machine that can reach Yahoo.
+  idxBreakout: {
+    key: 'idxBreakout',
+    label: 'IDX breakout 55-day (daily, IHSG or the stock above its 200-day average)',
+    market: 'idx',
+    entry: 'breakout',
+    triggerTf: '1d',
+    filterTf: '1d',
+    // 55-day / 3 ATR / +2R (2026-11-21, scripts/idxBacktest.mjs): beat the old
+    // 20-day / 2.5 ATR on BEI OHLC 2021-02..2025-02 (+5.0% vs -4.2%, real IHSG)
+    // and on 14 stocks 2024-11..2026-11 (+2.1% vs -1.6%); over 11 years the
+    // 20-day made more (+86% vs +69%) with a similar drawdown.
+    // Set minSkillSetups: 2 to also require two day-trader-skill setups.
+    breakoutLookback: 55,
+    stopAtr: 3,
+    targetR: 2,
+    timeStopBars: 30,
+    timeStopMinR: Infinity,
+    trailAtrMult: null,
+    breakeven: false,
+    earlyEntry: false,
+    cooldownAfterAnyExit: true,
+    cooldownBars: 1,
+    barsPer24h: 1
+  },
   // Gap rebound (paperGap.js has the rule; scripts/gapResearch.mjs the
   // research). Runs next to the breakouts, not chosen by the autopilot, and
   // has its own on/off switch in Settings. Buys a 1h rebound (RSI back from
@@ -153,6 +205,11 @@ export const DEFAULT_ENGINE_CFG = {
   // 4 positions and 1 entry per close returned +6.8%, drawdown 9.5%. Raising
   // risk alone (still 1 entry per close) mostly raised the drawdown.
   riskPerTradePct: 2,
+  // Breakout market filter (paperBreakout.regimeAllows). 'either': BTC or the
+  // coin itself above its 200-day average (Joe, 2026-11-21; engine backtest to
+  // 2026-11-14: 3y +188% vs +165%, last year +33.5% vs +20.2%, same 18.1% max
+  // drawdown as BTC-only). IDX uses 'either' too (IHSG or the stock), set in markets/idx.js.
+  regimeMode: 'either',
   maxPortfolioRiskPct: 10,
   maxOpenPositions: 6,
   tradeAllocationPct: 0.3,
@@ -215,16 +272,27 @@ export const DEFAULT_ENGINE_CFG = {
   // The 4h/daily pullback (swing, trend) lost money on the test period of the
   // entry research, so breakout is the only strategy on by default. Live, the
   // autopilot (autopilot.js) picks the profiles on every tick.
-  profiles: { scalping: false, swing: false, trend: false, breakout: true, breakout55: false, gap: true },
+  profiles: { scalping: false, swing: false, trend: false, breakout: true, breakout55: false, breakoutTrail: false, gap: true },
   // Set by the autopilot when every candidate strategy is losing in the paper
   // test: signals are still recorded, but no new position is opened.
   autopilotPause: null,
   setup: SETUP_PARAMS
 };
 
+// day-trader-skill's risk manager limits (engine/preTradeCheck.js), on for
+// crypto since 2026-11-21: in scripts/skillEngineBacktest.mjs (36 months to
+// 2026-11-15) it lifted the robot from +143% / DD 21.3% to +172% / DD 15.9%;
+// the last 14 months were unchanged (+33.9% vs +33.8%). The gain comes from
+// the reward:risk rule, which blocks the 20-day breakout's +1R target after
+// costs (the daily limits alone: +131% / DD 22.9%). Pass preTrade: null to turn it off.
+export function skillGate(riskPerTradePct = DEFAULT_ENGINE_CFG.riskPerTradePct) {
+  return { minRewardRisk: 1, maxLossPerTradePct: Math.max(riskPerTradePct * 1.25, 0.5), maxDailyRiskPct: 6, maxTradesPerDay: 3, cashBufferPct: 10 };
+}
+
 export function resolveEngineCfg(overrides = {}) {
   return {
     ...DEFAULT_ENGINE_CFG,
+    preTrade: skillGate(overrides.riskPerTradePct ?? DEFAULT_ENGINE_CFG.riskPerTradePct),
     ...overrides,
     profiles: { ...DEFAULT_ENGINE_CFG.profiles, ...(overrides.profiles || {}) },
     profileOverrides: overrides.profileOverrides || {},
@@ -244,6 +312,16 @@ export function profilesFor(cfg) {
     profileCache.set(cfg, cached);
   }
   return cached;
+}
+
+// The market's regime filter for the breakout: BTC for crypto, IHSG for IDX
+// stocks (markets/idx.js sets cfg.regimeSymbol and cfg.regimeLabel).
+export function regimeSymbolOf(cfg) {
+  return cfg?.regimeSymbol || BTC_SYMBOL;
+}
+
+export function regimeLabelOf(cfg) {
+  return cfg?.regimeLabel || 'BTC';
 }
 
 export function profileTimeStopBars(profile, cfg) {

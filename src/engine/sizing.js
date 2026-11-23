@@ -2,12 +2,16 @@
 
 // Equity at cost basis: cash plus what is tied up in open positions. Used for
 // sizing and risk limits so they move with realized results, not intrabar noise.
+//
+// One cash pool backs every market (account.js bookView): a market's view adds
+// the other markets' invested money and open risk, so sizing and the risk
+// brakes see the whole account.
 export function bookEquityIdr(portfolio) {
-  return portfolio.balanceIdr + Object.values(portfolio.positions || {}).reduce((s, p) => s + (p.investedIdr || 0), 0);
+  return portfolio.balanceIdr + (portfolio.otherInvestedIdr || 0) + Object.values(portfolio.positions || {}).reduce((s, p) => s + (p.investedIdr || 0), 0);
 }
 
 export function openRiskIdr(portfolio, usdIdrRate) {
-  return Object.values(portfolio.positions || {}).reduce((sum, p) => {
+  return (portfolio.otherOpenRiskIdr || 0) + Object.values(portfolio.positions || {}).reduce((sum, p) => {
     const perUnit = p.entryPrice - p.stopPrice;
     return perUnit > 0 ? sum + perUnit * p.quantity * usdIdrRate : sum;
   }, 0);
@@ -27,6 +31,11 @@ export function sizePosition({ portfolio, entryPrice, stopPrice, usdIdrRate, cfg
   const capIdr = Math.min(cfg.tradeAllocationPct * equity, portfolio.balanceIdr);
   const notionalIdr = qty * entryPrice * usdIdrRate * entryFeeFactor;
   if (notionalIdr > capIdr) qty = capIdr / (entryPrice * usdIdrRate * entryFeeFactor);
+  // Whole lots only where the market trades in lots (IDX: 1 lot = 100 shares).
+  if (cfg.lotSize) {
+    qty = Math.floor(qty / cfg.lotSize + 1e-9) * cfg.lotSize;
+    if (!(qty > 0)) return { qty: 0, reason: `less than 1 lot (${cfg.lotSize} shares) fits the risk and size limits` };
+  }
   if (qty * entryPrice < cfg.minNotionalUsdt) return { qty: 0, reason: 'position below minimum size' };
 
   const actualRiskIdr = qty * (entryPrice - stopPrice + costPerUnit) * usdIdrRate;

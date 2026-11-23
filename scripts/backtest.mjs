@@ -44,7 +44,7 @@ export const DEFAULT_SYMBOLS = ['BTCUSDT', 'ETHUSDT', 'BNBUSDT', 'SOLUSDT', 'XRP
 const DEFAULT_BASE_URL = 'https://data-api.binance.vision';
 const MONTH_MS = 30 * 86_400_000;
 const USD_IDR = 16_800;
-const INITIAL_IDR = 10_000_000;
+const INITIAL_IDR = Number(process.env.INITIAL_IDR) || 10_000_000;
 
 // Only used with --train > 0. Kept small: every extra knob raises the odds of
 // fitting noise.
@@ -108,7 +108,13 @@ function parseArgs(argv) {
 // It must stay opt-in: the API route (src/backtestRunner.js) runs this on
 // Vercel, whose deployed filesystem is read-only outside /tmp, so writing a
 // cache file there fails every call.
-async function loadRaw({ baseUrl, symbol, tf, startMs, endMs, useCache }) {
+export async function loadRaw({ baseUrl, symbol, tf, startMs, endMs, useCache }) {
+  // KLINES_DIR: a folder of <SYMBOL>_<tf>.json candle arrays (e.g. built from a
+  // mirror when Binance is unreachable); sliced to the requested window.
+  if (process.env.KLINES_DIR) {
+    const all = JSON.parse(await fs.readFile(path.join(process.env.KLINES_DIR, `${symbol}_${tf}.json`), 'utf8'));
+    return all.filter((b) => b.time * 1000 >= startMs && b.time * 1000 < endMs);
+  }
   if (!useCache) return fetchKlinesRange(baseUrl, symbol, tf, startMs, endMs);
   const cacheDir = path.join(ROOT, 'benchmarks', '.cache');
   const file = path.join(cacheDir, `${symbol}_${tf}_${startMs}_${endMs}.json`);

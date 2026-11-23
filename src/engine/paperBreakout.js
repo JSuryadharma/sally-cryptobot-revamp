@@ -37,6 +37,26 @@ export function btcAbove200d(btcDaily, time) {
   return btcDaily[j].close > sum / BTC_SMA_DAYS;
 }
 
+// Market filter for the engine's breakout entries (cfg.regimeMode):
+// 'btc200' (default) the regime symbol (BTC / IHSG) above its 200-day average;
+// 'coin200' the coin itself above its own 200-day average; 'either' one of the
+// two; 'off' no filter.
+export function regimeNote(cfg, label) {
+  const mode = cfg?.regimeMode || 'btc200';
+  if (mode === 'off') return 'no market filter';
+  if (mode === 'coin200') return 'coin above its 200-day average';
+  if (mode === 'either') return `${label} or the coin above its 200-day average`;
+  return `${label} above its 200-day average`;
+}
+
+export function regimeAllows(cfg, regimeDaily, coinDaily, time) {
+  const mode = cfg?.regimeMode || 'btc200';
+  if (mode === 'off') return true;
+  if (mode === 'coin200') return btcAbove200d(coinDaily, time);
+  if (mode === 'either') return btcAbove200d(regimeDaily, time) || btcAbove200d(coinDaily, time);
+  return btcAbove200d(regimeDaily, time);
+}
+
 // Entry plan if daily bar i breaks out under `rule`, else null. Uses bars <= i only.
 export function breakoutPlan(daily, i, rule, btcDaily) {
   const bar = daily[i];

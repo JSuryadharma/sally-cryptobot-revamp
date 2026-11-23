@@ -19,6 +19,7 @@ import { openPositionQty, sellPosition, normalizePosition } from './ledger.js';
 import { createRiskState, updateRisk, recordTradeResult, entryBlock } from './riskGuard.js';
 import { preTradeCheck, recordEntry } from './preTradeCheck.js';
 import { strategyFor } from './strategies/index.js';
+import { dcaOnExitBar } from './dca.js';
 import { closeMsOf, lastClosedIndex, firstAfter, symbolState } from './bars.js';
 
 export { breakoutMode } from './strategies/index.js';
@@ -120,9 +121,14 @@ function manage(ctx, event) {
     const trig = series[event.symbol][profile.triggerTf];
     const ti = trig ? lastClosedIndex(trig, profile.triggerTf, event.closeMs) : -1;
     portfolio.positions[event.symbol] = position;
-    const { fills, updates } = onExitBar(position, bar, profile, cfg, ti >= 0 ? trig[ti].atr14 : null);
+    const atr = ti >= 0 ? trig[ti].atr14 : null;
+    // Averaging down (cfg.dca, off by default): on the candle that reaches the
+    // stop, a capitulation spike can buy more instead of selling (engine/dca.js).
+    if (cfg.dca && bar.low <= position.stopPrice && dcaOnExitBar(ctx, event, position, bar, atr, 'stop')) return;
+    const { fills, updates } = onExitBar(position, bar, profile, cfg, atr);
     if (updates) Object.assign(position, updates);
     if (fills.length) applyFills(ctx, event.symbol, fills, bar);
+    else if (cfg.dca && portfolio.positions[event.symbol]) dcaOnExitBar(ctx, event, portfolio.positions[event.symbol], bar, atr, 'after');
     return;
   }
   if (profile.triggerTf !== event.tf) return;
@@ -171,7 +177,7 @@ export function advance(state, portfolio, series, opts) {
   const { nowMs, live = false, usdIdrRate, cfg, onGroup } = opts;
   const tradeSymbols = new Set(opts.tradeSymbols);
   state.risk ||= createRiskState();
-  const out = { transactions: [], signals: [], riskEvents: [], latestEvaluations: {}, barsProcessed: 0 };
+  const out = { transactions: [], signals: [], riskEvents: [], latestEvaluations: {}, barsProcessed: 0, dcaEvents: [] };
   const ctx = {
     portfolio, state, series, cfg, usdIdrRate, out, currentMs: 0,
     keepAll: Boolean(opts.keepAllTransactions),

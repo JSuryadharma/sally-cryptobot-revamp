@@ -198,6 +198,8 @@ export const SETUP_PARAMS = {
   roomLookback: 50
 };
 
+export const SCALE_IN_AT_STOP = { mode: 'replace', rangeMult: 0, volMult: 0, red: false, addFrac: 0.5, capR: 1.5 };
+
 export const DEFAULT_ENGINE_CFG = {
   // 24-month backtest (2024-10 to 2026-10, 15 coins, 5m exits, autopilot):
   // 2% risk, 6 positions and up to 6 new entries per daily close returned
@@ -280,6 +282,15 @@ export const DEFAULT_ENGINE_CFG = {
   // Set by the autopilot when every candidate strategy is losing in the paper
   // test: signals are still recorded, but no new position is opened.
   autopilotPause: null,
+  // Scale-in at the stop (engine/dca.js), the default since 2026-11-23 (Joe):
+  // when a breakout reaches its 3-ATR stop, buy 0.5x the first lot at that 5m
+  // close instead of selling and move the stop to where all lots lose 1.5R
+  // (about 4 ATR under entry); the target stays. 36-month engine backtest to
+  // 2026-11-21: +306% / DD 16.7% vs +193% / 15.9% with the plain stop; last
+  // 14 months +70.9% / 12.8% vs +43.9% / 13.3%. A failed trade loses 1.5R.
+  // Spike/volume-triggered DCA was tested and had no edge
+  // (docs/research/dca-spike-2026-11-23.md). null = the plain stop.
+  dca: SCALE_IN_AT_STOP,
   setup: SETUP_PARAMS
 };
 

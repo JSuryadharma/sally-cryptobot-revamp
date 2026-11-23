@@ -136,7 +136,9 @@ export async function readPaperGap() {
 async function notifyResults(notifications, out, cfg, prefix = '') {
   const labels = profilesFor(cfg);
   for (const tx of out.transactions) {
-    if (tx.type === 'BUY') {
+    if (tx.type === 'BUY' && tx.dca) {
+      await notifications.notify({ title: `${prefix}ADD ${tx.symbol}`, message: `${tx.reason} Bought ${tx.quantity} at ${tx.price}.`, level: 'info', category: 'trade' });
+    } else if (tx.type === 'BUY') {
       await notifications.notify({
         title: `${prefix}BUY ${tx.symbol}`,
         message: `${tx.reason} Confidence ${tx.confidencePct ?? 0}% (${labels[tx.profile]?.label || tx.profile}). Stop ${tx.stopPrice}, risk Rp ${Math.round(tx.riskIdr).toLocaleString('id-ID')}.`,

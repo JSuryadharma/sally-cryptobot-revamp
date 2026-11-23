@@ -151,3 +151,36 @@ export function dcaOnExitBar(ctx, event, position, bar, triggerAtr, phase) {
   ctx.out.dcaEvents?.push({ symbol: event.symbol, at: tx.createdAt, price: tx.price, rangeX: spike?.rangeX, volX: spike?.volX, stop: position.stopPrice, mode: d.mode });
   return true;
 }
+
+// What the scale-in at the stop will do (or did) for an open position, for the
+// trade details screen. Null when cfg.dca is off, a spike mode is set, or the
+// position's profile isn't covered. Before it fires, the buy-more price is the
+// current stop (the robot buys at the close of the 5m candle that reaches it),
+// and newStop is the hard stop computed as if the add filled exactly there.
+export function scaleInPlan(rawPosition, cfg, usdIdrRate) {
+  const d = dcaCfgOf(cfg);
+  if (!d || d.mode !== 'replace' || d.rangeMult > 0 || d.volMult > 0 || d.red) return null;
+  const position = rawPosition;
+  if (!d.profiles.includes(position.profile)) return null;
+  const addQuantity = (position.initialQuantity ?? position.quantity) * d.addFrac;
+  const base = { addFrac: d.addFrac, capR: d.capR, addQuantity: Number(addQuantity.toPrecision(8)) };
+  const adds = position.dcaAdds || 0;
+  if (adds >= d.maxAdds) {
+    return { ...base, triggered: true, newStop: position.stopPrice, addSpendIdr: position.dcaLastSpendIdr ?? null };
+  }
+  const risk = position.entryPrice - position.initialStop;
+  if (!(risk > 0) || !(usdIdrRate > 0)) return null;
+  const price = position.stopPrice;
+  const fill = price * (1 + cfg.slippagePct / 100);
+  const addSpendIdr = addQuantity * fill * usdIdrRate * (1 + cfg.roundTripCostPct / 200);
+  const riskIdr = position.riskIdr ?? (position.initialQuantity ?? position.quantity) * risk * usdIdrRate;
+  const after = { ...position, quantity: position.quantity + addQuantity, investedIdr: position.investedIdr + addSpendIdr, riskIdr };
+  const newStop = capStopFor(after, d, cfg, usdIdrRate);
+  return {
+    ...base,
+    triggered: false,
+    price,
+    addSpendIdr: Math.round(addSpendIdr),
+    newStop: newStop > 0 && newStop < fill * 0.99 ? Number(newStop.toPrecision(8)) : null
+  };
+}

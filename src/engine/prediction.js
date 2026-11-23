@@ -8,6 +8,7 @@ import { sizePosition } from './sizing.js';
 import { entryBlock } from './riskGuard.js';
 import { normalizePosition } from './ledger.js';
 import { breakoutMode } from './core.js';
+import { scaleInPlan } from './dca.js';
 
 export const STAGE_RANK = { blocked: 0, watching: 1, 'setting-up': 2, ready: 3, holding: 4 };
 // Checklist per entry type: market gates first, then the setup itself.
@@ -201,7 +202,7 @@ function profilePrediction({ symbol, profile, series, live, cfg, portfolio, risk
   };
 }
 
-function exitPrediction({ position: raw, series, live, cfg, nowMs }) {
+function exitPrediction({ position: raw, series, live, cfg, nowMs, usdIdrRate }) {
   const position = normalizePosition(raw);
   const profile = profilesFor(cfg)[position.profile];
   if (!profile) return null;
@@ -231,6 +232,8 @@ function exitPrediction({ position: raw, series, live, cfg, nowMs }) {
     rNow: riskPerUnit > 0 ? round2((price - position.entryPrice) / riskPerUnit) : null,
     breakevenArmPrice: !profileBreakeven(profile, cfg) || position.partialTaken || !(riskPerUnit > 0) ? null : roundPrice(position.entryPrice + cfg.partialAtR * riskPerUnit),
     targetPrice: position.targetPrice ? roundPrice(position.targetPrice) : targetR && riskPerUnit > 0 ? roundPrice(position.entryPrice + targetR * riskPerUnit) : null,
+    // Scale-in at the stop (engine/dca.js): buy-more price, size, new stop.
+    scaleIn: scaleInPlan(position, cfg, usdIdrRate),
     timeStopAt: timeStopActive ? position.openedBarTime * 1000 + tfMs * (1 + timeStopBars) : null,
     // The stop and target are checked on every exit candle (5m) when exit checks are on.
     checkTf,
@@ -243,7 +246,7 @@ function exitPrediction({ position: raw, series, live, cfg, nowMs }) {
 export function predictCoin({ symbol, series, live, cfg, portfolio, risk, symbolState, autoTradeOn, usdIdrRate, nowMs = Date.now() }) {
   const held = portfolio.positions?.[symbol];
   if (held) {
-    const exit = exitPrediction({ position: held, series, live, cfg, nowMs });
+    const exit = exitPrediction({ position: held, series, live, cfg, nowMs, usdIdrRate });
     return { headline: exit, byProfile: {}, exit };
   }
   const byProfile = {};

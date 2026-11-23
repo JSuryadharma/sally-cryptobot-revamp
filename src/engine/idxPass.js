@@ -6,7 +6,7 @@
 import { advance, createEngineState } from './core.js';
 import { bookView } from '../account.js';
 import { loadIdxSeries, idxEngineCfg, idxSessionOpen, IDX_REGIME_SYMBOL, IDX_NAMES } from '../markets/idx.js';
-import { btcAbove200d, regimeAllows } from './paperBreakout.js';
+import { aboveSma, regimeAllows, regimeDaysOf, regimeNote } from './paperBreakout.js';
 import { buildOrderList } from './orderPlans.js';
 import { positionOdds, breakoutPlans, scannerFor } from './insights.js';
 import { quoteVolume24h } from './setups.js';
@@ -43,7 +43,7 @@ export function buildIdxView({ symbol, series, live, cfg, positions, plan, scan,
   else if (plan && plan.distancePct <= 0) stage = 'ready';
   else if (plan && plan.distancePct <= 3) stage = 'setting-up';
   const why = position ? 'Holding: the robot sells at the stop, the target or after 30 days.'
-    : !regimeOk ? 'IHSG and this stock are both below their 200-day averages, so the robot does not buy it.'
+    : !regimeOk ? `Market filter not met (${regimeNote(cfg, 'IHSG')}), so the robot does not buy it.`
       : !liquid ? `Daily value Rp ${(valueIdr / 1e9).toFixed(1)}B is under the Rp ${(cfg.minTradeQuoteVolumeUsdt / 1e9).toFixed(0)}B floor.`
         : plan?.distancePct <= 0 ? `Trading above its 55-day high ${plan.level}: buys if it closes there today.`
           : plan ? `Needs a daily close above ${plan.level} (${plan.distancePct}% away).` : 'Not enough history yet.';
@@ -76,7 +76,8 @@ export async function idxPass({ settings, portfolio, nowMs, stored, loader = loa
   for (const tx of out.transactions) tx.market = 'idx';
 
   const regime = series[IDX_REGIME_SYMBOL]?.['1d'];
-  const regimeOk = Boolean(regime?.length) && btcAbove200d(regime, regime.at(-1).time);
+  const smaDays = regimeDaysOf(cfg);
+  const regimeOk = Boolean(regime?.length) && aboveSma(regime, regime.at(-1).time, smaDays);
   const stockSeries = Object.fromEntries(Object.entries(series).filter(([s]) => s !== IDX_REGIME_SYMBOL));
   const plans = breakoutPlans({ symbols: Object.keys(stockSeries), series, live, cfg, profileKey: 'idxBreakout' });
   const scan = scannerFor(stockSeries, { minValue: 5_000_000_000, minPrice: 50 });
@@ -92,10 +93,10 @@ export async function idxPass({ settings, portfolio, nowMs, stored, loader = loa
   if (regime?.length) {
     const last = regime.at(-1);
     let sum = 0;
-    for (let k = Math.max(0, regime.length - 200); k < regime.length; k += 1) sum += regime[k].close;
-    const sma200 = sum / Math.min(200, regime.length);
+    for (let k = Math.max(0, regime.length - smaDays); k < regime.length; k += 1) sum += regime[k].close;
+    const sma = sum / Math.min(smaDays, regime.length);
     const nowBar = live[IDX_REGIME_SYMBOL]?.['1d'] || last;
-    ihsg = { close: nowBar.close, date: nowBar.date, sma200: round(sma200), abovePct: round((last.close / sma200 - 1) * 100), regimeOk, sparkline: regime.slice(-60).map((c) => c.close) };
+    ihsg = { close: nowBar.close, date: nowBar.date, sma: round(sma), smaDays, abovePct: round((last.close / sma - 1) * 100), regimeOk, sparkline: regime.slice(-60).map((c) => c.close) };
   }
   const prices = Object.fromEntries(Object.keys(stockSeries).map((s) => [s, live?.[s]?.['1d']?.close ?? series[s]['1d'].at(-1)?.close]));
   const equityIdr = portfolio.balanceIdr + [...Object.values(portfolio.positions || {}), ...Object.values(view.positions || {})].reduce((t, p) => t + (p.investedIdr || 0), 0);

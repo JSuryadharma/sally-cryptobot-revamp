@@ -165,8 +165,8 @@ test('breakout with the clean-break default: needs 0.75 ATR above the level, buy
   assert.match(describePrediction(ready, 'COINUSDT'), /next 5-minute check/);
 });
 
-test('breakout: blocked while BTC is below its 200-day average', () => {
+test('breakout: blocked while BTC is below its 50-day average', () => {
   const blocked = predictBreakout(breakoutScenario({ formingClose: 102, btcUp: false }));
   assert.equal(blocked.stage, 'blocked');
-  assert.match(describePrediction(blocked, 'COINUSDT'), /200-day average/);
+  assert.match(describePrediction(blocked, 'COINUSDT'), /50-day average/);
 });

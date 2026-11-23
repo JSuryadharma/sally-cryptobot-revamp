@@ -139,7 +139,7 @@ test('IDX book trades a breakout through the shared engine with IHSG as the regi
   const buy = out.transactions.find((t) => t.symbol === 'BBCA');
   assert.ok(buy, `expected a BBCA breakout buy, signals: ${JSON.stringify(out.signals)}`);
   assert.equal(buy.quantity % 100, 0);
-  assert.match(buy.reason, /IHSG above its 200-day average/);
+  assert.match(buy.reason, /IHSG above its 50-day average/);
   assert.ok(positionsOf(account, 'idx').BBCA);
   assert.deepEqual(account.positions, {});
   assert.ok(account.balanceIdr < 100_000_000);

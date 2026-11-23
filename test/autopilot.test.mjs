@@ -32,7 +32,7 @@ test('no paper evidence yet: trades the 55-day breakout', () => {
   assert.equal(d.profiles.breakout, false);
   assert.equal(d.profiles.swing, false);
   assert.deepEqual(d.candidates.map((c) => c.status), ['learning', 'learning']);
-  assert.equal(d.regime.btcAbove200d, true);
+  assert.equal(d.regime.btcAboveSma, true);
 });
 
 test('does not chase the 20-day breakout when it did better lately', () => {
@@ -77,10 +77,10 @@ test('only the last window of closed trades counts', () => {
   assert.equal(d.chosen, 'breakout55');
 });
 
-test('BTC below its 200-day average is reported in the summary', () => {
+test('BTC below its 50-day average is reported in the summary', () => {
   const d = decideStrategy({ results: [], btcDaily: btcDown, nowMs: NOW });
-  assert.equal(d.regime.btcAbove200d, false);
-  assert.match(d.summary, /below its 200-day average/);
+  assert.equal(d.regime.btcAboveSma, false);
+  assert.match(d.summary, /below its 50-day average/);
 });
 
 // A synthetic market long enough for BTC's 200-day average and several breakouts.
@@ -94,7 +94,7 @@ const endMs = START + BARS * TF_MS['15m'];
 // profiles trade 3x ATR / +3R. Give the engine the paper exits so the two
 // can be compared trade for trade.
 const PAPER_EXITS = { breakout: { stopAtr: 2 }, breakout55: { stopAtr: 2, targetR: 2 } };
-const loose = (o = {}) => resolveEngineCfg({ preTrade: null,
+const loose = (o = {}) => resolveEngineCfg({ preTrade: null, regimeMode: 'btc200', regimeDays: 200, // the paper journal's research filter
   profileOverrides: PAPER_EXITS, breakoutEntry: 'close',
   minTradeQuoteVolumeUsdt: 0, slippagePct: 0, maxOpenPositions: 50, maxNewEntriesPerBar: 50, maxPortfolioRiskPct: 100,
   tradeAllocationPct: 0.05, maxConsecutiveLosses: 1000, dailyLossLimitPct: 100, drawdownHaltPct: 100, ...o

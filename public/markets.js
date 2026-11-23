@@ -126,7 +126,7 @@ function renderHome() {
   const ihsg = mk.idx?.ihsg;
   const idxOn = mk.idx?.enabled;
   $('homeIdx').innerHTML = `
-    <div class="market-head"><span class="market-badge idx">Saham IDX</span>${!idxOn ? '<span class="pill">Off</span>' : ihsg ? `<span class="pill ${ihsg.regimeOk ? 'good' : 'warn'}">IHSG ${ihsg.regimeOk ? 'above' : 'below'} 200d</span>` : '<span class="pill">Waiting for data</span>'}</div>
+    <div class="market-head"><span class="market-badge idx">Saham IDX</span>${!idxOn ? '<span class="pill">Off</span>' : ihsg ? `<span class="pill ${ihsg.regimeOk ? 'good' : 'warn'}">IHSG ${ihsg.regimeOk ? 'above' : 'below'} ${ihsg.smaDays || 50}d</span>` : '<span class="pill">Waiting for data</span>'}</div>
     <div class="market-num">${fmtIdrShort(s.marketValueIdr)}<small class="${s.unrealizedProfitIdr >= 0 ? 'up' : 'down'}">${fmtSigned(s.unrealizedProfitIdr)} open</small></div>
     <div class="mini-stats"><div><span>Positions</span><b>${s.openPositions}/${state.settings?.idx?.maxOpenPositions ?? '-'}</b></div><div><span>Realized</span><b class="${s.realizedProfitIdr >= 0 ? 'up' : 'down'}">${fmtSigned(s.realizedProfitIdr)}</b></div><div><span>Market</span><b>${mk.idx?.sessionOpen ? 'Open' : 'Closed'}</b></div></div>`;
 
@@ -179,8 +179,8 @@ function renderIdx() {
     ? '<div class="eyebrow">IHSG</div><div class="muted">IDX trading is off. Turn it on in Settings.</div>'
     : ihsg ? `
       <div class="ihsg-top"><div><div class="eyebrow">IHSG composite</div><div class="big-number">${Math.round(ihsg.close).toLocaleString('id-ID')}</div>
-      <div class="muted small">${ihsg.date} · 200-day avg ${Math.round(ihsg.sma200).toLocaleString('id-ID')} (${fmtPct(ihsg.abovePct, 1)})</div></div>${sparkSvg(ihsg.sparkline, { w: 140, h: 48 })}</div>
-      <div class="ihsg-foot"><span class="pill ${ihsg.regimeOk ? 'good' : 'warn'}">${ihsg.regimeOk ? 'Buying allowed: IHSG above its 200-day average' : 'IHSG below its 200-day average: only stocks above their own'}</span><span class="pill">${d.sessionOpen ? 'Market open' : 'Market closed'}</span></div>`
+      <div class="muted small">${ihsg.date} · ${ihsg.smaDays || 50}-day avg ${Math.round(ihsg.sma ?? ihsg.sma200).toLocaleString('id-ID')} (${fmtPct(ihsg.abovePct, 1)})</div></div>${sparkSvg(ihsg.sparkline, { w: 140, h: 48 })}</div>
+      <div class="ihsg-foot"><span class="pill ${ihsg.regimeOk ? 'good' : 'warn'}">${ihsg.regimeOk ? `Buying allowed: IHSG above its ${ihsg.smaDays || 50}-day average` : `IHSG below its ${ihsg.smaDays || 50}-day average: no new buys`}</span><span class="pill">${d.sessionOpen ? 'Market open' : 'Market closed'}</span></div>`
       : '<div class="eyebrow">IHSG</div><div class="muted">Waiting for the first IDX data load (Yahoo Finance).</div>';
   if (s) {
     $('idxBookCard').innerHTML = `<div class="eyebrow">Saham book · shared cash</div>

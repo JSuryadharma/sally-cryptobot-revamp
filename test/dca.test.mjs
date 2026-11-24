@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { resolveEngineCfg } from '../src/engine/config.js';
 import { createPortfolio, openPositionQty } from '../src/engine/ledger.js';
-import { dcaOnExitBar, spikeAt, SCALE_IN_AT_STOP } from '../src/engine/dca.js';
+import { dcaOnExitBar, spikeAt, scaleInPlan, SCALE_IN_AT_STOP } from '../src/engine/dca.js';
 
 const RATE = 16_000;
 const cfg = resolveEngineCfg({ preTrade: null, dca: SCALE_IN_AT_STOP });
@@ -55,4 +55,23 @@ test('no DCA when cfg.dca is off', () => {
 
 test('scale-in at the stop is the engine default', () => {
   assert.deepEqual(resolveEngineCfg({}).dca, SCALE_IN_AT_STOP);
+});
+
+test('scaleInPlan shows the buy-more level and the stop the add will set', () => {
+  const { portfolio, ctx } = setup();
+  const pos = portfolio.positions.TESTUSDT;
+  const plan = scaleInPlan(pos, cfg, RATE);
+  assert.equal(plan.triggered, false);
+  assert.equal(plan.price, pos.stopPrice);
+  assert.equal(plan.addQuantity, 50);
+  assert.ok(plan.addSpendIdr > 0);
+  // The add at exactly the stop sets the same stop as predicted.
+  const bar = { time: 1, open: 92, high: 92, low: 90.8, close: pos.stopPrice };
+  assert.equal(dcaOnExitBar(ctx, { symbol: 'TESTUSDT', tf: '5m', i: 50 }, pos, bar, 3, 'stop'), true);
+  assert.ok(Math.abs(plan.newStop - pos.stopPrice) < 1e-6, `${plan.newStop} vs ${pos.stopPrice}`);
+  const done = scaleInPlan(pos, cfg, RATE);
+  assert.equal(done.triggered, true);
+  assert.equal(done.newStop, pos.stopPrice);
+  // Off when dca is off.
+  assert.equal(scaleInPlan(pos, resolveEngineCfg({ preTrade: null, dca: null }), RATE), null);
 });

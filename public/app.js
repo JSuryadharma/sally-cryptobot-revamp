@@ -169,7 +169,7 @@ const AUTOPILOT_STATUS = {
   learning: ['', 'Learning'],
   benched: ['bad', 'Benched']
 };
-const PROFILE_SHORT = { swing: 'Swing', trend: 'Trend', scalping: 'Scalp', breakout: 'Breakout', breakout55: 'Breakout 55' };
+const PROFILE_SHORT = { swing: 'Swing', trend: 'Trend', scalping: 'Scalp', breakout: 'Breakout', breakout55: 'Breakout 55', cryptoDip: 'Dip buy', gap: 'Gap' };
 function shortProfile(h) { return h?.profile ? `${PROFILE_SHORT[h.profile] || h.profile} · ${TF_LABEL[h.timeframe] || ''}` : ''; }
 function stageOf(coin) { return headline(coin)?.stage || 'blocked'; }
 
@@ -382,7 +382,11 @@ function segmentsHtml(h, key) {
 
 function triggerLine(coin, h) {
   if (!h) return 'Not enough data yet.';
-  if (h.stage === 'holding') return `Stop at <b>${fmtPrice(h.stopPrice)}</b> (${h.distanceToStopPct}% away)`;
+  if (h.stage === 'holding') {
+    const si = h.scaleIn;
+    if (si && !si.triggered) return `Buys more at <b>${fmtPrice(si.price)}</b> (${h.distanceToStopPct}% away)${si.newStop ? `, then stop <b>${fmtPrice(si.newStop)}</b>` : ''}`;
+    return `Stop at <b>${fmtPrice(h.stopPrice)}</b> (${h.distanceToStopPct}% away)${si?.triggered ? ' · bought more' : ''}`;
+  }
   if (h.liveHold && h.stage === 'ready') return `Above <b>${fmtPrice(h.trigger.price)}</b>, buys at <b>${escapeHtml(fmtClock(h.liveHold.buyAt))}</b> if it stays above`;
   if (h.liveHold && h.stage !== 'blocked') {
     return `Buys once price ${h.liveHold.hours ? `holds above <b>${fmtPrice(h.trigger.price)}</b> for ${h.liveHold.hours}h` : `trades above <b>${fmtPrice(h.trigger.price)}</b>`} <span class="muted" data-dist="${coin.symbol}" data-trigger="${h.trigger.price}">${distanceText(h.trigger.price, livePrice(coin))}</span>`;
@@ -459,18 +463,21 @@ function renderFiring() {
 function exitBarHtml(exit) {
   const stop = exit.stopPrice, entry = exit.entryPrice, price = exit.livePrice;
   const target = exit.targetPrice;
-  const points = [stop, entry, price, exit.breakevenArmPrice, target].filter(Number.isFinite);
+  const si = exit.scaleIn && !exit.scaleIn.triggered ? exit.scaleIn : null;
+  const finalStop = si?.newStop;
+  const points = [stop, entry, price, exit.breakevenArmPrice, target, finalStop].filter(Number.isFinite);
   const lo = Math.min(...points), hi = Math.max(...points);
   const pad = (hi - lo) * 0.12 || entry * 0.01;
   const pos = (v) => `${(((v - (lo - pad)) / (hi - lo + 2 * pad)) * 100).toFixed(1)}%`;
   return `<div class="exit-bar">
-      <span class="marker stop" style="left:${pos(stop)}" title="Stop ${fmtPrice(stop)}"></span>
+      ${Number.isFinite(finalStop) ? `<span class="marker stop" style="left:${pos(finalStop)}" title="Stop after buying more ${fmtPrice(finalStop)}"></span>` : ''}
+      <span class="marker ${si ? 'add' : 'stop'}" style="left:${pos(stop)}" title="${si ? 'Buy more at' : 'Stop'} ${fmtPrice(stop)}"></span>
       <span class="marker entry" style="left:${pos(entry)}" title="Entry ${fmtPrice(entry)}"></span>
       ${Number.isFinite(exit.breakevenArmPrice) ? `<span class="marker be" style="left:${pos(exit.breakevenArmPrice)}" title="Breakeven arms at ${fmtPrice(exit.breakevenArmPrice)}"></span>` : ''}
       ${Number.isFinite(target) ? `<span class="marker be" style="left:${pos(target)}" title="Take profit at ${fmtPrice(target)}"></span>` : ''}
       <span class="marker price" style="left:${pos(price)}" title="Now ${fmtPrice(price)}"></span>
     </div>
-    <div class="exit-labels"><span class="down">Stop ${fmtPrice(stop)}</span><span>${Number.isFinite(target) ? `Take profit at ${fmtPrice(target)}` : Number.isFinite(exit.breakevenArmPrice) ? `Breakeven at ${fmtPrice(exit.breakevenArmPrice)}` : exit.stopKind === 'trailing' ? 'Trailing stop active' : 'Stop at breakeven'}</span></div>`;
+    <div class="exit-labels"><span class="down">${si ? `${Number.isFinite(finalStop) ? `Stop ${fmtPrice(finalStop)} · ` : ''}<span class="add-label">Buy more ${fmtPrice(stop)}</span>` : `Stop ${fmtPrice(stop)}${exit.scaleIn?.triggered ? ' (bought more)' : ''}`}</span><span>${Number.isFinite(target) ? `Take profit at ${fmtPrice(target)}` : Number.isFinite(exit.breakevenArmPrice) ? `Breakeven at ${fmtPrice(exit.breakevenArmPrice)}` : exit.stopKind === 'trailing' ? 'Trailing stop active' : 'Stop at breakeven'}</span></div>`;
 }
 
 // When the stop (and target) are next checked, and the time stop if one is pending.
@@ -813,10 +820,28 @@ function renderExitPlan(coin, exit) {
   $('planChecklist').innerHTML = `<div style="margin-bottom:12px">${exitBarHtml(exit)}</div>`;
   $('planTrade').innerHTML = `
     <div class="kv"><span>Entry</span><b>${fmtPrice(exit.entryPrice)}</b></div>
-    <div class="kv"><span>Stop (${escapeHtml(exit.stopKind)})</span><b>${fmtPrice(exit.stopPrice)}</b> <span>${exit.distanceToStopPct}% away</span></div>
+    ${scaleInRows(exit)}
     ${exit.targetPrice ? `<div class="kv"><span>Take profit at</span><b>${fmtPrice(exit.targetPrice)}</b></div>` : ''}
     ${exit.breakevenArmPrice || !exit.targetPrice ? `<div class="kv"><span>Breakeven arms at</span><b>${exit.breakevenArmPrice ? fmtPrice(exit.breakevenArmPrice) : 'Already armed'}</b></div>` : ''}
     <div class="kv"><span>Time stop</span><b>${exit.timeStopAt ? escapeHtml(fmtClock(exit.timeStopAt)) : 'Not active'}</b></div>`;
+}
+
+// The scale-in at the stop (default rule): at the first stop the robot buys
+// 0.5x more instead of selling, then the stop moves to where the whole trade
+// loses 1.5R.
+function scaleInRows(exit) {
+  const si = exit.scaleIn;
+  const stopRow = (label) => `<div class="kv"><span>${label}</span><b>${fmtPrice(exit.stopPrice)}</b> <span>${exit.distanceToStopPct}% away</span></div>`;
+  if (!si) return stopRow(`Stop (${escapeHtml(exit.stopKind)})`);
+  const size = `+${si.addFrac}x = ${+Number(si.addQuantity).toPrecision(6)} ${escapeHtml(base(state.coinSymbol))}${si.addSpendIdr ? `, about ${fmtIdrShort(si.addSpendIdr)}` : ''}`;
+  if (si.triggered) {
+    return `<div class="kv"><span>Buy more</span><b class="up">Done</b> <span>${size}</span></div>
+    ${stopRow(`Final stop (whole trade -${si.capR}R)`)}`;
+  }
+  return `<div class="kv"><span>Buy more at</span><b class="add-label">${fmtPrice(si.price)}</b> <span>${exit.distanceToStopPct}% away · instead of selling</span></div>
+    <div class="kv"><span>Buy-more size</span><b>${size}</b></div>
+    <div class="kv"><span>Stop after buying more</span><b>${si.newStop ? fmtPrice(si.newStop) : '-'}</b> <span>whole trade loses at most ${si.capR}R</span></div>
+    <div class="kv"><span>Buy more status</span><b>Waiting</b> <span>not triggered yet</span></div>`;
 }
 
 function renderDetails(coin) {
@@ -930,7 +955,13 @@ function drawChart() {
   }
   if (plan?.stage === 'holding') {
     levels.push({ price: plan.entryPrice, color: CHART.entry, dash: [], label: `Entry ${fmtPrice(plan.entryPrice)}`, below: false });
-    levels.push({ price: plan.stopPrice, color: CHART.stop, dash: [6, 4], label: `Stop ${fmtPrice(plan.stopPrice)}`, below: true });
+    const si = plan.scaleIn && !plan.scaleIn.triggered ? plan.scaleIn : null;
+    if (si) {
+      levels.push({ price: si.price, color: CHART.signal, dash: [6, 4], label: `Buy more ${fmtPrice(si.price)}`, below: true });
+      if (si.newStop) levels.push({ price: si.newStop, color: CHART.stop, dash: [6, 4], label: `Stop ${fmtPrice(si.newStop)}`, below: true });
+    } else {
+      levels.push({ price: plan.stopPrice, color: CHART.stop, dash: [6, 4], label: `Stop ${fmtPrice(plan.stopPrice)}`, below: true });
+    }
     if (plan.breakevenArmPrice) levels.push({ price: plan.breakevenArmPrice, color: CHART.signal, dash: [2, 4], label: `Breakeven at ${fmtPrice(plan.breakevenArmPrice)}`, below: false });
   }
 

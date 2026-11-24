@@ -144,7 +144,15 @@ function manage(ctx, event) {
     channelLow = Infinity;
     for (let k = event.i - profile.channelExitBars; k < event.i; k += 1) channelLow = Math.min(channelLow, trigBars[k].low);
   }
-  const { fills, updates } = onBar(position, bar, profile, cfg, { priceExits: !exitTf || !series[event.symbol][exitTf], channelLow });
+  // Bounce exit (profile.smaExitBars, the dip buy): the N-bar average including this close.
+  let exitSma = null;
+  if (profile.smaExitBars && event.i >= profile.smaExitBars - 1) {
+    const trigBars = series[event.symbol][event.tf];
+    exitSma = 0;
+    for (let k = event.i - profile.smaExitBars + 1; k <= event.i; k += 1) exitSma += trigBars[k].close;
+    exitSma /= profile.smaExitBars;
+  }
+  const { fills, updates } = onBar(position, bar, profile, cfg, { priceExits: !exitTf || !series[event.symbol][exitTf], channelLow, exitSma, prevClose: event.i > 0 ? series[event.symbol][event.tf][event.i - 1].close : null });
   if (updates) Object.assign(position, updates);
   if (fills.length) applyFills(ctx, event.symbol, fills, bar);
 }

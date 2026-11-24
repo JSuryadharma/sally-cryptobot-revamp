@@ -144,6 +144,37 @@ export const PROFILES = {
     cooldownBars: 1,
     barsPer24h: 1
   },
+  // IDX dip buy (strategies/dip.js): close above the 200-day average and
+  // 2-day RSI under 10; sells at the first close above the 5-day average or
+  // after 10 days. No IHSG filter (Joe, 2026-11-24). The 10% disaster stop
+  // also sizes the trade (2% risk = about 20% of equity per position).
+  // Engine backtest with the breakout (scripts/idxDipBacktest.mjs, 14 stocks,
+  // close-only data to 2026-11-20): 15y +125% DD 27% vs breakout alone +32%
+  // DD 41%; 1y +9.2% vs +4.2%; 2y +26.3% vs +26.8%. Dip trades won 65-70%.
+  // A 15% stop: 15y +68%, 25%: +58%.
+  idxDip: {
+    key: 'idxDip',
+    label: 'IDX dip buy (close above the 200-day average, 2-day RSI under 10)',
+    market: 'idx',
+    entry: 'dip',
+    triggerTf: '1d',
+    filterTf: '1d',
+    trendSmaBars: 200,
+    rsiBars: 2,
+    rsiMax: 10,
+    smaExitBars: 5,
+    dipStopPct: 10,
+    targetR: 0,
+    timeStopBars: 10,
+    timeStopMinR: Infinity,
+    trailAtrMult: null,
+    breakeven: false,
+    earlyEntry: false,
+    trendExit: false,
+    cooldownAfterAnyExit: true,
+    cooldownBars: 1,
+    barsPer24h: 1
+  },
   // Gap rebound (paperGap.js has the rule; scripts/gapResearch.mjs the
   // research). Runs next to the breakouts, not chosen by the autopilot, and
   // has its own on/off switch in Settings. Buys a 1h rebound (RSI back from

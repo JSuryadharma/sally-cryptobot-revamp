@@ -10,6 +10,8 @@ import { aboveSma, regimeAllows, regimeDaysOf, regimeNote } from './paperBreakou
 import { buildOrderList } from './orderPlans.js';
 import { positionOdds, breakoutPlans, scannerFor } from './insights.js';
 import { quoteVolume24h } from './setups.js';
+import { profilesFor } from './config.js';
+import { dipCheck } from './strategies/dip.js';
 
 export const IDX_STATE_KEY = 'idx-engine-state.json';
 export const IDX_CACHE_KEY = 'idx-cache.json';
@@ -37,25 +39,39 @@ export function buildIdxView({ symbol, series, live, cfg, positions, plan, scan,
   const valueIdr = quoteVolume24h(daily, daily.length - 1, 1);
   const liquid = valueIdr >= cfg.minTradeQuoteVolumeUsdt;
   const position = positions[symbol] || null;
+  // Dip buy (strategies/dip.js): checked on today's forming candle, so "ready"
+  // means it buys at today's close if the price stays like this.
+  const dipProfile = cfg.profiles?.idxDip ? profilesFor(cfg).idxDip : null;
+  const dipBars = formingToday ? [...daily, now] : daily;
+  const dipRaw = dipProfile ? dipCheck(dipBars, dipBars.length - 1, dipProfile) : null;
+  const dip = dipRaw ? { ...dipRaw, rsiMax: dipProfile.rsiMax, smaDays: dipProfile.trendSmaBars } : null;
+  const dipReady = Boolean(dip?.ok && liquid);
+  const dipLine = dip ? (dip.uptrend
+    ? ` Dip buy: 2-day RSI ${dip.rsi}, buys under ${dip.rsiMax}.`
+    : ` Dip buy: off while it is under its ${dip.smaDays}-day average ${dip.sma}.`) : '';
   let stage = 'watching';
   if (position) stage = 'holding';
+  else if (dipReady) stage = 'ready';
   else if (!regimeOk || !liquid) stage = 'blocked';
   else if (plan && plan.distancePct <= 0) stage = 'ready';
   else if (plan && plan.distancePct <= 3) stage = 'setting-up';
-  const why = position ? 'Holding: the robot sells at the stop, the target or after 30 days.'
-    : !regimeOk ? `Market filter not met (${regimeNote(cfg, 'IHSG')}), so the robot does not buy it.`
+  const why = position ? (position.profile === 'idxDip'
+    ? 'Holding a dip buy: the robot sells at the first close above the 5-day average, after 10 days, or at the 10% stop.'
+    : 'Holding: the robot sells at the stop, the target or after 30 days.')
+    : dipReady ? `Dip buy: 2-day RSI ${dip.rsi} is under ${dip.rsiMax} and the price is above its ${dip.smaDays}-day average ${dip.sma}. Buys at today's close if it stays like this.`
+    : (!regimeOk ? `Market filter not met (${regimeNote(cfg, 'IHSG')}), so the robot does not buy it.`
       : !liquid ? `Daily value Rp ${(valueIdr / 1e9).toFixed(1)}B is under the Rp ${(cfg.minTradeQuoteVolumeUsdt / 1e9).toFixed(0)}B floor.`
         : plan?.distancePct <= 0 ? `Trading above its 55-day high ${plan.level}: buys if it closes there today.`
-          : plan ? `Needs a daily close above ${plan.level} (${plan.distancePct}% away).` : 'Not enough history yet.';
+          : plan ? `Needs a daily close above ${plan.level} (${plan.distancePct}% away).` : 'Not enough history yet.') + (liquid ? dipLine : '');
   return {
     symbol, market: 'idx', name: IDX_NAMES[symbol]?.[0] || symbol,
     price, prevClose, changePct: prevClose ? round((price / prevClose - 1) * 100) : null,
     date: now.date, sessionDate: last.date,
     sparkline: daily.slice(-30).map((c) => c.close),
     atr14: last.atr14, atrPct: last.atrPct, rsi14: last.rsi14,
-    valueIdr: Math.round(valueIdr), liquid, regimeOk, stage, why, plan: plan || null,
+    valueIdr: Math.round(valueIdr), liquid, regimeOk, stage, why, plan: plan || null, dip,
     setups: scan?.labels || [],
-    position: position ? { quantity: position.quantity, lots: position.quantity / 100, entryPrice: position.entryPrice, stopPrice: position.stopPrice, targetPrice: position.targetPrice, openedAt: position.openedAt } : null
+    position: position ? { profile: position.profile, quantity: position.quantity, lots: position.quantity / 100, entryPrice: position.entryPrice, stopPrice: position.stopPrice, targetPrice: position.targetPrice, openedAt: position.openedAt } : null
   };
 }
 

@@ -170,7 +170,7 @@ export function idxEngineCfg(settings) {
     earlyEntry: false,
     exitTf: null,
     btcGate: false,
-    profiles: { scalping: false, swing: false, trend: false, breakout: false, breakout55: false, gap: false, idxBreakout: true },
+    profiles: { scalping: false, swing: false, trend: false, breakout: false, breakout55: false, gap: false, idxBreakout: true, idxDip: true },
     // day-trader-skill's risk manager limits (engine/preTradeCheck.js).
     preTrade: {
       minRewardRisk: 1,

@@ -14,11 +14,13 @@
 // config.js. The engine loop (core.js), sizing, risk and the ledger stay as they are.
 import { breakoutStrategy } from './breakout.js';
 import { gapStrategy } from './gap.js';
+import { dipStrategy } from './dip.js';
 import { pullbackStrategy } from './pullback.js';
 
 export const STRATEGIES = {
   breakout: breakoutStrategy,
   gap: gapStrategy,
+  dip: dipStrategy,
   pullback: pullbackStrategy
 };
 

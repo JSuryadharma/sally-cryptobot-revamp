@@ -39,3 +39,27 @@ Split: train 2010-2020, test 2021-2026. "Need" = the win rate needed to break ev
 With a 15% stop: 15y +67.8%. With a 25% stop: 15y +57.6%. The 10% stop is live.
 
 Caveats: close-only data (no intraday low, so the 10% stop is checked on closes here), and BBCA is not in the dataset.
+
+# Crypto (Joe: "also add it for crypto, backtest first")
+
+Data: Binance 1m mirror aggregated (scripts/mirrorKlines.mjs), 16 coins, daily candles 2022-06 to 2026-11-21. Entry and exit at the daily close, 0.3% cost. Train to 2024-12, test 2025-01 onward.
+
+**The stock rule does not pass on crypto.** RSI2 under 10 above the 200-day, selling above SMA5, won 63.3% vs 57.2% needed (z 1.98) in train and 58.8% vs 53.2% (z 1.59, not significant) in test. In the engine it made the robot worse (3y +162% DD 23.7% vs +179% DD 16.7%).
+
+**What passes: a selling climax.** Buy when the daily close is under the lower Bollinger band (20, 2) on at least 2x the 20-day average volume. Sell at the first higher daily close (about 1.7 days), or after 10 days.
+| | Trades | Win % | Need % | z | Avg net |
+|---|---|---|---|---|---|
+| Train 2023-24 | 96 | 72.9 | 51.1 | **4.27** | +1.62% |
+| Test 2025-26 | 121 | 72.7 | 54.9 | **3.95** | +2.12% |
+
+With a BTC > 50-day filter it collapses (it works after panic sells), so it runs without the market filter.
+
+Engine backtest with the live robot (autopilot breakouts + gap sleeve + scale-in, Rp 20M, `scripts/cryptoDipBacktest.mjs`):
+| Window | Robot only | + climax dip (25% stop, live) | Dip trades / win % |
+|---|---|---|---|
+| 3m | -0.5%, DD 12.5% | +1.7%, DD 11.4% | 8 / 88% |
+| 6m | +31.0%, DD 7.6% | +29.4%, DD 11.8% | 15 / 67% |
+| 1y | +31.0%, DD 13.4% | **+40.7%, DD 11.3%** | 26 / 69% |
+| 3y | +179.1%, DD 16.7% | **+207.0%, DD 14.6%** | 98 / 70% |
+
+A 15% stop gave 3y +215.6% but 6m +22.5%. A 10% stop gave 3y +201.5% with DD 18.1%. 25% is live.

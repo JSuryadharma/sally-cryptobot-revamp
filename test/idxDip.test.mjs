@@ -55,3 +55,15 @@ test('the dip buy is on for IDX and off for crypto', () => {
   assert.equal(idxEngineCfg({}).profiles.idxDip, true);
   assert.ok(!resolveEngineCfg({}).profiles?.idxDip);
 });
+
+test('crypto dip: close under the lower band on 2x volume buys, the first higher close sells', async () => {
+  const { climaxAt } = await import('../src/engine/strategies/dip.js');
+  const closes = Array.from({ length: 40 }, (_, i) => 100 + Math.sin(i) * 0.5);
+  closes.push(90, 91);
+  const bars = candles(closes).map((b, i) => ({ ...b, volume: i === 40 ? 60_000_000 : 20_000_000 }));
+  const cl = climaxAt(bars, 40, 2);
+  assert.equal(cl.below, true);
+  assert.equal(cl.volX, 3);
+  assert.equal(cl.ok, true);
+  assert.equal(climaxAt(bars.map((b) => ({ ...b, volume: 20_000_000 })), 40, 2).ok, false);
+});

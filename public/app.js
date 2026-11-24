@@ -169,7 +169,7 @@ const AUTOPILOT_STATUS = {
   learning: ['', 'Learning'],
   benched: ['bad', 'Benched']
 };
-const PROFILE_SHORT = { swing: 'Swing', trend: 'Trend', scalping: 'Scalp', breakout: 'Breakout', breakout55: 'Breakout 55' };
+const PROFILE_SHORT = { swing: 'Swing', trend: 'Trend', scalping: 'Scalp', breakout: 'Breakout', breakout55: 'Breakout 55', cryptoDip: 'Dip buy', gap: 'Gap' };
 function shortProfile(h) { return h?.profile ? `${PROFILE_SHORT[h.profile] || h.profile} · ${TF_LABEL[h.timeframe] || ''}` : ''; }
 function stageOf(coin) { return headline(coin)?.stage || 'blocked'; }
 

@@ -259,7 +259,7 @@ export function engineCfgFromSettings(settings, autopilot = null) {
     drawdownHaltPct: settings.drawdownHaltPct,
     timeZone: settings.timeZone,
     earlyEntry: false,
-    profiles: { ...(autopilot?.profiles || DEFAULT_ENGINE_CFG.profiles), gap: settings.gapSleeve?.enabled !== false },
+    profiles: { ...(autopilot?.profiles || DEFAULT_ENGINE_CFG.profiles), gap: settings.gapSleeve?.enabled !== false, cryptoDip: DEFAULT_ENGINE_CFG.profiles.cryptoDip },
     autopilotPause: autopilot?.paused ? autopilot.pauseReason : null
   };
 }

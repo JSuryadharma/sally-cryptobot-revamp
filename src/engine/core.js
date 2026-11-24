@@ -152,7 +152,7 @@ function manage(ctx, event) {
     for (let k = event.i - profile.smaExitBars + 1; k <= event.i; k += 1) exitSma += trigBars[k].close;
     exitSma /= profile.smaExitBars;
   }
-  const { fills, updates } = onBar(position, bar, profile, cfg, { priceExits: !exitTf || !series[event.symbol][exitTf], channelLow, exitSma });
+  const { fills, updates } = onBar(position, bar, profile, cfg, { priceExits: !exitTf || !series[event.symbol][exitTf], channelLow, exitSma, prevClose: event.i > 0 ? series[event.symbol][event.tf][event.i - 1].close : null });
   if (updates) Object.assign(position, updates);
   if (fills.length) applyFills(ctx, event.symbol, fills, bar);
 }

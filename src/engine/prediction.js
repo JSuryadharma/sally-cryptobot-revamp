@@ -251,7 +251,7 @@ export function predictCoin({ symbol, series, live, cfg, portfolio, risk, symbol
   }
   const byProfile = {};
   for (const profile of Object.values(profilesFor(cfg))) {
-    if (!cfg.profiles?.[profile.key] || profile.entry === 'gap') continue;
+    if (!cfg.profiles?.[profile.key] || profile.entry === 'gap' || profile.entry === 'dip') continue;
     const prediction = profilePrediction({ symbol, profile, series, live, cfg, portfolio, risk, symbolState, autoTradeOn, usdIdrRate, nowMs });
     if (prediction) byProfile[profile.key] = prediction;
   }

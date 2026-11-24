@@ -175,6 +175,39 @@ export const PROFILES = {
     cooldownBars: 1,
     barsPer24h: 1
   },
+  // Crypto dip buy (strategies/dip.js, selling climax): daily close under the
+  // lower Bollinger band (20, 2) on at least 2x the 20-day volume; sells at
+  // the first higher daily close or after 10 days; disaster stop under the
+  // entry. Not chosen by the autopilot (market: 'crypto' keeps it out).
+  // Signal study (16 coins, daily, 2023-2026, train to 2024-12): 72.9% wins
+  // vs 51.1% needed (z 4.27, 96 trades), test 72.7% vs 54.9% (z 3.95, 121
+  // trades), +1.6 to +2.1% per trade. The IDX rule (RSI2 under 10 above the
+  // 200-day) was not significant on crypto (test z 1.59) and lost in the
+  // engine. Engine backtest with the live robot (scripts/cryptoDipBacktest.mjs,
+  // Rp 20M, to 2026-11-21): 3y +207% DD 14.6% vs +179% DD 16.7%; 1y +40.7% vs
+  // +31.0%; 6m +29.4% vs +31.0%; 3m +1.7% vs -0.5%. Dip trades won 67-88%.
+  // A 25% stop beat 15% (3y +216%, 6m +22.5%) and 10% (3y +201%, DD 18.1%).
+  cryptoDip: {
+    key: 'cryptoDip',
+    label: 'Crypto dip buy (close under the lower Bollinger band on 2x volume)',
+    market: 'crypto',
+    entry: 'dip',
+    triggerTf: '1d',
+    filterTf: '1d',
+    climaxVolMult: 2,
+    firstUpExit: true,
+    dipStopPct: 25,
+    targetR: 0,
+    timeStopBars: 10,
+    timeStopMinR: Infinity,
+    trailAtrMult: null,
+    breakeven: false,
+    earlyEntry: false,
+    trendExit: false,
+    cooldownAfterAnyExit: true,
+    cooldownBars: 1,
+    barsPer24h: 1
+  },
   // Gap rebound (paperGap.js has the rule; scripts/gapResearch.mjs the
   // research). Runs next to the breakouts, not chosen by the autopilot, and
   // has its own on/off switch in Settings. Buys a 1h rebound (RSI back from
@@ -309,7 +342,7 @@ export const DEFAULT_ENGINE_CFG = {
   // The 4h/daily pullback (swing, trend) lost money on the test period of the
   // entry research, so breakout is the only strategy on by default. Live, the
   // autopilot (autopilot.js) picks the profiles on every tick.
-  profiles: { scalping: false, swing: false, trend: false, breakout: true, breakout55: false, breakoutTrail: false, gap: true },
+  profiles: { scalping: false, swing: false, trend: false, breakout: true, breakout55: false, breakoutTrail: false, gap: true, cryptoDip: true },
   // Set by the autopilot when every candidate strategy is losing in the paper
   // test: signals are still recorded, but no new position is opened.
   autopilotPause: null,
